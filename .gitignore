@@ -35,3 +35,10 @@ build/
 logs/
 /mvnw.cmd
 /mvnw
+
+# OpenADR certificates - never commit real certs
+src/main/resources/certs/test/keystore.p12
+src/main/resources/certs/prod/
+*.pem
+*.key
+EOF

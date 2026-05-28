@@ -4,6 +4,10 @@ import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bMarshalException;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,12 +21,11 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 @Service
 @RequiredArgsConstructor
 public class VtnTransportService {
-
     private final RestClient restClient;
     private final OpenAdrProperties properties;
 
     /**
-     * Надсилає OpenADR payload до VTN і повертає розпарсену відповідь
+     * Send OpenADR payload to VTN and returns parsed response
      */
     public Object send(String endpoint, Object payload) {
         try {
@@ -41,15 +44,15 @@ public class VtnTransportService {
 
             log.debug("Received from {}: {}", endpoint, xmlResponse);
 
-            // Unmarshal → може повернути OadrPayload wrapper
             Object response = jaxb.unmarshal(xmlResponse);
 
-            // Розгортаємо OadrPayload wrapper
             if (response instanceof OadrPayload oadrPayload) {
                 return oadrPayload.getOadrSignedObject().getOadrDistributeEvent() != null
                         ? oadrPayload.getOadrSignedObject().getOadrDistributeEvent()
                         : unwrapOadrPayload(oadrPayload);
             }
+
+            validateIds(response);
 
             return response;
 
@@ -86,5 +89,45 @@ public class VtnTransportService {
             return signed.getOadrCanceledPartyRegistration();
 
         return oadrPayload;
+    }
+
+    /**
+     * Conformance rule 21:
+     * Validate venID and vtnID in every received payload.
+     */
+    private void validateIds(Object response) {
+        String expectedVenId = properties.getVen().getId();
+        String expectedVtnId = properties.getVtn().getId();
+
+        String receivedVenId = extractVenId(response);
+        String receivedVtnId = extractVtnId(response);
+
+        if (receivedVenId != null && !receivedVenId.isBlank() && !expectedVenId.equals(receivedVenId)) {
+            log.warn("venID mismatch: expected={}, received={}", expectedVenId, receivedVenId);
+        }
+
+        if (receivedVtnId != null && !receivedVtnId.isBlank() && !expectedVtnId.equals(receivedVtnId)) {
+            log.warn("vtnID mismatch: expected={}, received={}", expectedVtnId, receivedVtnId);
+        }
+    }
+
+    private String extractVenId(Object response) {
+        if (response instanceof OadrCreatedPartyRegistrationType r)
+            return r.getVenID();
+        if (response instanceof OadrDistributeEventType)
+            return null;
+        if (response instanceof OadrResponseType r)
+            return r.getVenID();
+        if (response instanceof OadrRegisteredReportType r)
+            return r.getVenID();
+        return null;
+    }
+
+    private String extractVtnId(Object response) {
+        if (response instanceof OadrCreatedPartyRegistrationType r)
+            return r.getVtnID();
+        if (response instanceof OadrDistributeEventType r)
+            return r.getVtnID();
+        return null;
     }
 }

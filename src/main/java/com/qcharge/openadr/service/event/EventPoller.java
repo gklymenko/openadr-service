@@ -9,8 +9,11 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
+import java.util.Objects;
 
 @Slf4j
 @Component
@@ -19,47 +22,75 @@ public class EventPoller {
 
     private final OpenAdrProperties properties;
     private final VtnTransportService transportService;
-    private final DrEventHandler eventHandler;
+    private final DrEventHandler drEventHandler;
 
-    @Scheduled(fixedDelayString =
-            "${openadr.transport.poll-interval-seconds:10}000")
-    public void poll() {
-        String venId = properties.getVen().getId();
-        log.debug("Polling VTN for venId: {}", venId);
-
-        try {
-            OadrPollType pollPayload = Oadr20bPollBuilders
-                    .newOadr20bPollBuilder(venId)
-                    .build();
-
-            Object response = transportService.send(
-                    Oadr20bUrlPath.OADR_POLL_SERVICE,
-                    pollPayload
-            );
-
-            handlePollResponse(response);
-
-        } catch (Exception e) {
-            log.error("Poll failed for venId: {}, error: {}", venId, e.getMessage());
-        }
+    @Scheduled(fixedDelayString = "${openadr.transport.poll-interval-seconds:10}")
+    public void scheduledPoll() {
+        log.debug("Starting poll cycle for venId: {}", properties.getVen().getId());
+        pollUntilQueueEmpty();
     }
 
-    private void handlePollResponse(Object response) {
-        if (response instanceof OadrDistributeEventType distributeEvent) {
-            log.info("Received OadrDistributeEvent with {} events",
-                    distributeEvent.getOadrEvent().size());
-            eventHandler.handle(distributeEvent);
+    /**
+     * Conformance rule 500:
+     * VEN SHOULD continue sending oadrPoll messages without waiting
+     * until the next polling interval, until oadrResponse is returned
+     * to signal an empty VTN message queue.
+     */
+    public void pollUntilQueueEmpty() {
+        int maxIterations = 50;
+        int iteration = 0;
 
-        } else if (response instanceof OadrResponseType oadrResponse) {
-            String code = oadrResponse.getEiResponse().getResponseCode();
-            if (!"200".equals(code)) {
-                log.warn("Poll returned non-200 response: {}", code);
-            } else {
-                log.debug("Poll OK — no new events");
+        while (iteration++ < maxIterations) {
+            try {
+                Object response = sendPoll();
+                boolean queueEmpty = handlePollResponse(response);
+                if (queueEmpty) {
+                    log.debug("VTN queue empty after {} polls", iteration);
+                    return;
+                }
+            } catch (Exception e) {
+                log.error("Poll failed on iteration {}: {}", iteration, e.getMessage());
+                return;
             }
-        } else {
-            log.warn("Unexpected poll response type: {}",
-                    response != null ? response.getClass().getName() : "null");
+        }
+        log.warn("Reached max poll iterations ({})", maxIterations);
+    }
+
+    private Object sendPoll() {
+        String venId = properties.getVen().getId();
+        OadrPollType pollPayload = Oadr20bPollBuilders
+                .newOadr20bPollBuilder(venId)
+                .build();
+
+        return transportService.send(
+                Oadr20bUrlPath.OADR_POLL_SERVICE, pollPayload);
+    }
+
+    /**
+     * @return true if VTN queue is empty (received oadrResponse)
+     */
+    private boolean handlePollResponse(Object response) {
+        switch (response) {
+            case OadrDistributeEventType distributeEvent -> {
+                log.info("Received OadrDistributeEvent with {} events", distributeEvent.getOadrEvent().size());
+                drEventHandler.handle(distributeEvent);
+                return false;
+
+            }
+            case OadrResponseType oadrResponse -> {
+                String code = oadrResponse.getEiResponse().getResponseCode();
+                if ("200".equals(code)) {
+                    log.debug("Poll OK — queue empty");
+                    return true;
+                } else {
+                    log.warn("Poll returned non-200: {}", code);
+                    return true; //stop on error
+                }
+            }
+            default -> {
+                log.warn("Unexpected poll response type: {}", response.getClass().getName());
+                return true; //stop on not known response
+            }
         }
     }
 }

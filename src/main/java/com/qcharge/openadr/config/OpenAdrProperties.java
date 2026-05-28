@@ -19,6 +19,7 @@ public class OpenAdrProperties {
     public static class Ven {
         private String id;
         private String name;
+        private String profile;
     }
 
     @Data
