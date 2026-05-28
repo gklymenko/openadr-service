@@ -3,9 +3,11 @@ package com.qcharge.openadr.service.event;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bPollBuilders;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPollType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
+import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +22,7 @@ public class EventPoller {
     private final OpenAdrProperties properties;
     private final VtnTransportService transportService;
     private final DrEventHandler drEventHandler;
+    private final ReportRequestHandler reportRequestHandler;
 
     @Scheduled(fixedDelayString = "${openadr.transport.poll-interval-seconds:10}")
     public void scheduledPoll() {
@@ -64,7 +67,10 @@ public class EventPoller {
                 log.info("Received OadrDistributeEvent with {} events", distributeEvent.getOadrEvent().size());
                 drEventHandler.handle(distributeEvent);
                 return false;
-
+            }
+            case OadrCreateReportType createReport -> {
+                reportRequestHandler.handle(createReport);
+                return false;
             }
             case OadrResponseType oadrResponse -> {
                 String code = oadrResponse.getEiResponse().getResponseCode();

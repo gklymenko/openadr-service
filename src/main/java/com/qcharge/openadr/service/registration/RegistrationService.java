@@ -95,6 +95,7 @@ public class RegistrationService {
                 registration.getRegistrationId(), registration.getVtnId());
 
         reportService.registerReports();
+        reportService.registerMetadataReports();
         requestAllEvents();
     }
 

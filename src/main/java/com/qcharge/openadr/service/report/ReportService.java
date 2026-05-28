@@ -104,6 +104,70 @@ public class ReportService {
         log.info("Report registered successfully, reportSpecId: {}", reportSpecId);
     }
 
+    public void registerMetadataReports() {
+        String venId = properties.getVen().getId();
+        String requestId = UUID.randomUUID().toString();
+        String resourceId = properties.getReport().getResourceId();
+
+        OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
+                .newOadr20bRegisterReportBuilder(requestId, venId)
+                .addOadrReport(buildMetadataReport(
+                        ReportNameEnumeratedType.METADATA_TELEMETRY_USAGE, resourceId))
+                .addOadrReport(buildMetadataReport(
+                        ReportNameEnumeratedType.METADATA_TELEMETRY_STATUS, resourceId))
+                .build();
+
+        log.info("Sending oadrRegisterReport (METADATA) for venId: {}", venId);
+
+        Object response = transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, registerReport);
+
+        if (response instanceof OadrRegisteredReportType registered) {
+            String code = registered.getEiResponse().getResponseCode();
+            if ("200".equals(code)) {
+                log.info("METADATA reports registered successfully");
+            } else {
+                log.error("METADATA report registration failed, code: {}", code);
+            }
+        } else {
+            log.error("Unexpected response to METADATA oadrRegisterReport: {}",
+                    response != null ? response.getClass().getName() : "null");
+        }
+    }
+
+    private OadrReportType buildMetadataReport(ReportNameEnumeratedType reportName, String resourceId) {
+        String reportSpecId = UUID.randomUUID().toString();
+
+        OadrReportDescriptionType powerDescriptor = Oadr20bEiReportBuilders
+                .newOadr20bOadrReportDescriptionBuilder(
+                        resourceId + "_power",
+                        ReportEnumeratedType.READING,
+                        ReadingTypeEnumeratedType.DIRECT_READ)
+                .withPowerRealBase(
+                        PowerRealUnitType.WATT,
+                        SiScaleCodeType.KILO,
+                        BigDecimal.valueOf(50.0),
+                        BigDecimal.valueOf(230.0),
+                        true)
+                .withOadrSamplingRate("PT10S", "PT60S", false)
+                .build();
+
+        OadrReportDescriptionType energyDescriptor = Oadr20bEiReportBuilders
+                .newOadr20bOadrReportDescriptionBuilder(
+                        resourceId + "_energy",
+                        ReportEnumeratedType.READING,
+                        ReadingTypeEnumeratedType.DIRECT_READ)
+                .withEnergyRealBase(SiScaleCodeType.KILO)
+                .withOadrSamplingRate("PT60S", "PT300S", false)
+                .build();
+
+        return Oadr20bEiReportBuilders
+                .newOadr20bRegisterReportOadrReportBuilder(
+                        reportSpecId, reportName, System.currentTimeMillis())
+                .addReportDescription(powerDescriptor)
+                .addReportDescription(energyDescriptor)
+                .build();
+    }
+
     private VenReport buildVenReport(String reportSpecId) {
         VenReport report = new VenReport();
         report.setReportSpecId(reportSpecId);
