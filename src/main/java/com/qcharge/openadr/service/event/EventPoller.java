@@ -9,11 +9,8 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-
-import java.util.Objects;
 
 @Slf4j
 @Component
@@ -30,12 +27,7 @@ public class EventPoller {
         pollUntilQueueEmpty();
     }
 
-    /**
-     * Conformance rule 500:
-     * VEN SHOULD continue sending oadrPoll messages without waiting
-     * until the next polling interval, until oadrResponse is returned
-     * to signal an empty VTN message queue.
-     */
+    // Rule 500: poll continuously until oadrResponse signals queue empty
     public void pollUntilQueueEmpty() {
         int maxIterations = 50;
         int iteration = 0;
@@ -66,9 +58,6 @@ public class EventPoller {
                 Oadr20bUrlPath.OADR_POLL_SERVICE, pollPayload);
     }
 
-    /**
-     * @return true if VTN queue is empty (received oadrResponse)
-     */
     private boolean handlePollResponse(Object response) {
         switch (response) {
             case OadrDistributeEventType distributeEvent -> {
@@ -84,12 +73,12 @@ public class EventPoller {
                     return true;
                 } else {
                     log.warn("Poll returned non-200: {}", code);
-                    return true; //stop on error
+                    return true;
                 }
             }
             default -> {
                 log.warn("Unexpected poll response type: {}", response.getClass().getName());
-                return true; //stop on not known response
+                return true;
             }
         }
     }

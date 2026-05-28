@@ -22,7 +22,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -39,19 +38,15 @@ public class RegistrationService {
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         log.info("Checking VEN registration status...");
-        String venId = properties.getVen().getId();
-
-        Optional<VenRegistration> existing = registrationRepository.findByVenIdAndStatus(
-                venId, VenRegistration.RegistrationStatus.REGISTERED
-        );
-
-        if (existing.isPresent()) {
-            log.info("VEN already registered: {}", existing.get().getRegistrationId());
-            // per conformance rule 405: not required to send oadrRequestEvent for re-registration
-        } else {
-            log.info("VEN not registered, starting registration flow...");
-            register();
-        }
+        registrationRepository
+                .findByVenIdAndStatus(properties.getVen().getId(), VenRegistration.RegistrationStatus.REGISTERED)
+                .ifPresentOrElse(
+                        reg -> log.info("VEN already registered: {}", reg.getRegistrationId()),
+                        () -> {
+                            log.info("VEN not registered, starting registration flow...");
+                            register();
+                        }
+                );
     }
 
     public void register() {
@@ -91,33 +86,30 @@ public class RegistrationService {
             return;
         }
 
-        String registrationId = response.getRegistrationID();
-        String venId = response.getVenID();
-        String vtnId = response.getVtnID();
-
-        VenRegistration registration = new VenRegistration();
-        registration.setVenId(venId);
-        registration.setVtnId(vtnId);
-        registration.setRegistrationId(registrationId);
-        registration.setStatus(VenRegistration.RegistrationStatus.REGISTERED);
-        registration.setRegisteredAt(LocalDateTime.now());
-        registration.setUpdatedAt(LocalDateTime.now());
+        VenRegistration registration = buildRegistration(
+                response.getVenID(), response.getVtnID(), response.getRegistrationID()
+        );
         registrationRepository.save(registration);
 
-        log.info("VEN registered. registrationId: {}, vtnId: {}", registrationId, vtnId);
+        log.info("VEN registered. registrationId: {}, vtnId: {}",
+                registration.getRegistrationId(), registration.getVtnId());
 
-        // Conformance rule 405: after new registration MUST:
-        // 1. Exchange Metadata reports
-        // 2. Send oadrRequestEvent
         reportService.registerReports();
         requestAllEvents();
     }
 
-    /**
-     * Conformance rule 405:
-     * After new registration, VEN must use oadrRequestEvent
-     * to get all relevant events before initiating other exchanges.
-     */
+    private VenRegistration buildRegistration(String venId, String vtnId, String registrationId) {
+        VenRegistration reg = new VenRegistration();
+        reg.setVenId(venId);
+        reg.setVtnId(vtnId);
+        reg.setRegistrationId(registrationId);
+        reg.setStatus(VenRegistration.RegistrationStatus.REGISTERED);
+        reg.setRegisteredAt(LocalDateTime.now());
+        reg.setUpdatedAt(LocalDateTime.now());
+        return reg;
+    }
+
+    // Rule 405: after new registration, request all active events before other exchanges
     private void requestAllEvents() {
         String venId = properties.getVen().getId();
         String requestId = UUID.randomUUID().toString();
@@ -144,7 +136,8 @@ public class RegistrationService {
             case OadrResponseType oadrResponse -> log.info(
                     "oadrRequestEvent response: {}", oadrResponse.getEiResponse().getResponseCode()
             );
-            default -> log.warn("Unexpected oadrRequestEvent response: {}", response.getClass().getName());
+            default -> log.warn("Unexpected oadrRequestEvent response: {}",
+                    response != null ? response.getClass().getName() : "null");
         }
     }
 }

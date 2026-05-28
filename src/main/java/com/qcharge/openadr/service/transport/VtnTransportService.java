@@ -6,6 +6,7 @@ import com.qcharge.openadr.model.oadr20b.exception.Oadr20bMarshalException;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import jakarta.xml.bind.JAXBException;
@@ -15,7 +16,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 
 @Slf4j
 @Service
@@ -24,9 +24,6 @@ public class VtnTransportService {
     private final RestClient restClient;
     private final OpenAdrProperties properties;
 
-    /**
-     * Send OpenADR payload to VTN and returns parsed response
-     */
     public Object send(String endpoint, Object payload) {
         try {
             Oadr20bJAXBContext jaxb = Oadr20bJAXBContext.getInstance();
@@ -47,9 +44,7 @@ public class VtnTransportService {
             Object response = jaxb.unmarshal(xmlResponse);
 
             if (response instanceof OadrPayload oadrPayload) {
-                return oadrPayload.getOadrSignedObject().getOadrDistributeEvent() != null
-                        ? oadrPayload.getOadrSignedObject().getOadrDistributeEvent()
-                        : unwrapOadrPayload(oadrPayload);
+                return unwrapOadrPayload(oadrPayload);
             }
 
             validateIds(response);
@@ -91,10 +86,7 @@ public class VtnTransportService {
         return oadrPayload;
     }
 
-    /**
-     * Conformance rule 21:
-     * Validate venID and vtnID in every received payload.
-     */
+    // Rule 21: validate venID and vtnID in every received payload
     private void validateIds(Object response) {
         String expectedVenId = properties.getVen().getId();
         String expectedVtnId = properties.getVtn().getId();

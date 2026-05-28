@@ -17,12 +17,10 @@ import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -34,18 +32,13 @@ public class ReportService {
     private final VenReportRepository reportRepository;
     private final VtnTransportService transportService;
 
-    /**
-     * Registers available EV chargers metrics into VTN.
-     * Call just right after successfully VEN registration
-     */
-    //TODO:: create report on real data
+    // TODO: replace with real EV charger metrics
     public void registerReports() {
         String venId = properties.getVen().getId();
         String requestId = UUID.randomUUID().toString();
         String reportSpecId = UUID.randomUUID().toString();
         String resourceId = properties.getReport().getResourceId();
 
-        // Descriptor 1: PowerReal (kWt) — current EV power
         OadrReportDescriptionType powerDescriptor =
                 Oadr20bEiReportBuilders
                         .newOadr20bOadrReportDescriptionBuilder(
@@ -63,7 +56,6 @@ public class ReportService {
                         .withOadrSamplingRate("PT10S", "PT60S", false)
                         .build();
 
-        // Descriptor 2: EnergyReal (kWh) — consumed electricity
         OadrReportDescriptionType energyDescriptor =
                 Oadr20bEiReportBuilders
                         .newOadr20bOadrReportDescriptionBuilder(
@@ -75,7 +67,6 @@ public class ReportService {
                         .withOadrSamplingRate("PT60S", "PT300S", false)
                         .build();
 
-        // Build OadrReport with descriptors
         OadrReportType oadrReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportOadrReportBuilder(
                         reportSpecId, ReportNameEnumeratedType.TELEMETRY_USAGE, System.currentTimeMillis()
@@ -109,6 +100,11 @@ public class ReportService {
             return;
         }
 
+        reportRepository.save(buildVenReport(reportSpecId));
+        log.info("Report registered successfully, reportSpecId: {}", reportSpecId);
+    }
+
+    private VenReport buildVenReport(String reportSpecId) {
         VenReport report = new VenReport();
         report.setReportSpecId(reportSpecId);
         report.setReportName(ReportNameEnumeratedType.TELEMETRY_USAGE.value());
@@ -116,8 +112,6 @@ public class ReportService {
         report.setGranularitySeconds(60);
         report.setCreatedAt(LocalDateTime.now());
         report.setUpdatedAt(LocalDateTime.now());
-
-        reportRepository.save(report);
-        log.info("Report registered successfully, reportSpecId: {}", reportSpecId);
+        return report;
     }
 }

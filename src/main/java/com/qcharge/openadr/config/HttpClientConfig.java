@@ -48,7 +48,6 @@ public class HttpClientConfig {
     }
 
     private SSLContext buildSslContext() throws Exception {
-        // KeyStore — identity VEN (приватний ключ)
         KeyStore keyStore = loadKeyStore(
                 properties.getSecurity().getKeystorePath(),
                 properties.getSecurity().getKeystorePassword()
@@ -59,7 +58,6 @@ public class HttpClientConfig {
         kmf.init(keyStore,
                 properties.getSecurity().getKeystorePassword().toCharArray());
 
-        // TrustStore — довіряємо Root CA + VTN CA
         KeyStore trustStore = loadKeyStore(
                 properties.getSecurity().getTruststorePath(),
                 properties.getSecurity().getTruststorePassword()
@@ -69,7 +67,6 @@ public class HttpClientConfig {
                 TrustManagerFactory.getDefaultAlgorithm());
         tmf.init(trustStore);
 
-        // SSLContext з TLS 1.2 як вимагає специфікація
         SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
         sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
 
