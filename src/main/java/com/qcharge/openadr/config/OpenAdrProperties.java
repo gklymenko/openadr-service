@@ -114,6 +114,11 @@ public class OpenAdrProperties {
         private String truststorePath;
         private String truststorePassword;
 
+        /**
+         * Optional. If not set, the first PrivateKeyEntry alias will be used.
+         */
+        private String keystoreAlias;
+
         @Min(1)
         private int certExpiryWarnDays = 30;
 

@@ -1,5 +1,6 @@
 package com.qcharge.openadr.config;
 
+import com.qcharge.openadr.utility.OpenAdrCertificateUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -16,6 +17,8 @@ import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.security.KeyStore;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Set;
 
 @Slf4j
 @Configuration
@@ -25,13 +28,17 @@ public class HttpClientConfig {
     private final OpenAdrProperties properties;
     private final ResourceLoader resourceLoader;
 
+    private static final String[] OPENADR_TLS_CIPHER_SUITES = {
+            "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256"
+    };
+
     @Bean
     public RestClient restClient() throws Exception {
         SSLContext sslContext = buildSslContext();
 
         // Rule 67: VEN MUST offer TLS_RSA_WITH_AES_128_CBC_SHA256 over TLS 1.2
         SSLParameters sslParams = new SSLParameters();
-        sslParams.setCipherSuites(new String[]{"TLS_RSA_WITH_AES_128_CBC_SHA256"});
+        sslParams.setCipherSuites(supportedOpenAdrCipherSuites(sslContext));
         sslParams.setProtocols(new String[]{"TLSv1.2"});
 
         HttpClient httpClient = HttpClient.newBuilder()
@@ -85,11 +92,25 @@ public class HttpClientConfig {
     }
 
     private KeyStore loadKeyStore(String path, String password) throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        try (InputStream is = resourceLoader.getResource(path).getInputStream()) {
-            keyStore.load(is, password.toCharArray());
-        }
+        KeyStore keyStore = OpenAdrCertificateUtils.loadPkcs12(resourceLoader, path, password);
         log.debug("Loaded keystore from: {}", path);
         return keyStore;
+    }
+
+    private String[] supportedOpenAdrCipherSuites(SSLContext sslContext) {
+        Set<String> supported = Set.of(sslContext.getSupportedSSLParameters().getCipherSuites());
+
+        String[] selected = Arrays.stream(OPENADR_TLS_CIPHER_SUITES)
+                .filter(supported::contains)
+                .toArray(String[]::new);
+
+        if (selected.length == 0) {
+            throw new IllegalStateException(
+                    "No OpenADR mandatory TLS 1.2 cipher suites are supported by current JDK/security policy"
+            );
+        }
+
+        log.info("OpenADR TLS cipher suites enabled: {}", Arrays.toString(selected));
+        return selected;
     }
 }
