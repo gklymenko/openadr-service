@@ -94,6 +94,15 @@ public class OpenAdrProperties {
 
         @Min(0)
         private int maxPollJitterSeconds = 5;
+
+        @Min(1)
+        private int retryMaxAttempts = 3;
+
+        @Min(0)
+        private int retryInitialDelayMillis = 1000;
+
+        @Min(0)
+        private int retryMaxDelayMillis = 60000;
     }
 
     @Getter

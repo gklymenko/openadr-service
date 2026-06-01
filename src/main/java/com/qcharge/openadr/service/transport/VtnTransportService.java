@@ -34,6 +34,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 @Slf4j
@@ -43,6 +46,7 @@ public class VtnTransportService {
 
     private final RestClient restClient;
     private final OpenAdrProperties properties;
+    private final RetryHandler retryHandler;
 
     public Object send(String endpoint, Object payload) {
         try {
@@ -51,13 +55,8 @@ public class VtnTransportService {
 
             log.debug("Sending OpenADR payload to endpoint={}", endpoint);
 
-            String xmlResponse = restClient.post()
-                    .uri(buildUrl(endpoint))
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_XML_VALUE)
-                    .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_XML_VALUE)
-                    .body(xmlPayload)
-                    .retrieve()
-                    .body(String.class);
+            String xmlResponse = retryHandler.executeWithRetry(endpoint,
+                    () -> httpPost(endpoint, xmlPayload));
 
             log.debug("Received OpenADR response from endpoint={}", endpoint);
 
@@ -73,6 +72,26 @@ public class VtnTransportService {
             throw new OpenAdrTransportException("Failed to marshal OpenADR payload", e);
         } catch (Oadr20bUnmarshalException e) {
             throw new OpenAdrTransportException("Failed to unmarshal VTN response", e);
+        }
+    }
+
+    private String httpPost(String endpoint, String xmlPayload) {
+        try {
+            return restClient.post()
+                    .uri(buildUrl(endpoint))
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_XML_VALUE)
+                    .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_XML_VALUE)
+                    .body(xmlPayload)
+                    .retrieve()
+                    .body(String.class);
+        } catch (HttpClientErrorException e) {
+            throw new OpenAdrTransportException(
+                    "HTTP client error " + e.getStatusCode(), e.getStatusCode().value(), e);
+        } catch (HttpServerErrorException e) {
+            throw new OpenAdrTransportException(
+                    "HTTP server error " + e.getStatusCode(), e.getStatusCode().value(), e);
+        } catch (ResourceAccessException e) {
+            throw new OpenAdrTransportException("HTTP connection error", e);
         }
     }
 
