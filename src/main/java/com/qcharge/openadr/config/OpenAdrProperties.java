@@ -113,6 +113,12 @@ public class OpenAdrProperties {
         private String keystorePassword;
         private String truststorePath;
         private String truststorePassword;
+
+        @Min(1)
+        private int certExpiryWarnDays = 30;
+
+        @Min(1)
+        private int certExpiryCriticalDays = 7;
     }
 
     @Getter

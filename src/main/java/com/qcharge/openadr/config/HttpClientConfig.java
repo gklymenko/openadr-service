@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClient;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManagerFactory;
 import java.io.InputStream;
 import java.net.http.HttpClient;
@@ -28,11 +29,19 @@ public class HttpClientConfig {
     public RestClient restClient() throws Exception {
         SSLContext sslContext = buildSslContext();
 
+        // Rule 67: VEN MUST offer TLS_RSA_WITH_AES_128_CBC_SHA256 over TLS 1.2
+        SSLParameters sslParams = new SSLParameters();
+        sslParams.setCipherSuites(new String[]{"TLS_RSA_WITH_AES_128_CBC_SHA256"});
+        sslParams.setProtocols(new String[]{"TLSv1.2"});
+
         HttpClient httpClient = HttpClient.newBuilder()
                 .sslContext(sslContext)
+                .sslParameters(sslParams)
                 .connectTimeout(Duration.ofSeconds(
                         properties.getTransport().getConnectTimeoutSeconds()))
                 .build();
+
+        log.info("TLS configured: protocol=TLSv1.2, cipher=TLS_RSA_WITH_AES_128_CBC_SHA256 (OpenADR rule 67)");
 
         JdkClientHttpRequestFactory factory =
                 new JdkClientHttpRequestFactory(httpClient);
