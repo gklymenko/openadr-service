@@ -5,6 +5,7 @@ import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.model.entity.VenReport;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
+import com.qcharge.openadr.model.oadr20b.ei.SpecifierPayloadType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateReportType;
@@ -27,8 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
@@ -211,7 +214,30 @@ public class ReportRequestHandler {
             return ReportRequestResult.unsupported();
         }
 
-        activateReport(report, request);
+        Set<String> requestedRids = requestedRids(request);
+        Set<String> supportedRids = reportService.supportedRidsFor(reportSpecifierId);
+
+        if (requestedRids.isEmpty()) {
+            log.warn(
+                    "Report request has no requested rIDs. reportSpecifierId={}, reportRequestId={}",
+                    reportSpecifierId,
+                    reportRequestId
+            );
+            return ReportRequestResult.unsupported();
+        }
+
+        if (!supportedRids.containsAll(requestedRids)) {
+            log.warn(
+                    "Unsupported rID requested. reportSpecifierId={}, reportRequestId={}, requestedRids={}, supportedRids={}",
+                    reportSpecifierId,
+                    reportRequestId,
+                    requestedRids,
+                    supportedRids
+            );
+            return ReportRequestResult.unsupported();
+        }
+
+        activateReport(report, request, requestedRids);
 
         Duration reportBackDuration = parseDuration(
                 request.getReportSpecifier().getReportBackDuration() != null
@@ -258,7 +284,9 @@ public class ReportRequestHandler {
         );
     }
 
-    private void activateReport(VenReport report, OadrReportRequestType request) {
+    private void activateReport(VenReport report, OadrReportRequestType request, Set<String> requestedRids) {
+        report.setRequestedRids(String.join(",", requestedRids));
+
         Duration granularity = parseDuration(
                 request.getReportSpecifier().getGranularity() != null
                         ? request.getReportSpecifier().getGranularity().getDuration()
@@ -347,18 +375,26 @@ public class ReportRequestHandler {
                 ? report.getGranularitySeconds()
                 : properties.getReport().getTelemetryIntervalSeconds();
 
+        Set<String> requestedRids = parseRequestedRids(report.getRequestedRids());
+
+        if (requestedRids.isEmpty()) {
+            requestedRids = reportService.supportedRidsFor(report.getReportSpecId());
+        }
+
         if (ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS.equals(report.getReportSpecId())) {
             return reportService.buildTelemetryStatusUpdateReport(
                     report.getReportSpecId(),
                     report.getReportRequestId(),
-                    intervalSeconds
+                    intervalSeconds,
+                    requestedRids
             );
         }
 
         return reportService.buildTelemetryUsageUpdateReport(
                 report.getReportSpecId(),
                 report.getReportRequestId(),
-                intervalSeconds
+                intervalSeconds,
+                requestedRids
         );
     }
 
@@ -431,5 +467,34 @@ public class ReportRequestHandler {
         static ReportRequestResult immediate(VenReport report) {
             return new ReportRequestResult(true, report);
         }
+    }
+
+    private Set<String> requestedRids(OadrReportRequestType request) {
+        if (request == null
+                || request.getReportSpecifier() == null
+                || request.getReportSpecifier().getSpecifierPayload().isEmpty()) {
+            return Set.of();
+        }
+
+        Set<String> rids = new LinkedHashSet<>();
+
+        for (SpecifierPayloadType payload : request.getReportSpecifier().getSpecifierPayload()) {
+            if (payload.getRID() != null && !payload.getRID().isBlank()) {
+                rids.add(payload.getRID());
+            }
+        }
+
+        return rids;
+    }
+
+    private Set<String> parseRequestedRids(String requestedRids) {
+        if (requestedRids == null || requestedRids.isBlank()) {
+            return Set.of();
+        }
+
+        return java.util.Arrays.stream(requestedRids.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 }

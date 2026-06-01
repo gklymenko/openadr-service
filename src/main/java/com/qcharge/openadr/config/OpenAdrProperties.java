@@ -34,6 +34,9 @@ public class OpenAdrProperties {
     @Valid
     private Xml xml = new Xml();
 
+    @Valid
+    private Event event = new Event();
+
     @Getter
     @Setter
     public static class Xml {
@@ -124,6 +127,21 @@ public class OpenAdrProperties {
 
         @Min(1)
         private int certExpiryCriticalDays = 7;
+    }
+
+    @Getter
+    @Setter
+    public static class Event {
+        /**
+         * If true, empty eiTarget is treated as broadcast to this VEN.
+         * For certification this is useful and safe.
+         */
+        private boolean allowUntargetedEvents = true;
+
+        /**
+         * Empty list means accept any marketContext.
+         */
+        private java.util.List<String> allowedMarketContexts = new java.util.ArrayList<>();
     }
 
     @Getter

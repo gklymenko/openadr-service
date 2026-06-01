@@ -43,6 +43,9 @@ public class VenReport {
     @Column(name = "granularity_seconds")
     private Integer granularitySeconds;
 
+    @Column(name = "requested_rids")
+    private String requestedRids;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

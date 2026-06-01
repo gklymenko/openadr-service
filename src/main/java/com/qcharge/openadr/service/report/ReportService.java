@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -95,34 +96,12 @@ public class ReportService {
     }
 
     public OadrReportType buildTelemetryUsageUpdateReport(
-            String reportSpecifierId,
-            String reportRequestId,
-            int intervalSeconds
+            String reportSpecifierId, String reportRequestId, int intervalSeconds, Set<String> requestedRids
     ) {
         long now = System.currentTimeMillis();
         String duration = toXmlDuration(intervalSeconds);
 
-        var powerInterval = Oadr20bFactory.createReportIntervalType(
-                "power-" + UUID.randomUUID(),
-                now,
-                duration,
-                RID_POWER,
-                null,
-                null,
-                currentPowerKw()
-        );
-
-        var energyInterval = Oadr20bFactory.createReportIntervalType(
-                "energy-" + UUID.randomUUID(),
-                now,
-                duration,
-                RID_ENERGY,
-                null,
-                null,
-                currentEnergyKwh()
-        );
-
-        return Oadr20bEiReportBuilders
+        var builder = Oadr20bEiReportBuilders
                 .newOadr20bUpdateReportOadrReportBuilder(
                         UUID.randomUUID().toString(),
                         reportSpecifierId,
@@ -131,19 +110,55 @@ public class ReportService {
                         now,
                         now,
                         duration
-                )
-                .addInterval(powerInterval)
-                .addInterval(energyInterval)
-                .build();
+                );
+
+        if (requestedRids.contains(RID_POWER)) {
+            builder.addInterval(Oadr20bFactory.createReportIntervalType(
+                    "power-" + UUID.randomUUID(),
+                    now,
+                    duration,
+                    RID_POWER,
+                    null,
+                    null,
+                    currentPowerKw()
+            ));
+        }
+
+        if (requestedRids.contains(RID_ENERGY)) {
+            builder.addInterval(Oadr20bFactory.createReportIntervalType(
+                    "energy-" + UUID.randomUUID(),
+                    now,
+                    duration,
+                    RID_ENERGY,
+                    null,
+                    null,
+                    currentEnergyKwh()
+            ));
+        }
+
+        return builder.build();
     }
 
     public OadrReportType buildTelemetryStatusUpdateReport(
-            String reportSpecifierId,
-            String reportRequestId,
-            int intervalSeconds
+            String reportSpecifierId, String reportRequestId, int intervalSeconds, Set<String> requestedRids
     ) {
         long now = System.currentTimeMillis();
         String duration = toXmlDuration(intervalSeconds);
+
+        var builder = Oadr20bEiReportBuilders
+                .newOadr20bUpdateReportOadrReportBuilder(
+                        UUID.randomUUID().toString(),
+                        reportSpecifierId,
+                        reportRequestId,
+                        ReportNameEnumeratedType.TELEMETRY_STATUS,
+                        now,
+                        now,
+                        duration
+                );
+
+        if (!requestedRids.contains(RID_RESOURCE_STATUS)) {
+            return builder.build();
+        }
 
         var capacity = Oadr20bFactory.createOadrLoadControlStateTypeType(
                 1.0f,
@@ -165,7 +180,7 @@ public class ReportService {
                 true
         );
 
-        var statusInterval = Oadr20bFactory.createReportIntervalType(
+        builder.addInterval(Oadr20bFactory.createReportIntervalType(
                 "status-" + UUID.randomUUID(),
                 now,
                 duration,
@@ -173,20 +188,21 @@ public class ReportService {
                 null,
                 null,
                 resourceStatus
-        );
+        ));
 
-        return Oadr20bEiReportBuilders
-                .newOadr20bUpdateReportOadrReportBuilder(
-                        UUID.randomUUID().toString(),
-                        reportSpecifierId,
-                        reportRequestId,
-                        ReportNameEnumeratedType.TELEMETRY_STATUS,
-                        now,
-                        now,
-                        duration
-                )
-                .addInterval(statusInterval)
-                .build();
+        return builder.build();
+    }
+
+    public Set<String> supportedRidsFor(String reportSpecifierId) {
+        if (REPORT_SPECIFIER_ID_TELEMETRY_USAGE.equals(reportSpecifierId)) {
+            return Set.of(RID_POWER, RID_ENERGY);
+        }
+
+        if (REPORT_SPECIFIER_ID_TELEMETRY_STATUS.equals(reportSpecifierId)) {
+            return Set.of(RID_RESOURCE_STATUS);
+        }
+
+        return Set.of();
     }
 
     private OadrReportType buildTelemetryUsageMetadataReport() {

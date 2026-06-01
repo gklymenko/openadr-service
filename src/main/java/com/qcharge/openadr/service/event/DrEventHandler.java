@@ -2,6 +2,7 @@ package com.qcharge.openadr.service.event;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
@@ -91,7 +92,28 @@ public class DrEventHandler {
     private EventProcessingResult processEventSafely(OadrEvent oadrEvent) {
         try {
             return processEvent(oadrEvent);
-        } catch (IllegalArgumentException e) {
+        } catch (TargetMismatchException e) {
+        EventDescriptorType descriptor = descriptorOf(oadrEvent);
+
+        String eventId = descriptor != null && descriptor.getEventID() != null
+                ? descriptor.getEventID()
+                : "unknown";
+        long modificationNumber = descriptor != null ? descriptor.getModificationNumber() : 0L;
+
+        log.warn(
+                "OpenADR event target mismatch. eventId={}, modificationNumber={}, reason={}",
+                eventId,
+                modificationNumber,
+                e.getMessage()
+        );
+
+        return new EventProcessingResult(
+                eventId,
+                modificationNumber,
+                ApplicationLayerErrorCodes.TARGET_MISMATCH,
+                OptTypeType.OPT_OUT
+        );
+    } catch (IllegalArgumentException e) {
             EventDescriptorType descriptor = descriptorOf(oadrEvent);
 
             String eventId = descriptor != null && descriptor.getEventID() != null
@@ -166,6 +188,8 @@ public class DrEventHandler {
                     OptTypeType.OPT_OUT
             );
         }
+
+        eventValidationService.validateTargetAndMarketContext(oadrEvent);
 
         if (isCancelled(descriptor)) {
             saveCancelledEvent(oadrEvent);

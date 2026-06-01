@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS ven_report (
     report_name       VARCHAR(64),
     status            VARCHAR(32) NOT NULL DEFAULT 'REGISTERED',
     granularity_seconds INT,
+    requested_rids VARCHAR(255) NULL,
     created_at DATETIME(3) NOT NULL,
     updated_at DATETIME(3) NOT NULL
     );
