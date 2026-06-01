@@ -90,7 +90,7 @@ public class OpenAdrCertificateHealthCheck {
         }
     }
 
-    private void validateExpiry(String label, CertificateInfo certificate) {
+    void validateExpiry(String label, CertificateInfo certificate) {
         if (certificate.expired()) {
             throw new IllegalStateException(
                     "%s is expired. alias=%s, expiresAt=%s"
