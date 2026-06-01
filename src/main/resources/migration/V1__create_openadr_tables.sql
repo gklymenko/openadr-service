@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS ven_registration (
 CREATE TABLE IF NOT EXISTS dr_event (
                                         id               BIGINT AUTO_INCREMENT PRIMARY KEY,
                                         event_id         VARCHAR(64)  NOT NULL UNIQUE,
-    modification_number INT DEFAULT 0,
+    modification_number INT NOT NULL DEFAULT 0,
     status           VARCHAR(32)  NOT NULL,
     opt_type         VARCHAR(16),
     priority         INT,

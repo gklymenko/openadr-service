@@ -117,10 +117,18 @@ public class ReportRequestHandler {
 
         if (cancelReport.isReportToFollow()) {
             log.info("reportToFollow=true, sending final oadrUpdateReport before cancellation");
-            cancelReport.getReportRequestID().forEach(reportRequestId ->
-                    reportRepository.findByReportRequestId(reportRequestId)
-                            .ifPresent(this::sendUpdateReport)
-            );
+
+            if (cancelReport.getReportRequestID().isEmpty()) {
+                reportRepository.findAll().stream()
+                        .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
+                        .forEach(this::sendUpdateReport);
+            } else {
+                cancelReport.getReportRequestID().forEach(reportRequestId ->
+                        reportRepository.findByReportRequestId(reportRequestId)
+                                .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
+                                .ifPresent(this::sendUpdateReport)
+                );
+            }
         }
 
         boolean allCancelled = true;
@@ -165,16 +173,18 @@ public class ReportRequestHandler {
 
     private void processReportRequests(String requestId, List<OadrReportRequestType> requests) {
         List<VenReport> immediateReports = new ArrayList<>();
-        List<String> acceptedRequestIds = new ArrayList<>();
+        List<String> pendingRequestIds = new ArrayList<>();
 
         boolean allSupported = true;
 
         for (OadrReportRequestType request : requests) {
             ReportRequestResult result = processReportRequest(request);
 
-            if (result.supported()) {
-                acceptedRequestIds.add(request.getReportRequestID());
-            } else {
+            if (result.supported() && result.pending()) {
+                pendingRequestIds.add(request.getReportRequestID());
+            }
+
+            if (!result.supported()) {
                 allSupported = false;
             }
 
@@ -184,8 +194,7 @@ public class ReportRequestHandler {
         }
 
         sendCreatedReport(
-                requestId,
-                acceptedRequestIds,
+                requestId, pendingRequestIds,
                 allSupported ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED
         );
 
@@ -198,7 +207,7 @@ public class ReportRequestHandler {
 
         if (METADATA_REPORT_SPECIFIER_ID.equalsIgnoreCase(reportSpecifierId)) {
             sendMetadataReportResponse(reportRequestId);
-            return ReportRequestResult.accepted();
+            return ReportRequestResult.acceptedNotPending();
         }
 
         VenReport report = reportRepository
@@ -262,7 +271,7 @@ public class ReportRequestHandler {
         transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, metadataResponse);
     }
 
-    private void sendCreatedReport(String requestId, List<String> acceptedRequestIds, int responseCode) {
+    private void sendCreatedReport(String requestId, List<String> pendingRequestIds, int responseCode) {
         var builder = Oadr20bEiReportBuilders
                 .newOadr20bCreatedReportBuilder(
                         requestId,
@@ -270,16 +279,16 @@ public class ReportRequestHandler {
                         properties.getVen().getId()
                 );
 
-        acceptedRequestIds.forEach(builder::addPendingReportRequestId);
+        pendingRequestIds.forEach(builder::addPendingReportRequestId);
 
         OadrCreatedReportType createdReport = builder.build();
 
         transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, createdReport);
 
         log.info(
-                "Sent oadrCreatedReport. requestId={}, acceptedRequests={}, responseCode={}",
+                "Sent oadrCreatedReport. requestId={}, pendingRequests={}, responseCode={}",
                 requestId,
-                acceptedRequestIds.size(),
+                pendingRequestIds.size(),
                 responseCode
         );
     }
@@ -424,11 +433,13 @@ public class ReportRequestHandler {
     private void cancelAllReports() {
         activeReportTasks.keySet().forEach(this::cancelTask);
 
-        reportRepository.findAll().forEach(report -> {
-            report.setStatus(VenReport.ReportStatus.CANCELLED);
-            report.setUpdatedAt(nowUtc());
-            reportRepository.save(report);
-        });
+        reportRepository.findAll().stream()
+                .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
+                .forEach(report -> {
+                    report.setStatus(VenReport.ReportStatus.CANCELLED);
+                    report.setUpdatedAt(nowUtc());
+                    reportRepository.save(report);
+                });
 
         log.info("Cancelled all active reports");
     }
@@ -455,17 +466,23 @@ public class ReportRequestHandler {
         return Instant.now();
     }
 
-    private record ReportRequestResult(boolean supported, VenReport immediateReport) {
+    private record ReportRequestResult(
+            boolean supported, boolean pending, VenReport immediateReport
+    ) {
         static ReportRequestResult accepted() {
-            return new ReportRequestResult(true, null);
+            return new ReportRequestResult(true, true, null);
         }
 
         static ReportRequestResult unsupported() {
-            return new ReportRequestResult(false, null);
+            return new ReportRequestResult(false, false, null);
         }
 
         static ReportRequestResult immediate(VenReport report) {
-            return new ReportRequestResult(true, report);
+            return new ReportRequestResult(true, false, report);
+        }
+
+        static ReportRequestResult acceptedNotPending() {
+            return new ReportRequestResult(true, false, null);
         }
     }
 

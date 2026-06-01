@@ -103,29 +103,34 @@ public class EventValidationService {
             throw new TargetMismatchException("eiTarget is empty");
         }
 
-        if (hasUnsupportedTargetDimensions(target)) {
-            throw new TargetMismatchException("eiTarget contains unsupported target dimensions");
-        }
-
         boolean hasVenTarget = !target.getVenID().isEmpty();
         boolean hasResourceTarget = !target.getResourceID().isEmpty();
 
-        boolean venMatches = !hasVenTarget || containsIgnoreCase(
+        boolean venMatches = hasVenTarget && containsIgnoreCase(
                 target.getVenID(),
                 properties.getVen().getId()
         );
 
-        boolean resourceMatches = !hasResourceTarget || containsIgnoreCase(
+        boolean resourceMatches = hasResourceTarget && containsIgnoreCase(
                 target.getResourceID(),
                 properties.getReport().getResourceId()
         );
 
-        if (!venMatches || !resourceMatches) {
-            throw new TargetMismatchException(
-                    "Event target mismatch. venIDs=%s, resourceIDs=%s"
-                            .formatted(target.getVenID(), target.getResourceID())
-            );
+        if (venMatches || resourceMatches) {
+            if (hasUnsupportedTargetDimensions(target)) {
+                log.debug(
+                        "Event target matched supported dimension, unsupported target dimensions will be ignored. venIDs={}, resourceIDs={}",
+                        target.getVenID(),
+                        target.getResourceID()
+                );
+            }
+            return;
         }
+
+        throw new TargetMismatchException(
+                "Event target mismatch. venIDs=%s, resourceIDs=%s"
+                        .formatted(target.getVenID(), target.getResourceID())
+        );
     }
 
     private void validateMarketContext(OadrEvent oadrEvent) {

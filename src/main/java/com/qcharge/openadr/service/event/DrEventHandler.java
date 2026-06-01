@@ -27,7 +27,6 @@ import javax.xml.datatype.XMLGregorianCalendar;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Component
@@ -49,7 +48,7 @@ public class DrEventHandler {
         String distributeRequestId = safeRequestId(distributeEvent.getRequestID());
 
         EiResponseType eiResponse = Oadr20bResponseBuilders
-                .newOadr20bEiResponseBuilder("", ApplicationLayerErrorCodes.OK)
+                .newOadr20bEiResponseBuilder(distributeRequestId, ApplicationLayerErrorCodes.OK)
                 .build();
 
         var createdEventBuilder = Oadr20bEiEventBuilders
@@ -93,27 +92,27 @@ public class DrEventHandler {
         try {
             return processEvent(oadrEvent);
         } catch (TargetMismatchException e) {
-        EventDescriptorType descriptor = descriptorOf(oadrEvent);
+            EventDescriptorType descriptor = descriptorOf(oadrEvent);
 
-        String eventId = descriptor != null && descriptor.getEventID() != null
-                ? descriptor.getEventID()
-                : "unknown";
-        long modificationNumber = descriptor != null ? descriptor.getModificationNumber() : 0L;
+            String eventId = descriptor != null && descriptor.getEventID() != null
+                    ? descriptor.getEventID()
+                    : "unknown";
+            long modificationNumber = descriptor != null ? descriptor.getModificationNumber() : 0L;
 
-        log.warn(
-                "OpenADR event target mismatch. eventId={}, modificationNumber={}, reason={}",
-                eventId,
-                modificationNumber,
-                e.getMessage()
-        );
+            log.warn(
+                    "OpenADR event target mismatch. eventId={}, modificationNumber={}, reason={}",
+                    eventId,
+                    modificationNumber,
+                    e.getMessage()
+            );
 
-        return new EventProcessingResult(
-                eventId,
-                modificationNumber,
-                ApplicationLayerErrorCodes.TARGET_MISMATCH,
-                OptTypeType.OPT_OUT
-        );
-    } catch (IllegalArgumentException e) {
+            return new EventProcessingResult(
+                    eventId,
+                    modificationNumber,
+                    ApplicationLayerErrorCodes.TARGET_MISMATCH,
+                    OptTypeType.OPT_OUT
+            );
+        } catch (IllegalArgumentException e) {
             EventDescriptorType descriptor = descriptorOf(oadrEvent);
 
             String eventId = descriptor != null && descriptor.getEventID() != null
@@ -408,24 +407,6 @@ public class DrEventHandler {
         return OpenAdrTimeUtils.parseOpenAdrDuration(duration.getDuration())
                 .map(Duration::getSeconds)
                 .orElse(null);
-    }
-
-    private static Duration parseOpenAdrDuration(String value) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("duration is required");
-        }
-
-        if ("0".equals(value)) {
-            return Duration.ZERO;
-        }
-
-        if (value.contains(".") || value.contains(",")) {
-            throw new IllegalArgumentException(
-                    "OpenADR duration must not contain decimal values: " + value
-            );
-        }
-
-        return Duration.parse(value);
     }
 
     private EventDescriptorType requireDescriptor(OadrEvent oadrEvent) {
