@@ -2,120 +2,288 @@ package com.qcharge.openadr.service.event;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.DrEvent;
-import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
+import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
-import com.qcharge.openadr.model.oadr20b.ei.OptReasonEnumeratedType;
 import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.opt.OptService;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
+import javax.xml.datatype.XMLGregorianCalendar;
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.UUID;
+import java.time.ZoneOffset;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DrEventHandler {
 
+    private static final int RESPONSE_OK = 200;
+    private static final int RESPONSE_OUT_OF_SEQUENCE = 450;
+    private static final int RESPONSE_INVALID_DATA = 454;
+
     private final OpenAdrProperties properties;
     private final DrEventRepository drEventRepository;
     private final VtnTransportService transportService;
-    private final OptService optService;
+    private final EventOptDecisionService eventOptDecisionService;
+    private final EventValidationService eventValidationService;
 
+    @Transactional
     public void handle(OadrDistributeEventType distributeEvent) {
         String venId = properties.getVen().getId();
-        String requestId = UUID.randomUUID().toString();
+        String distributeRequestId = distributeEvent.getRequestID();
 
         EiResponseType eiResponse = Oadr20bResponseBuilders
-                .newOadr20bEiResponseBuilder(requestId, 200)
+                .newOadr20bEiResponseBuilder("", RESPONSE_OK)
                 .build();
 
         var createdEventBuilder = Oadr20bEiEventBuilders
                 .newCreatedEventBuilder(eiResponse, venId);
 
+        int eventResponseCount = 0;
+
         for (OadrEvent oadrEvent : distributeEvent.getOadrEvent()) {
-            var descriptor = oadrEvent.getEiEvent().getEventDescriptor();
-            String eventId = descriptor.getEventID();
-            long modNumber = descriptor.getModificationNumber();
+            EventProcessingResult result = processEventSafely(oadrEvent);
 
-            log.info("Processing event: {}, status: {}, modNumber: {}",
-                    eventId, descriptor.getEventStatus(), modNumber);
-
-            saveOrUpdateEvent(oadrEvent);
-
-            OptTypeType optType = determineOptType();
-
-            if (optType == OptTypeType.OPT_OUT) {
-                optService.optOutFromEvent(
-                        eventId,
-                        modNumber,
-                        OptReasonEnumeratedType.NOT_PARTICIPATING
-                );
+            if (!requiresCreatedEventResponse(oadrEvent)) {
+                continue;
             }
 
             EventResponse eventResponse = Oadr20bEiEventBuilders
                     .newOadr20bCreatedEventEventResponseBuilder(
-                            eventId,
-                            modNumber,
-                            requestId,
-                            200,
-                            OptTypeType.OPT_IN
+                            result.eventId(),
+                            result.modificationNumber(),
+                            distributeRequestId,
+                            result.responseCode(),
+                            result.optType()
                     )
                     .build();
 
             createdEventBuilder.addEventResponse(eventResponse);
+            eventResponseCount++;
+        }
+
+        if (eventResponseCount == 0) {
+            log.info("No oadrCreatedEvent sent because no event required application response");
+            return;
         }
 
         OadrCreatedEventType createdEvent = createdEventBuilder.build();
 
-        transportService.send(Oadr20bUrlPath.EI_EVENT_SERVICE, createdEvent);
-        log.info("Sent oadrCreatedEvent for {} events",
-                distributeEvent.getOadrEvent().size());
+        transportService.createdEvent(createdEvent);
+
+        log.info("Sent oadrCreatedEvent. eventResponses={}", eventResponseCount);
     }
 
-    private void saveOrUpdateEvent(OadrEvent oadrEvent) {
-        var descriptor = oadrEvent.getEiEvent().getEventDescriptor();
+    private EventProcessingResult processEventSafely(OadrEvent oadrEvent) {
+        try {
+            return processEvent(oadrEvent);
+        } catch (Exception e) {
+            EventDescriptorType descriptor = descriptorOf(oadrEvent);
+
+            String eventId = descriptor != null ? descriptor.getEventID() : null;
+            long modificationNumber = descriptor != null ? descriptor.getModificationNumber() : 0L;
+
+            log.error(
+                    "Failed to process OpenADR event. eventId={}, modificationNumber={}",
+                    eventId,
+                    modificationNumber,
+                    e
+            );
+
+            return new EventProcessingResult(
+                    eventId,
+                    modificationNumber,
+                    RESPONSE_INVALID_DATA,
+                    OptTypeType.OPT_OUT
+            );
+        }
+    }
+
+    private EventProcessingResult processEvent(OadrEvent oadrEvent) {
+        EventDescriptorType descriptor = oadrEvent.getEiEvent().getEventDescriptor();
+
+        String eventId = descriptor.getEventID();
+        long modificationNumber = descriptor.getModificationNumber();
+
+        log.info(
+                "Processing OpenADR event. eventId={}, status={}, modificationNumber={}",
+                eventId,
+                descriptor.getEventStatus(),
+                modificationNumber
+        );
+
+        DrEvent existingEvent = drEventRepository.findByEventId(eventId).orElse(null);
+
+        if (isOutOfSequence(existingEvent, modificationNumber)) {
+            log.warn(
+                    "Out-of-sequence OpenADR event. eventId={}, currentModificationNumber={}, receivedModificationNumber={}",
+                    eventId,
+                    existingEvent.getModificationNumber(),
+                    modificationNumber
+            );
+
+            return new EventProcessingResult(
+                    eventId,
+                    modificationNumber,
+                    RESPONSE_OUT_OF_SEQUENCE,
+                    OptTypeType.OPT_OUT
+            );
+        }
+
+        eventValidationService.validateSupportedEvent(oadrEvent);
+        OptTypeType optType = eventOptDecisionService.determineOptType(oadrEvent);
+
+        saveOrUpdateEvent(oadrEvent, optType);
+
+        return new EventProcessingResult(
+                eventId,
+                modificationNumber,
+                RESPONSE_OK,
+                optType
+        );
+    }
+
+    private boolean isOutOfSequence(DrEvent existingEvent, long receivedModificationNumber) {
+        return existingEvent != null
+                && existingEvent.getModificationNumber() != null
+                && receivedModificationNumber < existingEvent.getModificationNumber();
+    }
+
+    private void saveOrUpdateEvent(OadrEvent oadrEvent, OptTypeType optType) {
+        EventDescriptorType descriptor = oadrEvent.getEiEvent().getEventDescriptor();
         String eventId = descriptor.getEventID();
 
-        DrEvent drEvent = drEventRepository.findByEventId(eventId).orElseGet(() -> {
-            DrEvent d = new DrEvent();
-            d.setCreatedAt(LocalDateTime.now());
-            return d;
-        });
+        DrEvent drEvent = drEventRepository.findByEventId(eventId)
+                .orElseGet(DrEvent::new);
 
         drEvent.setEventId(eventId);
-        drEvent.setModificationNumber((int) descriptor.getModificationNumber());
-        drEvent.setStatus(mapStatus(descriptor.getEventStatus().value()));
+        drEvent.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
+        drEvent.setStatus(mapStatus(descriptor));
+        drEvent.setOptType(mapOptType(optType));
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
-        drEvent.setStartTime(LocalDateTime.now());
-        drEvent.setUpdatedAt(LocalDateTime.now());
+        drEvent.setStartTime(extractStartTime(oadrEvent));
+        drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
+        drEvent.setUpdatedAt(nowUtc());
+
+        if (drEvent.getCreatedAt() == null) {
+            drEvent.setCreatedAt(nowUtc());
+        }
 
         drEventRepository.save(drEvent);
     }
 
-    private DrEvent.EventStatus mapStatus(String status) {
+    private boolean requiresCreatedEventResponse(OadrEvent oadrEvent) {
+        Object responseRequired = oadrEvent.getOadrResponseRequired();
+
+        if (responseRequired == null) {
+            return false;
+        }
+
+        return "always".equalsIgnoreCase(String.valueOf(responseRequired))
+                || "ALWAYS".equalsIgnoreCase(String.valueOf(responseRequired));
+    }
+
+    private OptTypeType determineOptType(OadrEvent oadrEvent) {
+        // TODO: connect to real QCharge/OCPP availability:
+        // - charger online/offline
+        // - maintenance mode
+        // - manual override
+        // - location availability
+        // - supported signal/marketContext/target
+        return OptTypeType.OPT_IN;
+    }
+
+    private DrEvent.EventStatus mapStatus(EventDescriptorType descriptor) {
+        String status = descriptor.getEventStatus().value();
+
         return switch (status.toUpperCase()) {
             case "FAR" -> DrEvent.EventStatus.FAR;
             case "NEAR" -> DrEvent.EventStatus.NEAR;
             case "ACTIVE" -> DrEvent.EventStatus.ACTIVE;
             case "COMPLETED" -> DrEvent.EventStatus.COMPLETED;
             case "CANCELLED" -> DrEvent.EventStatus.CANCELLED;
-            default -> DrEvent.EventStatus.FAR;
+            default -> {
+                log.warn("Unsupported eventStatus='{}'. Defaulting to FAR.", status);
+                yield DrEvent.EventStatus.FAR;
+            }
         };
     }
 
-    private OptTypeType determineOptType() {
-        // TODO: check charger availability via OCPP before opting in
-        return OptTypeType.OPT_IN;
+    private DrEvent.OptType mapOptType(OptTypeType optType) {
+        return optType == OptTypeType.OPT_OUT
+                ? DrEvent.OptType.OPT_OUT
+                : DrEvent.OptType.OPT_IN;
+    }
+
+    private LocalDateTime extractStartTime(OadrEvent oadrEvent) {
+        try {
+            XMLGregorianCalendar dateTime = oadrEvent
+                    .getEiEvent()
+                    .getEiActivePeriod()
+                    .getProperties()
+                    .getDtstart()
+                    .getDateTime();
+
+            return LocalDateTime.ofInstant(dateTime.toGregorianCalendar().toInstant(), ZoneOffset.UTC);
+        } catch (Exception e) {
+            log.warn("Could not extract event start time. Falling back to current UTC time.", e);
+            return nowUtc();
+        }
+    }
+
+    private Long extractDurationSeconds(OadrEvent oadrEvent) {
+        try {
+            var duration = oadrEvent
+                    .getEiEvent()
+                    .getEiActivePeriod()
+                    .getProperties()
+                    .getDuration();
+
+            if (duration == null || duration.getDuration() == null) {
+                return null;
+            }
+
+            String value = duration.getDuration();
+
+            if ("0".equals(value)) {
+                return 0L;
+            }
+
+            return Duration.parse(value).getSeconds();
+        } catch (Exception e) {
+            log.warn("Could not extract event duration. durationSeconds will be null.", e);
+            return null;
+        }
+    }
+
+    private LocalDateTime nowUtc() {
+        return LocalDateTime.now(ZoneOffset.UTC);
+    }
+
+    private record EventProcessingResult(
+            String eventId,
+            long modificationNumber,
+            int responseCode,
+            OptTypeType optType
+    ) {
+    }
+
+    private EventDescriptorType descriptorOf(OadrEvent oadrEvent) {
+        if (oadrEvent == null || oadrEvent.getEiEvent() == null) {
+            return null;
+        }
+
+        return oadrEvent.getEiEvent().getEventDescriptor();
     }
 }

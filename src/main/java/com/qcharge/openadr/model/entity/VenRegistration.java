@@ -7,11 +7,19 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import lombok.Data;
-import java.time.LocalDateTime;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Data
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+
+@Getter
+@Setter
+@NoArgsConstructor
 @Entity
 @Table(name = "ven_registration")
 public class VenRegistration {
@@ -36,8 +44,20 @@ public class VenRegistration {
     @Column(name = "registered_at")
     private LocalDateTime registeredAt;
 
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    @PrePersist
+    void onCreate() {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        registeredAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = LocalDateTime.now(ZoneOffset.UTC);
+    }
 
     public enum RegistrationStatus {
         PENDING, REGISTERED, CANCELLED

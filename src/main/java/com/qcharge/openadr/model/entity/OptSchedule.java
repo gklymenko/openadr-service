@@ -7,13 +7,27 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import lombok.Data;
-import java.time.LocalDateTime;
+import jakarta.persistence.UniqueConstraint;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Data
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+
+@Getter
+@Setter
+@NoArgsConstructor
 @Entity
-@Table(name = "opt_schedule")
+@Table(
+        name = "opt_schedule",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_opt_schedule_opt_id", columnNames = "opt_id")
+        }
+)
 public class OptSchedule {
 
     @Id
@@ -37,11 +51,24 @@ public class OptSchedule {
     @Enumerated(EnumType.STRING)
     private OptStatus status = OptStatus.ACTIVE;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    @PrePersist
+    void onCreate() {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = LocalDateTime.now(ZoneOffset.UTC);
+    }
+
 
     public enum OptType {
         OPT_IN, OPT_OUT

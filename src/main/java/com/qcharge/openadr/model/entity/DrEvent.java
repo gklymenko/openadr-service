@@ -7,23 +7,37 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import lombok.Data;
-import java.time.LocalDateTime;
+import jakarta.persistence.UniqueConstraint;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Data
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+
+@Getter
+@Setter
+@NoArgsConstructor
 @Entity
-@Table(name = "dr_event")
+@Table(
+        name = "dr_event",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_dr_event_event_id", columnNames = "event_id")
+        }
+)
 public class DrEvent {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "event_id", nullable = false, unique = true)
+    @Column(name = "event_id", nullable = false)
     private String eventId;
 
-    @Column(name = "modification_number")
+    @Column(name = "modification_number", nullable = false)
     private Integer modificationNumber = 0;
 
     @Column(name = "status", nullable = false)
@@ -46,17 +60,34 @@ public class DrEvent {
     @Column(name = "raw_payload", columnDefinition = "TEXT")
     private String rawPayload;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @PrePersist
+    void onCreate() {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = LocalDateTime.now(ZoneOffset.UTC);
+    }
+
     public enum EventStatus {
-        FAR, NEAR, ACTIVE, COMPLETED, CANCELLED
+        FAR,
+        NEAR,
+        ACTIVE,
+        COMPLETED,
+        CANCELLED
     }
 
     public enum OptType {
-        OPT_IN, OPT_OUT
+        OPT_IN,
+        OPT_OUT
     }
 }
