@@ -20,7 +20,9 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestReregistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrTransportType;
+import com.qcharge.openadr.repository.OptScheduleRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
+import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
@@ -49,6 +51,8 @@ public class RegistrationService {
 
     private final OpenAdrProperties properties;
     private final VenRegistrationRepository registrationRepository;
+    private final VenReportRepository venReportRepository;
+    private final OptScheduleRepository optScheduleRepository;
     private final VtnTransportService transportService;
     private final ReportService reportService;
     private final ReportRequestHandler reportRequestHandler;
@@ -196,8 +200,23 @@ public class RegistrationService {
             );
         }
 
+        // Rule 406: capture previous registrationId before overwrite
+        String configuredVenId = properties.getVen().getId();
+        String previousRegistrationId = registrationRepository
+                .findByVenIdAndStatus(configuredVenId, VenRegistration.RegistrationStatus.REGISTERED)
+                .map(VenRegistration::getRegistrationId)
+                .orElse(null);
+
         VenRegistration registration = saveRegistration(response);
         Duration pollInterval = extractRequestedPollFrequency(response);
+
+        // Rule 406: VTN assigned new registrationId → erase stale report/opt data
+        if (previousRegistrationId != null
+                && !previousRegistrationId.equals(registration.getRegistrationId())) {
+            log.warn("Rule 406: VTN assigned new registrationId={}. Erasing stale report/opt data.",
+                    registration.getRegistrationId());
+            eraseReportAndOptData();
+        }
 
         log.info(
                 "VEN registered. venId={}, vtnId={}, registrationId={}, pollInterval={}",
@@ -208,6 +227,12 @@ public class RegistrationService {
         );
 
         runPostRegistrationFlow(pollInterval);
+    }
+
+    private void eraseReportAndOptData() {
+        venReportRepository.deleteAll();
+        optScheduleRepository.deleteAll();
+        log.info("Rule 406: cleared all VenReport and OptSchedule records");
     }
 
     private VenRegistration saveRegistration(OadrCreatedPartyRegistrationType response) {

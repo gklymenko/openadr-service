@@ -1,32 +1,19 @@
 package com.qcharge.openadr.service.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenAdrTransportException;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bMarshalException;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelOptType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledOptType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledPartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledReportType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateOptType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatePartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedOptType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPollType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrQueryRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
-import com.qcharge.openadr.exceptions.OpenAdrTransportException;
 import com.qcharge.openadr.utility.Oadr20bPayloadIds;
 import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
@@ -64,6 +51,7 @@ public class VtnTransportService {
             Object response = unwrapIfNeeded(rawResponse);
 
             validateIds(response);
+            checkApplicationLayerError(response);
 
             return response;
         } catch (JAXBException e) {
@@ -95,52 +83,12 @@ public class VtnTransportService {
         }
     }
 
-    public Object queryRegistration(OadrQueryRegistrationType payload) {
-        return send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload);
-    }
-
-    public OadrCreatedPartyRegistrationType register(OadrCreatePartyRegistrationType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload), OadrCreatedPartyRegistrationType.class);
-    }
-
     public Object poll(OadrPollType payload) {
         return send(Oadr20bUrlPath.OADR_POLL_SERVICE, payload);
     }
 
-    public Object requestEvent(OadrRequestEventType payload) {
-        return send(Oadr20bUrlPath.EI_EVENT_SERVICE, payload);
-    }
-
     public OadrResponseType createdEvent(OadrCreatedEventType payload) {
         return cast(send(Oadr20bUrlPath.EI_EVENT_SERVICE, payload), OadrResponseType.class);
-    }
-
-    public OadrRegisteredReportType registerReport(OadrRegisterReportType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrRegisteredReportType.class);
-    }
-
-    public OadrCreatedReportType createdReport(OadrCreatedReportType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrCreatedReportType.class);
-    }
-
-    public OadrUpdatedReportType updateReport(OadrUpdateReportType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrUpdatedReportType.class);
-    }
-
-    public OadrCanceledReportType canceledReport(OadrCanceledReportType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrCanceledReportType.class);
-    }
-
-    public OadrCreatedOptType createOpt(OadrCreateOptType payload) {
-        return cast(send(Oadr20bUrlPath.EI_OPT_SERVICE, payload), OadrCreatedOptType.class);
-    }
-
-    public OadrCanceledOptType cancelOpt(OadrCancelOptType payload) {
-        return cast(send(Oadr20bUrlPath.EI_OPT_SERVICE, payload), OadrCanceledOptType.class);
-    }
-
-    public OadrCanceledPartyRegistrationType cancelPartyRegistration(OadrCancelPartyRegistrationType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload), OadrCanceledPartyRegistrationType.class);
     }
 
     private Object unwrapIfNeeded(Object response) {
@@ -150,6 +98,31 @@ public class VtnTransportService {
         }
 
         return response;
+    }
+
+    private void checkApplicationLayerError(Object response) {
+        String responseCode = extractResponseCode(response);
+        if (String.valueOf(ApplicationLayerErrorCodes.NOT_REGISTERED).equals(responseCode)) {
+            log.error("VTN returned 463 Not Registered/Authorized. " +
+                    "Certificate CN may not match venID. " +
+                    "Check that venID in config matches CN in VEN certificate.");
+            throw new OpenAdrTransportException(
+                    "VTN rejected request: 463 Not Registered/Authorized",
+                    ApplicationLayerErrorCodes.NOT_REGISTERED,
+                    null);
+        }
+    }
+
+    private String extractResponseCode(Object response) {
+        if (response == null) {
+            return null;
+        }
+        return switch (response) {
+            case OadrCreatedPartyRegistrationType r -> r.getEiResponse().getResponseCode();
+            case OadrRegisteredReportType r -> r.getEiResponse().getResponseCode();
+            case OadrResponseType r -> r.getEiResponse().getResponseCode();
+            default -> null;
+        };
     }
 
     private String buildUrl(String endpoint) {

@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.model.entity.VenReport;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
@@ -37,9 +38,7 @@ import java.util.concurrent.ScheduledFuture;
 @RequiredArgsConstructor
 public class ReportRequestHandler {
 
-    private static final String RESPONSE_OK = "200";
-    private static final int RESPONSE_CODE_OK = 200;
-    private static final int RESPONSE_CODE_REPORT_NOT_SUPPORTED = 461;
+    private static final String RESPONSE_OK = String.valueOf(ApplicationLayerErrorCodes.OK);
     private static final String METADATA_REPORT_SPECIFIER_ID = "METADATA";
 
     private final OpenAdrProperties properties;
@@ -98,7 +97,7 @@ public class ReportRequestHandler {
         OadrRegisteredReportType response = Oadr20bEiReportBuilders
                 .newOadr20bRegisteredReportBuilder(
                         registerReport.getRequestID(),
-                        RESPONSE_CODE_OK,
+                        ApplicationLayerErrorCodes.OK,
                         properties.getVen().getId()
                 )
                 .build();
@@ -136,7 +135,7 @@ public class ReportRequestHandler {
         OadrCanceledReportType response = Oadr20bEiReportBuilders
                 .newOadr20bCanceledReportBuilder(
                         cancelReport.getRequestID(),
-                        allCancelled ? RESPONSE_CODE_OK : RESPONSE_CODE_REPORT_NOT_SUPPORTED,
+                        allCancelled ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED,
                         properties.getVen().getId()
                 )
                 .build();
@@ -154,7 +153,7 @@ public class ReportRequestHandler {
         OadrUpdatedReportType response = Oadr20bEiReportBuilders
                 .newOadr20bUpdatedReportBuilder(
                         updateReport.getRequestID(),
-                        RESPONSE_CODE_OK,
+                        ApplicationLayerErrorCodes.OK,
                         properties.getVen().getId()
                 )
                 .build();
@@ -185,7 +184,7 @@ public class ReportRequestHandler {
         sendCreatedReport(
                 requestId,
                 acceptedRequestIds,
-                allSupported ? RESPONSE_CODE_OK : RESPONSE_CODE_REPORT_NOT_SUPPORTED
+                allSupported ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED
         );
 
         immediateReports.forEach(this::sendUpdateReport);

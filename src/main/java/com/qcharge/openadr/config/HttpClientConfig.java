@@ -41,6 +41,7 @@ public class HttpClientConfig {
 
         log.info("RestClient configured with mTLS, keystore: {}",
                 properties.getSecurity().getKeystorePath());
+        log.info("HTTP transport: chunked transfer disabled (spec 9.1.9), Content-Type=application/xml");
 
         return RestClient.builder()
                 .requestFactory(factory)

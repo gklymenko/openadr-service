@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.event;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
@@ -25,16 +26,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DrEventHandler {
-
-    private static final int RESPONSE_OK = 200;
-    private static final int RESPONSE_OUT_OF_SEQUENCE = 450;
-    private static final int RESPONSE_UNSUPPORTED_SIGNAL = 460;
-    private static final int RESPONSE_INVALID_DATA = 454;
 
     private final OpenAdrProperties properties;
     private final DrEventRepository drEventRepository;
@@ -49,7 +46,7 @@ public class DrEventHandler {
         String distributeRequestId = distributeEvent.getRequestID();
 
         EiResponseType eiResponse = Oadr20bResponseBuilders
-                .newOadr20bEiResponseBuilder("", RESPONSE_OK)
+                .newOadr20bEiResponseBuilder("", ApplicationLayerErrorCodes.OK)
                 .build();
 
         var createdEventBuilder = Oadr20bEiEventBuilders
@@ -109,7 +106,7 @@ public class DrEventHandler {
             return new EventProcessingResult(
                     eventId,
                     modificationNumber,
-                    RESPONSE_INVALID_DATA,
+                    ApplicationLayerErrorCodes.INVALID_DATA,
                     OptTypeType.OPT_OUT
             );
         }
@@ -141,7 +138,7 @@ public class DrEventHandler {
             return new EventProcessingResult(
                     eventId,
                     modificationNumber,
-                    RESPONSE_OUT_OF_SEQUENCE,
+                    ApplicationLayerErrorCodes.OUT_OF_SEQUENCE,
                     OptTypeType.OPT_OUT
             );
         }
@@ -153,7 +150,7 @@ public class DrEventHandler {
             return new EventProcessingResult(
                     eventId,
                     modificationNumber,
-                    RESPONSE_UNSUPPORTED_SIGNAL,
+                    ApplicationLayerErrorCodes.SIGNAL_NOT_SUPPORTED,
                     OptTypeType.OPT_OUT
             );
         }
@@ -167,7 +164,7 @@ public class DrEventHandler {
         return new EventProcessingResult(
                 eventId,
                 modificationNumber,
-                RESPONSE_OK,
+                ApplicationLayerErrorCodes.OK,
                 optType
         );
     }
@@ -246,10 +243,58 @@ public class DrEventHandler {
                     .getDtstart()
                     .getDateTime();
 
-            return LocalDateTime.ofInstant(dateTime.toGregorianCalendar().toInstant(), ZoneOffset.UTC);
+            LocalDateTime dtstart = LocalDateTime.ofInstant(
+                    dateTime.toGregorianCalendar().toInstant(), ZoneOffset.UTC);
+
+            String startAfter = null;
+            try {
+                var tolerance = oadrEvent.getEiEvent()
+                        .getEiActivePeriod()
+                        .getProperties()
+                        .getTolerance();
+
+                if (tolerance != null
+                        && tolerance.getTolerate() != null) {
+                    startAfter = tolerance.getTolerate().getStartafter();
+                }
+            } catch (Exception e) {
+                log.warn("Could not read tolerance/startafter. Skipping Rule 30 randomization.", e);
+            }
+
+            return applyStartAfterJitter(dtstart, startAfter);
+
         } catch (Exception e) {
             log.warn("Could not extract event start time. Falling back to current UTC time.", e);
             return nowUtc();
+        }
+    }
+
+    /**
+     * Rule 30: randomize actual start within [dtstart, dtstart + startafter].
+     * Returns dtstart unchanged if startafter is null, blank, or zero.
+     */
+    public static LocalDateTime applyStartAfterJitter(LocalDateTime dtstart, String startAfter) {
+        if (startAfter == null || startAfter.isBlank()) {
+            return dtstart;
+        }
+
+        try {
+            long startAfterSeconds = Duration.parse(startAfter).getSeconds();
+
+            if (startAfterSeconds <= 0) {
+                return dtstart;
+            }
+
+            long offsetSeconds = ThreadLocalRandom.current().nextLong(0, startAfterSeconds + 1);
+            LocalDateTime randomized = dtstart.plusSeconds(offsetSeconds);
+
+            log.debug("Rule 30: randomized dtstart from {} to {} (startafter={})",
+                    dtstart, randomized, startAfter);
+
+            return randomized;
+        } catch (Exception e) {
+            log.warn("Could not apply Rule 30 startafter randomization (startafter={}). Using dtstart.", startAfter, e);
+            return dtstart;
         }
     }
 
