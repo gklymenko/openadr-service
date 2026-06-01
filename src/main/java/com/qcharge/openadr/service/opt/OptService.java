@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Slf4j
@@ -82,7 +82,7 @@ public class OptService {
         if (response instanceof OadrCanceledOptType) {
             optScheduleRepository.findByOptId(optId).ifPresent(opt -> {
                 opt.setStatus(OptSchedule.OptStatus.CANCELLED);
-                opt.setUpdatedAt(LocalDateTime.now());
+                opt.setUpdatedAt(Instant.now());
                 optScheduleRepository.save(opt);
                 log.info("Opt cancelled: {}", optId);
             });
@@ -116,8 +116,8 @@ public class OptService {
         opt.setOptReason(reason);
         opt.setEventId(eventId);
         opt.setStatus(OptSchedule.OptStatus.ACTIVE);
-        opt.setCreatedAt(LocalDateTime.now());
-        opt.setUpdatedAt(LocalDateTime.now());
+        opt.setCreatedAt(Instant.now());
+        opt.setUpdatedAt(Instant.now());
         return opt;
     }
 }

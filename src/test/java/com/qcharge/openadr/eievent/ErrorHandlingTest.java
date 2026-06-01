@@ -3,9 +3,12 @@ package com.qcharge.openadr.eievent;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.OpenAdrTransportException;
 import com.qcharge.openadr.service.event.DrEventHandler;
+import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -17,12 +20,12 @@ class ErrorHandlingTest {
 
     @Test
     void rule30_startafterPresent_randomizesDtstartWithinRange() {
-        LocalDateTime dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0);
-        LocalDateTime upperBound = dtstart.plusSeconds(300); // PT5M
+        Instant dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0).toInstant(ZoneOffset.UTC);
+        Instant upperBound = dtstart.plusSeconds(300); // PT5M
 
         Set<Long> offsetsObserved = new HashSet<>();
         for (int i = 0; i < 200; i++) {
-            LocalDateTime result = DrEventHandler.applyStartAfterJitter(dtstart, "PT5M");
+            Instant result = OpenAdrTimeUtils.applyStartAfterJitter(dtstart, "PT5M");
             assertFalse(result.isBefore(dtstart), "Result must not be before dtstart");
             assertFalse(result.isAfter(upperBound), "Result must not exceed dtstart + startafter");
             offsetsObserved.add(java.time.Duration.between(dtstart, result).getSeconds());
@@ -33,37 +36,37 @@ class ErrorHandlingTest {
 
     @Test
     void rule30_noStartafter_dtstartUnchanged() {
-        LocalDateTime dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0);
+        Instant dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0).toInstant(ZoneOffset.UTC);
 
-        LocalDateTime result = DrEventHandler.applyStartAfterJitter(dtstart, null);
+        Instant result = OpenAdrTimeUtils.applyStartAfterJitter(dtstart, null);
 
         assertEquals(dtstart, result);
     }
 
     @Test
     void rule30_blankStartafter_dtstartUnchanged() {
-        LocalDateTime dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0);
+        Instant dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0).toInstant(ZoneOffset.UTC);;
 
-        LocalDateTime result = DrEventHandler.applyStartAfterJitter(dtstart, "  ");
+        Instant result = OpenAdrTimeUtils.applyStartAfterJitter(dtstart, "  ");
 
         assertEquals(dtstart, result);
     }
 
     @Test
     void rule30_zeroStartafter_dtstartUnchanged() {
-        LocalDateTime dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0);
+        Instant dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0).toInstant(ZoneOffset.UTC);
 
-        LocalDateTime result = DrEventHandler.applyStartAfterJitter(dtstart, "PT0S");
+        Instant result = OpenAdrTimeUtils.applyStartAfterJitter(dtstart, "PT0S");
 
         assertEquals(dtstart, result);
     }
 
     @Test
     void rule30_startafterBoundary_neverExceedsUpperBound() {
-        LocalDateTime dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0);
+        Instant dtstart = LocalDateTime.of(2026, 6, 1, 10, 0, 0).toInstant(ZoneOffset.UTC);
 
         for (int i = 0; i < 500; i++) {
-            LocalDateTime result = DrEventHandler.applyStartAfterJitter(dtstart, "PT3M");
+            Instant result = OpenAdrTimeUtils.applyStartAfterJitter(dtstart, "PT3M");
             assertFalse(result.isAfter(dtstart.plusSeconds(180)),
                     "Rule 30: must not exceed dtstart + PT3M");
         }

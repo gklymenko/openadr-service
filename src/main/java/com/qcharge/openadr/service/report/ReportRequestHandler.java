@@ -17,6 +17,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
 import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.TaskScheduler;
@@ -25,8 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -407,24 +406,17 @@ public class ReportRequestHandler {
     }
 
     private Duration parseDuration(String rawValue, Duration fallback) {
-        if (rawValue == null || rawValue.isBlank()) {
-            return fallback;
-        }
-
-        if ("0".equals(rawValue)) {
-            return Duration.ZERO;
-        }
-
         try {
-            return Duration.parse(rawValue);
+            return OpenAdrTimeUtils.parseOpenAdrDuration(rawValue)
+                    .orElse(fallback);
         } catch (RuntimeException e) {
-            log.warn("Could not parse OpenADR duration={}. Using fallback={}", rawValue, fallback);
+            log.warn("Invalid OpenADR duration={}. Using fallback={}", rawValue, fallback);
             return fallback;
         }
     }
 
-    private LocalDateTime nowUtc() {
-        return LocalDateTime.now(ZoneOffset.UTC);
+    private Instant nowUtc() {
+        return Instant.now();
     }
 
     private record ReportRequestResult(boolean supported, VenReport immediateReport) {

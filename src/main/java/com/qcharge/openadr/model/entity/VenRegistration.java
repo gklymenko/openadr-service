@@ -14,8 +14,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -42,21 +41,21 @@ public class VenRegistration {
     private RegistrationStatus status = RegistrationStatus.PENDING;
 
     @Column(name = "registered_at")
-    private LocalDateTime registeredAt;
+    private Instant registeredAt;
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     @PrePersist
     void onCreate() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        Instant now = Instant.now();
         registeredAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = LocalDateTime.now(ZoneOffset.UTC);
+        updatedAt = Instant.now();
     }
 
     public enum RegistrationStatus {

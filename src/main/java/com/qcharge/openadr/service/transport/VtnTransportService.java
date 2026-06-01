@@ -28,8 +28,6 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
-import com.qcharge.openadr.exceptions.OpenAdrTransportException;
 import com.qcharge.openadr.utility.Oadr20bPayloadIds;
 import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
@@ -176,10 +174,21 @@ public class VtnTransportService {
         if (response == null) {
             return null;
         }
+
         return switch (response) {
             case OadrCreatedPartyRegistrationType r -> r.getEiResponse().getResponseCode();
             case OadrRegisteredReportType r -> r.getEiResponse().getResponseCode();
             case OadrResponseType r -> r.getEiResponse().getResponseCode();
+
+            case OadrCreatedReportType r -> r.getEiResponse().getResponseCode();
+            case OadrUpdatedReportType r -> r.getEiResponse().getResponseCode();
+            case OadrCanceledReportType r -> r.getEiResponse().getResponseCode();
+
+            case OadrCreatedOptType r -> r.getEiResponse().getResponseCode();
+            case OadrCanceledOptType r -> r.getEiResponse().getResponseCode();
+
+            case OadrCanceledPartyRegistrationType r -> r.getEiResponse().getResponseCode();
+
             default -> null;
         };
     }

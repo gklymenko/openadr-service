@@ -4,23 +4,23 @@ CREATE TABLE IF NOT EXISTS ven_registration (
     vtn_id          VARCHAR(64),
     registration_id VARCHAR(64),
     status          VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
-    registered_at   DATETIME,
-    updated_at      DATETIME NOT NULL,
+    registered_at DATETIME(3) NULL,
+    updated_at DATETIME(3) NOT NULL,
     INDEX idx_ven_id (ven_id)
     );
 
 CREATE TABLE IF NOT EXISTS dr_event (
                                         id               BIGINT AUTO_INCREMENT PRIMARY KEY,
                                         event_id         VARCHAR(64)  NOT NULL UNIQUE,
-    modification_number INT        DEFAULT 0,
+    modification_number INT DEFAULT 0,
     status           VARCHAR(32)  NOT NULL,
     opt_type         VARCHAR(16),
     priority         INT,
-    start_time       DATETIME     NOT NULL,
+    start_time DATETIME(3) NOT NULL,
     duration_seconds BIGINT,
     raw_payload      TEXT,
-    created_at       DATETIME NOT NULL,
-    updated_at       DATETIME NOT NULL,
+    created_at DATETIME(3) NOT NULL,
+    updated_at DATETIME(3) NOT NULL,
     signal_name VARCHAR(64) NULL,
     signal_type VARCHAR(64) NULL,
     signal_value DECIMAL(10,3) NULL,
@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS ven_report (
     report_name       VARCHAR(64),
     status            VARCHAR(32) NOT NULL DEFAULT 'REGISTERED',
     granularity_seconds INT,
-    created_at        DATETIME NOT NULL,
-    updated_at        DATETIME NOT NULL
+    created_at DATETIME(3) NOT NULL,
+    updated_at DATETIME(3) NOT NULL
     );
 
 CREATE TABLE IF NOT EXISTS opt_schedule (
@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS opt_schedule (
     opt_reason      VARCHAR(64),
     event_id        VARCHAR(64),
     status          VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
-    created_at      DATETIME NOT NULL,
-    updated_at      DATETIME NOT NULL,
+    created_at DATETIME(3) NOT NULL,
+    updated_at DATETIME(3) NOT NULL,
     INDEX idx_opt_id (opt_id),
     INDEX idx_event_id (event_id)
     );

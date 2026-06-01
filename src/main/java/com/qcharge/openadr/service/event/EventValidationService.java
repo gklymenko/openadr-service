@@ -31,35 +31,55 @@ public class EventValidationService {
      * Returns empty if no supported signal is found (Rule 109 → respond 460).
      */
     public Optional<ParsedSignal> parseSignal(OadrEvent oadrEvent) {
-        List<EiEventSignalType> signals = oadrEvent.getEiEvent()
+        if (oadrEvent == null
+                || oadrEvent.getEiEvent() == null
+                || oadrEvent.getEiEvent().getEiEventSignals() == null
+                || oadrEvent.getEiEvent().getEiEventSignals().getEiEventSignal().isEmpty()) {
+            log.warn("Event has no eiEventSignals");
+            return Optional.empty();
+        }
+
+        List<ParsedSignal> parsedSignals = oadrEvent.getEiEvent()
                 .getEiEventSignals()
-                .getEiEventSignal();
+                .getEiEventSignal()
+                .stream()
+                .map(this::toParseSignal)
+                .toList();
+
+        boolean hasUnsupported = parsedSignals.stream()
+                .anyMatch(signal -> !isSupportedCombination(signal.signalName(), signal.signalType()));
+
+        if (hasUnsupported) {
+            log.warn("Unsupported event signal found. signals={}", parsedSignals);
+            return Optional.empty();
+        }
 
         for (String priorityName : SIGNAL_PRIORITY) {
-            Optional<ParsedSignal> match = signals.stream()
-                    .filter(s -> priorityName.equals(s.getSignalName()))
-                    .findFirst()
-                    .map(this::toParseSignal);
+            Optional<ParsedSignal> match = parsedSignals.stream()
+                    .filter(signal -> priorityName.equalsIgnoreCase(signal.signalName()))
+                    .findFirst();
 
             if (match.isPresent()) {
-                log.debug("Matched signal: name={}, type={}, value={}",
-                        match.get().signalName(), match.get().signalType(), match.get().currentValue());
-
-                if(isSupportedCombination(match.get().signalName, match.get().signalType)) {
-                    return match;
-                }
+                log.debug(
+                        "Matched signal: name={}, type={}, value={}",
+                        match.get().signalName(),
+                        match.get().signalType(),
+                        match.get().currentValue()
+                );
+                return match;
             }
         }
 
-        log.warn("No supported signal found. Supported: {}. Event signals: {}",
-                SIGNAL_PRIORITY,
-                signals.stream().map(EiEventSignalType::getSignalName).toList());
         return Optional.empty();
     }
 
     private boolean isSupportedCombination(String signalName, String signalType) {
-        return switch (signalName) {
-            case SIGNAL_SIMPLE -> true;
+        if (signalName == null) {
+            return false;
+        }
+
+        return switch (signalName.toUpperCase()) {
+            case SIGNAL_SIMPLE -> "level".equalsIgnoreCase(signalType);
             case SIGNAL_ELECTRICITY_PRICE -> "price".equalsIgnoreCase(signalType);
             case SIGNAL_LOAD_DISPATCH -> "setpoint".equalsIgnoreCase(signalType);
             default -> false;
