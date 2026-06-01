@@ -38,6 +38,7 @@ public class OpenAdrProperties {
     @Setter
     public static class Xml {
         private boolean validate = false;
+        private String xsdFolderPath;
     }
 
     @Getter
@@ -98,7 +99,7 @@ public class OpenAdrProperties {
         @Min(1)
         private int retryMaxAttempts = 3;
 
-        @Min(0)
+        @Min(1)
         private int retryInitialDelayMillis = 1000;
 
         @Min(0)

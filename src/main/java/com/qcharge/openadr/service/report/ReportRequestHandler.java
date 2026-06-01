@@ -113,6 +113,14 @@ public class ReportRequestHandler {
                 cancelReport.getReportRequestID()
         );
 
+        if (cancelReport.isReportToFollow()) {
+            log.info("reportToFollow=true, sending final oadrUpdateReport before cancellation");
+            cancelReport.getReportRequestID().forEach(reportRequestId ->
+                    reportRepository.findByReportRequestId(reportRequestId)
+                            .ifPresent(this::sendUpdateReport)
+            );
+        }
+
         boolean allCancelled = true;
 
         if (cancelReport.getReportRequestID().isEmpty()) {
@@ -122,14 +130,6 @@ public class ReportRequestHandler {
                 boolean cancelled = cancelReportRequest(reportRequestId);
                 allCancelled = allCancelled && cancelled;
             }
-        }
-
-        if (cancelReport.isReportToFollow()) {
-            log.info("reportToFollow=true, sending final oadrUpdateReport before cancellation");
-            cancelReport.getReportRequestID().forEach(reportRequestId ->
-                    reportRepository.findByReportRequestId(reportRequestId)
-                            .ifPresent(this::sendUpdateReport)
-            );
         }
 
         OadrCanceledReportType response = Oadr20bEiReportBuilders

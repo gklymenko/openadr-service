@@ -39,7 +39,8 @@ public class RetryHandler {
             }
 
             if (attempt < maxAttempts) {
-                long sleepMs = Math.min(delayMillis, maxDelayMillis);
+                long sleepMs = withJitter(Math.min(delayMillis, maxDelayMillis));
+
                 log.warn("OpenADR {} failed (attempt {}/{}). Retrying in {}ms...",
                         operationName, attempt, maxAttempts, sleepMs);
                 sleep(sleepMs);
@@ -60,5 +61,13 @@ public class RetryHandler {
             Thread.currentThread().interrupt();
             throw new OpenAdrTransportException("Retry interrupted", ie);
         }
+    }
+
+    private long withJitter(long baseDelayMillis) {
+        long jitter = Math.max(1, baseDelayMillis / 4);
+        long min = Math.max(0, baseDelayMillis - jitter);
+        long max = baseDelayMillis + jitter;
+
+        return java.util.concurrent.ThreadLocalRandom.current().nextLong(min, max + 1);
     }
 }

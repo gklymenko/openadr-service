@@ -9,6 +9,7 @@ import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
+import com.qcharge.openadr.model.oadr20b.ei.EventStatusEnumeratedType;
 import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
@@ -158,8 +159,14 @@ public class DrEventHandler {
         ParsedSignal signal = parsedSignal.get();
         OptTypeType optType = eventOptDecisionService.determineOptType(oadrEvent, signal);
 
-        saveOrUpdateEvent(oadrEvent, optType, signal);
-        ocppIntegrationService.applySignal(eventId, signal);
+        if (descriptor.getEventStatus() == EventStatusEnumeratedType.CANCELLED) {
+            saveOrUpdateEvent(oadrEvent, optType, signal);
+            ocppIntegrationService.clearEvent(eventId);
+        }
+        else {
+            saveOrUpdateEvent(oadrEvent, optType, signal);
+            ocppIntegrationService.applySignal(eventId, signal);
+        }
 
         return new EventProcessingResult(
                 eventId,

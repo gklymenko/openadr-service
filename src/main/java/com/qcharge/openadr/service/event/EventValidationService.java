@@ -44,7 +44,10 @@ public class EventValidationService {
             if (match.isPresent()) {
                 log.debug("Matched signal: name={}, type={}, value={}",
                         match.get().signalName(), match.get().signalType(), match.get().currentValue());
-                return match;
+
+                if(isSupportedCombination(match.get().signalName, match.get().signalType)) {
+                    return match;
+                }
             }
         }
 
@@ -52,6 +55,15 @@ public class EventValidationService {
                 SIGNAL_PRIORITY,
                 signals.stream().map(EiEventSignalType::getSignalName).toList());
         return Optional.empty();
+    }
+
+    private boolean isSupportedCombination(String signalName, String signalType) {
+        return switch (signalName) {
+            case SIGNAL_SIMPLE -> true;
+            case SIGNAL_ELECTRICITY_PRICE -> "price".equalsIgnoreCase(signalType);
+            case SIGNAL_LOAD_DISPATCH -> "setpoint".equalsIgnoreCase(signalType);
+            default -> false;
+        };
     }
 
     private ParsedSignal toParseSignal(EiEventSignalType signal) {

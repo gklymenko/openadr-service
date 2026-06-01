@@ -106,6 +106,7 @@ public class RegistrationService {
         );
     }
 
+    //TODO:: extract external call from transaction, to avoid stuck transaction while network call is executing to VTN.
     @Transactional
     public void register() {
         String venId = properties.getVen().getId();

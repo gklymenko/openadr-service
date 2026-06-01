@@ -1,3 +1,0 @@
-ALTER TABLE dr_event ADD COLUMN signal_name VARCHAR(64) NULL;
-ALTER TABLE dr_event ADD COLUMN signal_type VARCHAR(64) NULL;
-ALTER TABLE dr_event ADD COLUMN signal_value DECIMAL(10,3) NULL;

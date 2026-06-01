@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS ven_registration (
     registration_id VARCHAR(64),
     status          VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
     registered_at   DATETIME,
-    updated_at      DATETIME,
+    updated_at      DATETIME NOT NULL,
     INDEX idx_ven_id (ven_id)
     );
 
@@ -19,8 +19,11 @@ CREATE TABLE IF NOT EXISTS dr_event (
     start_time       DATETIME     NOT NULL,
     duration_seconds BIGINT,
     raw_payload      TEXT,
-    created_at       DATETIME,
-    updated_at       DATETIME,
+    created_at       DATETIME NOT NULL,
+    updated_at       DATETIME NOT NULL,
+    signal_name VARCHAR(64) NULL,
+    signal_type VARCHAR(64) NULL,
+    signal_value DECIMAL(10,3) NULL,
     INDEX idx_event_id (event_id),
     INDEX idx_status (status)
     );
@@ -32,6 +35,23 @@ CREATE TABLE IF NOT EXISTS ven_report (
     report_name       VARCHAR(64),
     status            VARCHAR(32) NOT NULL DEFAULT 'REGISTERED',
     granularity_seconds INT,
-    created_at        DATETIME,
-    updated_at        DATETIME
+    created_at        DATETIME NOT NULL,
+    updated_at        DATETIME NOT NULL
     );
+
+CREATE TABLE IF NOT EXISTS opt_schedule (
+                                            id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                            opt_id          VARCHAR(64) NOT NULL UNIQUE,
+    opt_type        VARCHAR(16) NOT NULL,
+    opt_reason      VARCHAR(64),
+    event_id        VARCHAR(64),
+    status          VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    created_at      DATETIME NOT NULL,
+    updated_at      DATETIME NOT NULL,
+    INDEX idx_opt_id (opt_id),
+    INDEX idx_event_id (event_id)
+    );
+
+CREATE INDEX idx_ven_report_spec_id ON ven_report(report_spec_id);
+CREATE INDEX idx_ven_report_request_id ON ven_report(report_request_id);
+CREATE UNIQUE INDEX uk_ven_report_spec_id ON ven_report(report_spec_id);
