@@ -15,6 +15,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
@@ -56,6 +57,15 @@ public class DrEvent {
 
     @Column(name = "duration_seconds")
     private Long durationSeconds;
+
+    @Column(name = "signal_name")
+    private String signalName;
+
+    @Column(name = "signal_type")
+    private String signalType;
+
+    @Column(name = "signal_value", precision = 10, scale = 3)
+    private BigDecimal signalValue;
 
     @Column(name = "raw_payload", columnDefinition = "TEXT")
     private String rawPayload;

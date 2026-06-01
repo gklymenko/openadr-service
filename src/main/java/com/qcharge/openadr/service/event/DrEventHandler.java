@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.event;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
@@ -12,6 +13,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.repository.DrEventRepository;
+import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,7 @@ import javax.xml.datatype.XMLGregorianCalendar;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 
 @Slf4j
 @Component
@@ -30,6 +33,7 @@ public class DrEventHandler {
 
     private static final int RESPONSE_OK = 200;
     private static final int RESPONSE_OUT_OF_SEQUENCE = 450;
+    private static final int RESPONSE_UNSUPPORTED_SIGNAL = 460;
     private static final int RESPONSE_INVALID_DATA = 454;
 
     private final OpenAdrProperties properties;
@@ -37,6 +41,7 @@ public class DrEventHandler {
     private final VtnTransportService transportService;
     private final EventOptDecisionService eventOptDecisionService;
     private final EventValidationService eventValidationService;
+    private final OcppIntegrationService ocppIntegrationService;
 
     @Transactional
     public void handle(OadrDistributeEventType distributeEvent) {
@@ -141,10 +146,23 @@ public class DrEventHandler {
             );
         }
 
-        eventValidationService.validateSupportedEvent(oadrEvent);
-        OptTypeType optType = eventOptDecisionService.determineOptType(oadrEvent);
+        Optional<ParsedSignal> parsedSignal = eventValidationService.parseSignal(oadrEvent);
 
-        saveOrUpdateEvent(oadrEvent, optType);
+        if (parsedSignal.isEmpty()) {
+            log.warn("Unsupported signal type in event. eventId={} → responding 460", eventId);
+            return new EventProcessingResult(
+                    eventId,
+                    modificationNumber,
+                    RESPONSE_UNSUPPORTED_SIGNAL,
+                    OptTypeType.OPT_OUT
+            );
+        }
+
+        ParsedSignal signal = parsedSignal.get();
+        OptTypeType optType = eventOptDecisionService.determineOptType(oadrEvent, signal);
+
+        saveOrUpdateEvent(oadrEvent, optType, signal);
+        ocppIntegrationService.applySignal(eventId, signal);
 
         return new EventProcessingResult(
                 eventId,
@@ -160,7 +178,7 @@ public class DrEventHandler {
                 && receivedModificationNumber < existingEvent.getModificationNumber();
     }
 
-    private void saveOrUpdateEvent(OadrEvent oadrEvent, OptTypeType optType) {
+    private void saveOrUpdateEvent(OadrEvent oadrEvent, OptTypeType optType, ParsedSignal signal) {
         EventDescriptorType descriptor = oadrEvent.getEiEvent().getEventDescriptor();
         String eventId = descriptor.getEventID();
 
@@ -174,6 +192,9 @@ public class DrEventHandler {
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
         drEvent.setStartTime(extractStartTime(oadrEvent));
         drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
+        drEvent.setSignalName(signal.signalName());
+        drEvent.setSignalType(signal.signalType());
+        drEvent.setSignalValue(signal.currentValue());
         drEvent.setUpdatedAt(nowUtc());
 
         if (drEvent.getCreatedAt() == null) {
@@ -192,16 +213,6 @@ public class DrEventHandler {
 
         return "always".equalsIgnoreCase(String.valueOf(responseRequired))
                 || "ALWAYS".equalsIgnoreCase(String.valueOf(responseRequired));
-    }
-
-    private OptTypeType determineOptType(OadrEvent oadrEvent) {
-        // TODO: connect to real QCharge/OCPP availability:
-        // - charger online/offline
-        // - maintenance mode
-        // - manual override
-        // - location availability
-        // - supported signal/marketContext/target
-        return OptTypeType.OPT_IN;
     }
 
     private DrEvent.EventStatus mapStatus(EventDescriptorType descriptor) {
