@@ -28,11 +28,11 @@ public final class OpenAdrTimeUtils {
             return Optional.of(Duration.ZERO);
         }
 
-        if (value.contains(".") || value.contains(",")) {
-            throw new IllegalArgumentException("OpenADR duration must not contain decimal values: " + value);
+        try {
+            return Optional.of(Duration.parse(value));
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Invalid ISO-8601 OpenADR duration: " + value, e);
         }
-
-        return Optional.of(Duration.parse(value));
     }
 
     /**
