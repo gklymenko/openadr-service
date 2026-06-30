@@ -1,6 +1,7 @@
 package com.qcharge.openadr.eievent;
 
 import com.qcharge.openadr.AbstractOadrTest;
+import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
@@ -21,7 +22,10 @@ class SignalParsingTest extends AbstractOadrTest {
 
     @BeforeEach
     void setUp() {
-        service = new EventValidationService();
+        OpenAdrProperties props = new OpenAdrProperties();
+        props.getVen().setId("test-ven");
+        props.getReport().setResourceId("resource1");
+        service = new EventValidationService(props);
     }
 
     @Test

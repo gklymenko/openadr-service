@@ -136,6 +136,7 @@ public class EventPoller {
 
         OadrPollType pollPayload = Oadr20bPollBuilders
                 .newOadr20bPollBuilder(venId)
+                .withSchemaVersion(properties.getVen().getProfile())
                 .build();
 
         log.debug("Sending oadrPoll. venId={}", venId);

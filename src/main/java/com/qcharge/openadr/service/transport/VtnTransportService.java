@@ -29,6 +29,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
 import com.qcharge.openadr.utility.Oadr20bPayloadIds;
+import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +40,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+
+import javax.xml.namespace.QName;
 
 @Slf4j
 @Service
@@ -55,14 +58,25 @@ public class VtnTransportService {
                     ? Oadr20bJAXBContext.getInstance(properties.getXml().getXsdFolderPath())
                     : Oadr20bJAXBContext.getInstance();
 
-            String xmlPayload = jaxb.marshalRoot(payload, properties.getXml().isValidate());
+
+            OadrPayload oadrPayload = Oadr20bFactory.createOadrPayload("oadrSignedObject", payload);
+            JAXBElement<OadrPayload> jaxbElement = new JAXBElement<>(
+                    new QName("http://openadr.org/oadr-2.0b/2012/07", "oadrPayload"),
+                    OadrPayload.class,
+                    oadrPayload
+            );
+            String xmlPayload = jaxb.marshal(jaxbElement, false);
 
             log.debug("Sending OpenADR payload to endpoint={}", endpoint);
 
-            String xmlResponse = retryHandler.executeWithRetry(endpoint,
-                    () -> httpPost(endpoint, xmlPayload));
+            String xmlResponse = retryHandler.executeWithRetry(endpoint, () -> httpPost(endpoint, xmlPayload));
 
             log.debug("Received OpenADR response from endpoint={}", endpoint);
+
+            if (xmlResponse == null || xmlResponse.isBlank()) {
+                throw new OpenAdrTransportException(
+                        "VTN returned empty response body for endpoint=" + endpoint);
+            }
 
             Object rawResponse = jaxb.unmarshal(xmlResponse, properties.getXml().isValidate());
             Object response = unwrapIfNeeded(rawResponse);

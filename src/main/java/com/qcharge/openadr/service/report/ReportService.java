@@ -59,6 +59,10 @@ public class ReportService {
                 .addOadrReport(buildTelemetryStatusMetadataReport())
                 .build();
 
+        // TH conformance rule: top-level reportRequestID MUST be empty
+        // for metadata-only oadrRegisterReport (only present per-report, not at root)
+        registerReport.setReportRequestID(null);
+
         saveCapability(REPORT_SPECIFIER_ID_TELEMETRY_USAGE, ReportNameEnumeratedType.TELEMETRY_USAGE.value());
         saveCapability(REPORT_SPECIFIER_ID_TELEMETRY_STATUS, ReportNameEnumeratedType.TELEMETRY_STATUS.value());
 
@@ -88,9 +92,10 @@ public class ReportService {
                 .addOadrReport(buildTelemetryStatusMetadataReport())
                 .build();
 
-        if (reportRequestId != null && !reportRequestId.isBlank()) {
-            registerReport.setReportRequestID(reportRequestId);
-        }
+        // Clear factory default before conditional setting
+        registerReport.setReportRequestID(reportRequestId != null && !reportRequestId.isBlank()
+                ? reportRequestId
+                : null);
 
         return registerReport;
     }
@@ -209,7 +214,7 @@ public class ReportService {
         OadrReportDescriptionType powerDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
                         RID_POWER,
-                        ReportEnumeratedType.READING,
+                        ReportEnumeratedType.USAGE,
                         ReadingTypeEnumeratedType.DIRECT_READ
                 )
                 .withPowerRealBase(
@@ -225,11 +230,11 @@ public class ReportService {
         OadrReportDescriptionType energyDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
                         RID_ENERGY,
-                        ReportEnumeratedType.READING,
+                        ReportEnumeratedType.USAGE,
                         ReadingTypeEnumeratedType.DIRECT_READ
                 )
                 .withEnergyRealBase(SiScaleCodeType.KILO)
-                .withOadrSamplingRate("PT60S", "PT300S", false)
+                .withOadrSamplingRate("PT60S", "PT60S", false)
                 .build();
 
         return Oadr20bEiReportBuilders
@@ -238,6 +243,7 @@ public class ReportService {
                         ReportNameEnumeratedType.METADATA_TELEMETRY_USAGE,
                         System.currentTimeMillis()
                 )
+                .withDuration(toXmlDuration(properties.getReport().getTelemetryIntervalSeconds()))
                 .addReportDescription(powerDescriptor)
                 .addReportDescription(energyDescriptor)
                 .build();
@@ -247,8 +253,8 @@ public class ReportService {
         OadrReportDescriptionType statusDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
                         RID_RESOURCE_STATUS,
-                        ReportEnumeratedType.READING,
-                        ReadingTypeEnumeratedType.DIRECT_READ
+                        ReportEnumeratedType.X_RESOURCE_STATUS,
+                        ReadingTypeEnumeratedType.X_NOT_APPLICABLE
                 )
                 .withOadrSamplingRate("PT10S", "PT60S", false)
                 .build();
@@ -259,6 +265,7 @@ public class ReportService {
                         ReportNameEnumeratedType.METADATA_TELEMETRY_STATUS,
                         System.currentTimeMillis()
                 )
+                .withDuration(toXmlDuration(properties.getReport().getTelemetryIntervalSeconds()))
                 .addReportDescription(statusDescriptor)
                 .build();
     }
