@@ -282,12 +282,17 @@ public class ReportService {
     }
 
     private void saveCapability(String reportSpecifierId, String reportName) {
-        VenReport report = new VenReport();
+        VenReport report = reportRepository.findByReportSpecId(reportSpecifierId)
+                .orElseGet(VenReport::new);
+
         report.setReportSpecId(reportSpecifierId);
         report.setReportName(reportName);
         report.setStatus(VenReport.ReportStatus.REGISTERED);
         report.setGranularitySeconds(properties.getReport().getTelemetryIntervalSeconds());
-        report.setCreatedAt(nowUtc());
+
+        if (report.getCreatedAt() == null) {
+            report.setCreatedAt(nowUtc());
+        }
         report.setUpdatedAt(nowUtc());
 
         reportRepository.save(report);

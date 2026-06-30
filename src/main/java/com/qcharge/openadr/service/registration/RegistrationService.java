@@ -125,6 +125,8 @@ public class RegistrationService {
             builder.withOadrVenName(properties.getVen().getName());
         }
 
+        // registrationId MUST only come from local DB state, never from oadrQueryRegistration
+        // responses — rule 406: a query is informational only and must not influence registration.
         registrationRepository
                 .findByVenIdAndStatus(venId, VenRegistration.RegistrationStatus.REGISTERED)
                 .map(VenRegistration::getRegistrationId)
@@ -142,6 +144,78 @@ public class RegistrationService {
                     "Unexpected response to oadrCreatePartyRegistration: "
                             + (response == null ? "null" : response.getClass().getName())
             );
+        }
+
+        handleCreatedPartyRegistration(created);
+    }
+
+    @Transactional
+    public void initiateCancelRegistration() {
+        String venId = properties.getVen().getId();
+
+        VenRegistration registration = registrationRepository
+                .findByVenIdAndStatus(venId, VenRegistration.RegistrationStatus.REGISTERED)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Cannot cancel: VEN is not currently registered"));
+
+        String registrationId = registration.getRegistrationId();
+        String requestId = UUID.randomUUID().toString();
+
+        log.info("VEN-initiated cancellation. registrationId={}", registrationId);
+
+        OadrCancelPartyRegistrationType payload = Oadr20bEiRegisterPartyBuilders
+                .newOadr20bCancelPartyRegistrationBuilder(requestId, registrationId, venId)
+                .build();
+
+        Object response = transportService.send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload);
+
+        if (response instanceof OadrCanceledPartyRegistrationType canceled) {
+            log.info("Registration cancelled. responseCode={}",
+                    canceled.getEiResponse().getResponseCode());
+        } else {
+            log.warn("Unexpected response to oadrCancelPartyRegistration: {}",
+                    response == null ? "null" : response.getClass().getName());
+        }
+
+        registration.setStatus(VenRegistration.RegistrationStatus.CANCELLED);
+        registration.setUpdatedAt(nowUtc());
+        registrationRepository.save(registration);
+
+        eventPoller.stop();
+    }
+
+    @Transactional
+    public void initiateForcedNewRegistration() {
+        log.warn("Forcing NEW registration (no registrationID), per test N1_0060 requirement");
+
+        String venId = properties.getVen().getId();
+        String requestId = UUID.randomUUID().toString();
+
+        // IMPORTANT: deliberately do NOT look up existing registrationId from DB.
+        // This must be a clean "new registration" request per rule 406, even
+        // though we may already have an active registration recorded locally.
+        var builder = Oadr20bEiRegisterPartyBuilders
+                .newOadr20bCreatePartyRegistrationBuilder(requestId, venId, properties.getVen().getProfile())
+                .withOadrTransportName(OadrTransportType.SIMPLE_HTTP)
+                .withOadrTransportAddress(null)
+                .withOadrReportOnly(false)
+                .withOadrXmlSignature(false)
+                .withOadrHttpPullModel(true);
+
+        if (properties.getVen().getName() != null && !properties.getVen().getName().isBlank()) {
+            builder.withOadrVenName(properties.getVen().getName());
+        }
+
+        OadrCreatePartyRegistrationType payload = builder.build();
+
+        log.info("Sending FORCED NEW oadrCreatePartyRegistration (no registrationID). venId={}", venId);
+
+        Object response = transportService.send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload);
+
+        if (!(response instanceof OadrCreatedPartyRegistrationType created)) {
+            throw new IllegalStateException(
+                    "Unexpected response to forced new oadrCreatePartyRegistration: "
+                            + (response == null ? "null" : response.getClass().getName()));
         }
 
         handleCreatedPartyRegistration(created);

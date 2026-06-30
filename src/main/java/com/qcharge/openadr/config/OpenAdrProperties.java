@@ -63,7 +63,7 @@ public class OpenAdrProperties {
          * Runtime default: false.
          * Certification / diagnostics: true.
          */
-        private boolean queryRegistrationOnStartup = false;
+        private boolean queryRegistrationOnStartup = true;
     }
 
     @Getter
