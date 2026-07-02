@@ -11,6 +11,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledOptType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateOptType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedOptType;
 import com.qcharge.openadr.repository.OptScheduleRepository;
+import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ public class OptService {
     private final OpenAdrProperties properties;
     private final OptScheduleRepository optScheduleRepository;
     private final VtnTransportService transportService;
+    private final RegistrationService registrationService;
 
     public void optOutFromEvent(String eventId, long modificationNumber, OptReasonEnumeratedType reason) {
         log.info("Sending optOut for eventId: {}, reason: {}", eventId, reason);
@@ -40,7 +42,7 @@ public class OptService {
 
     private void sendCreateOpt(String eventId, long modificationNumber,
                                 OptTypeType optType, OptReasonEnumeratedType reason) {
-        String venId = properties.getVen().getId();
+        String venId = registrationService.currentVenId();
         String requestId = UUID.randomUUID().toString();
         String optId = UUID.randomUUID().toString();
 
@@ -65,7 +67,7 @@ public class OptService {
     }
 
     public void cancelOpt(String optId) {
-        String venId = properties.getVen().getId();
+        String venId = registrationService.currentVenId();
         String requestId = UUID.randomUUID().toString();
 
         OadrCancelOptType cancelOpt = Oadr20bEiOptBuilders

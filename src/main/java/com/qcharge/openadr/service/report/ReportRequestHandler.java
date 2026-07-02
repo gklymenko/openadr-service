@@ -17,10 +17,12 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
 import com.qcharge.openadr.repository.VenReportRepository;
+import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +50,7 @@ public class ReportRequestHandler {
     private final VtnTransportService transportService;
     private final ReportService reportService;
     private final TaskScheduler openAdrTaskScheduler;
+    private final ObjectProvider<RegistrationService> registrationServiceProvider;
 
     private final Map<String, ScheduledFuture<?>> activeReportTasks = new ConcurrentHashMap<>();
 
@@ -100,7 +103,7 @@ public class ReportRequestHandler {
                 .newOadr20bRegisteredReportBuilder(
                         registerReport.getRequestID(),
                         ApplicationLayerErrorCodes.OK,
-                        properties.getVen().getId()
+                        currentVenId()
                 )
                 .build();
 
@@ -146,7 +149,7 @@ public class ReportRequestHandler {
                 .newOadr20bCanceledReportBuilder(
                         cancelReport.getRequestID(),
                         allCancelled ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED,
-                        properties.getVen().getId()
+                        currentVenId()
                 )
                 .build();
 
@@ -164,7 +167,7 @@ public class ReportRequestHandler {
                 .newOadr20bUpdatedReportBuilder(
                         updateReport.getRequestID(),
                         ApplicationLayerErrorCodes.OK,
-                        properties.getVen().getId()
+                        currentVenId()
                 )
                 .build();
 
@@ -276,7 +279,7 @@ public class ReportRequestHandler {
                 .newOadr20bCreatedReportBuilder(
                         requestId,
                         responseCode,
-                        properties.getVen().getId()
+                        currentVenId()
                 );
 
         pendingRequestIds.forEach(builder::addPendingReportRequestId);
@@ -351,7 +354,7 @@ public class ReportRequestHandler {
         OadrUpdateReportType updateReport = Oadr20bEiReportBuilders
                 .newOadr20bUpdateReportBuilder(
                         java.util.UUID.randomUUID().toString(),
-                        properties.getVen().getId()
+                        currentVenId()
                 )
                 .addReport(buildReportPayload(report))
                 .build();
@@ -450,6 +453,10 @@ public class ReportRequestHandler {
         if (task != null) {
             task.cancel(false);
         }
+    }
+
+    private String currentVenId() {
+        return registrationServiceProvider.getObject().currentVenId();
     }
 
     private Duration parseDuration(String rawValue, Duration fallback) {

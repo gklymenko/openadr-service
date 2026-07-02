@@ -42,3 +42,5 @@ keytool -genkeypair \
 -storepass openadr-ven \
 -dname "CN=ven-dev-001, OU=EV-Management, O=QCharge, L=Kyiv, C=UA"
 
+On eonti request DNS was fullfilled like "ds-prod-backend.qchargeapp.com"
+

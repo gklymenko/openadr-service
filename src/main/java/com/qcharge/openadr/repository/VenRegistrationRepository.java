@@ -11,4 +11,6 @@ public interface VenRegistrationRepository extends JpaRepository<VenRegistration
     Optional<VenRegistration> findByVenIdAndStatus(
             String venId, VenRegistration.RegistrationStatus status
     );
+
+    Optional<VenRegistration> findFirstByStatusOrderByUpdatedAtDesc(VenRegistration.RegistrationStatus status);
 }

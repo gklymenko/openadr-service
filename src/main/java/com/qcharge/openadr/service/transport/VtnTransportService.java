@@ -28,11 +28,13 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
+import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.utility.Oadr20bPayloadIds;
 import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -51,6 +53,7 @@ public class VtnTransportService {
     private final RestClient restClient;
     private final OpenAdrProperties properties;
     private final RetryHandler retryHandler;
+    private final ObjectProvider<RegistrationService> registrationServiceProvider;
 
     public Object send(String endpoint, Object payload) {
         try {
@@ -222,7 +225,14 @@ public class VtnTransportService {
             return;
         }
 
-        String expectedVenId = properties.getVen().getId();
+        // oadrCreatedPartyRegistration IS the source of truth for venID — validating it
+        // against our own expectation is circular and would always fail when the VTN assigns
+        // a different venID than requested.
+        if (response instanceof OadrCreatedPartyRegistrationType) {
+            return;
+        }
+
+        String expectedVenId = registrationServiceProvider.getObject().currentVenId();
         String expectedVtnId = properties.getVtn().getId();
 
         String receivedVenId = Oadr20bPayloadIds.venIdOf(response);

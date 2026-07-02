@@ -15,9 +15,11 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrReportDescriptionType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.siscale.SiScaleCodeType;
 import com.qcharge.openadr.repository.VenReportRepository;
+import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,10 +45,11 @@ public class ReportService {
     private final OpenAdrProperties properties;
     private final VenReportRepository reportRepository;
     private final VtnTransportService transportService;
+    private final ObjectProvider<RegistrationService> registrationServiceProvider;
 
     @Transactional
     public OadrRegisteredReportType registerReportingCapabilities() {
-        String venId = properties.getVen().getId();
+        String venId = currentVenId();
         String requestId = UUID.randomUUID().toString();
 
         log.info("Registering reporting capabilities. venId={}", venId);
@@ -83,7 +86,7 @@ public class ReportService {
     }
 
     public OadrRegisterReportType buildMetadataRegisterReport(String reportRequestId) {
-        String venId = properties.getVen().getId();
+        String venId = currentVenId();
         String requestId = UUID.randomUUID().toString();
 
         OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
@@ -296,6 +299,10 @@ public class ReportService {
         report.setUpdatedAt(nowUtc());
 
         reportRepository.save(report);
+    }
+
+    private String currentVenId() {
+        return registrationServiceProvider.getObject().currentVenId();
     }
 
     private String toXmlDuration(int seconds) {

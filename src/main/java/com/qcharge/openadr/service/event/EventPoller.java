@@ -132,7 +132,7 @@ public class EventPoller {
     }
 
     private Object sendPoll() {
-        String venId = properties.getVen().getId();
+        String venId = registrationServiceProvider.getObject().currentVenId();
 
         OadrPollType pollPayload = Oadr20bPollBuilders
                 .newOadr20bPollBuilder(venId)

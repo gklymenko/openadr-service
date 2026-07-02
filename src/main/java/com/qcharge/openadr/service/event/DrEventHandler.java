@@ -16,10 +16,12 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
+import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,10 +43,11 @@ public class DrEventHandler {
     private final EventOptDecisionService eventOptDecisionService;
     private final EventValidationService eventValidationService;
     private final OcppIntegrationService ocppIntegrationService;
+    private final ObjectProvider<RegistrationService> registrationServiceProvider;
 
     @Transactional
     public void handle(OadrDistributeEventType distributeEvent) {
-        String venId = properties.getVen().getId();
+        String venId = registrationServiceProvider.getObject().currentVenId();
         String distributeRequestId = safeRequestId(distributeEvent.getRequestID());
 
         EiResponseType eiResponse = Oadr20bResponseBuilders

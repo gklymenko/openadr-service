@@ -60,6 +60,18 @@ public class RegistrationService {
     private final DrEventHandler drEventHandler;
     private final EventPoller eventPoller;
 
+    /**
+     * Returns the currently active VEN ID as assigned by the VTN in the most recent
+     * oadrCreatedPartyRegistration response. Falls back to the configured ID only before
+     * the first registration completes.
+     */
+    public String currentVenId() {
+        return registrationRepository
+                .findFirstByStatusOrderByUpdatedAtDesc(VenRegistration.RegistrationStatus.REGISTERED)
+                .map(VenRegistration::getVenId)
+                .orElse(properties.getVen().getId());
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         log.info("Starting OpenADR VEN bootstrap. venId={}", properties.getVen().getId());
@@ -343,7 +355,7 @@ public class RegistrationService {
     }
 
     private void requestAllEvents() {
-        String venId = properties.getVen().getId();
+        String venId = currentVenId();
         String requestId = UUID.randomUUID().toString();
 
         OadrRequestEventType requestEvent = Oadr20bEiEventBuilders
