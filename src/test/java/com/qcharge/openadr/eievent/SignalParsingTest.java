@@ -72,17 +72,24 @@ class SignalParsingTest extends AbstractOadrTest {
 
     @Test
     void parseSignal_simpleOnly_parsedCorrectly() throws Oadr20bUnmarshalException {
-        org.junit.jupiter.api.Assumptions.assumeTrue(
-                new File(EIEVENT_PATH + "oadrDistributeEvent_simple.xml").exists(),
-                "Simple-only fixture not present — skipping"
-        );
-        // mock-vtn event has only SIMPLE signal
-        OadrEvent event = loadFirstEvent("oadrDistributeEvent_simple.xml");
+        OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
+
+        event.getEiEvent()
+                .getEiEventSignals()
+                .getEiEventSignal()
+                .removeIf(signal ->
+                        !EventValidationService.SIGNAL_SIMPLE.equalsIgnoreCase(
+                                signal.getSignalName()
+                        )
+                );
 
         Optional<ParsedSignal> result = service.parseSignal(event);
 
         assertTrue(result.isPresent());
-        assertEquals(EventValidationService.SIGNAL_SIMPLE, result.get().signalName());
+        assertEquals(
+                EventValidationService.SIGNAL_SIMPLE,
+                result.get().signalName()
+        );
         assertEquals("level", result.get().signalType());
     }
 

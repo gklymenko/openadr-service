@@ -28,7 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.xml.datatype.XMLGregorianCalendar;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -58,9 +60,10 @@ public class DrEventHandler {
                 .newCreatedEventBuilder(eiResponse, venId);
 
         int eventResponseCount = 0;
+        Set<String> eventIds = new HashSet<>();
 
         for (OadrEvent oadrEvent : distributeEvent.getOadrEvent()) {
-            EventProcessingResult result = processEventSafely(oadrEvent);
+            EventProcessingResult result = processEventSafely(oadrEvent, eventIds);
 
             if (!requiresCreatedEventResponse(oadrEvent)) {
                 continue;
@@ -91,9 +94,34 @@ public class DrEventHandler {
         log.info("Sent oadrCreatedEvent. eventResponses={}", eventResponseCount);
     }
 
-    private EventProcessingResult processEventSafely(OadrEvent oadrEvent) {
+    private EventProcessingResult processEventSafely(
+            OadrEvent oadrEvent,
+            Set<String> eventIds
+    ) {
         try {
-            return processEvent(oadrEvent);
+            return processEvent(oadrEvent, eventIds);
+        } catch (EventValidationException e) {
+            EventDescriptorType descriptor = descriptorOf(oadrEvent);
+
+            String eventId = descriptor != null && descriptor.getEventID() != null
+                    ? descriptor.getEventID()
+                    : "unknown";
+            long modificationNumber = descriptor != null ? descriptor.getModificationNumber() : 0L;
+
+            log.warn(
+                    "OpenADR event validation failed. eventId={}, modificationNumber={}, responseCode={}, reason={}",
+                    eventId,
+                    modificationNumber,
+                    e.getResponseCode(),
+                    e.getMessage()
+            );
+
+            return new EventProcessingResult(
+                    eventId,
+                    modificationNumber,
+                    e.getResponseCode(),
+                    OptTypeType.OPT_OUT
+            );
         } catch (TargetMismatchException e) {
             EventDescriptorType descriptor = descriptorOf(oadrEvent);
 
@@ -160,11 +188,21 @@ public class DrEventHandler {
         }
     }
 
-    private EventProcessingResult processEvent(OadrEvent oadrEvent) {
+    private EventProcessingResult processEvent(
+            OadrEvent oadrEvent,
+            Set<String> eventIds
+    ) {
         EventDescriptorType descriptor = requireDescriptor(oadrEvent);
 
         String eventId = requireEventId(descriptor);
         long modificationNumber = descriptor.getModificationNumber();
+
+        if (!eventIds.add(eventId)) {
+            throw new EventValidationException(
+                    "eventID must be unique within oadrDistributeEvent: " + eventId,
+                    ApplicationLayerErrorCodes.INVALID_ID
+            );
+        }
 
         log.info(
                 "Processing OpenADR event. eventId={}, status={}, modificationNumber={}",
@@ -416,7 +454,10 @@ public class DrEventHandler {
         EventDescriptorType descriptor = descriptorOf(oadrEvent);
 
         if (descriptor == null) {
-            throw new IllegalArgumentException("eventDescriptor is required");
+            throw new EventValidationException(
+                    "eventDescriptor is required",
+                    ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER
+            );
         }
 
         return descriptor;
@@ -432,7 +473,10 @@ public class DrEventHandler {
 
     private String requireEventId(EventDescriptorType descriptor) {
         if (descriptor.getEventID() == null || descriptor.getEventID().isBlank()) {
-            throw new IllegalArgumentException("eventID is required");
+            throw new EventValidationException(
+                    "eventID is required",
+                    ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER
+            );
         }
 
         return descriptor.getEventID();

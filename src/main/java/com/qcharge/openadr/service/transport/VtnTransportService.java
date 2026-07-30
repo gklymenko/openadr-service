@@ -31,13 +31,11 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
-import com.qcharge.openadr.service.registration.RegistrationService;
-import com.qcharge.openadr.utility.Oadr20bPayloadIds;
+import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
 import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -57,7 +55,7 @@ public class VtnTransportService {
     private final OpenAdrProperties properties;
     private final RetryHandler retryHandler;
     private final OpenAdrHttpStatusPolicy httpStatusPolicy;
-    private final ObjectProvider<RegistrationService> registrationServiceProvider;
+    private final OpenAdrExchangeValidationService exchangeValidationService;
 
     public <Q, R> R send(OpenAdrOperation<Q, R> operation, Q payload) {
         operation.requireValidRequest(payload);
@@ -120,7 +118,7 @@ public class VtnTransportService {
             OpenAdrExchangeContext<Q, R> context =
                     new OpenAdrExchangeContext<>(operation, payload, typedResponse);
 
-            validateIds(context);
+            exchangeValidationService.validate(context);
 
             return typedResponse;
         } catch (JAXBException e) {
@@ -273,46 +271,10 @@ public class VtnTransportService {
         return baseUrl + Oadr20bUrlPath.OADR_BASE_PATH + endpoint;
     }
 
-    private void validateIds(OpenAdrExchangeContext<?, ?> context) {
-        Object response = context.response();
-        if (response == null) {
-            return;
-        }
-
-        // oadrCreatedPartyRegistration IS the source of truth for venID — validating it
-        // against our own expectation is circular and would always fail when the VTN assigns
-        // a different venID than requested.
-        if (response instanceof OadrCreatedPartyRegistrationType) {
-            return;
-        }
-
-        String expectedVenId = registrationServiceProvider.getObject().currentVenId();
-        String expectedVtnId = properties.getVtn().getId();
-
-        String receivedVenId = Oadr20bPayloadIds.venIdOf(response);
-        String receivedVtnId = Oadr20bPayloadIds.vtnIdOf(response);
-
-        if (expectedVenId != null && !expectedVenId.isBlank()
-                && receivedVenId != null && !receivedVenId.isBlank()
-                && !expectedVenId.equals(receivedVenId)) {
-            throw new OpenAdrTransportException(
-                    "venID mismatch: expected=%s, received=%s".formatted(expectedVenId, receivedVenId)
-            );
-        }
-
-        if (expectedVtnId != null && !expectedVtnId.isBlank()
-                && receivedVtnId != null && !receivedVtnId.isBlank()
-                && !expectedVtnId.equals(receivedVtnId)) {
-            throw new OpenAdrTransportException(
-                    "vtnID mismatch: expected=%s, received=%s".formatted(expectedVtnId, receivedVtnId)
-            );
-        }
-    }
-
     @SuppressWarnings("unchecked")
     private <Q, R> R requireExpectedResponse(OpenAdrOperation<Q, R> operation, Object response) {
         if (!operation.acceptsResponse(response)) {
-            throw new OpenAdrTransportException(
+            throw new OpenAdrApplicationException(
                     "Unexpected OpenADR response type for operation=%s. Expected one of=%s, actual=%s"
                             .formatted(
                                     operation.name(),
@@ -321,7 +283,10 @@ public class VtnTransportService {
                                             .sorted()
                                             .toList(),
                                     response == null ? "null" : response.getClass().getName()
-                            )
+                            ),
+                    ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                    "Payload not of expected type for operation=" + operation.name(),
+                    null
             );
         }
 
