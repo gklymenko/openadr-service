@@ -1,8 +1,6 @@
 package com.qcharge.openadr.eiregisterparty;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.model.entity.VenRegistration;
-import com.qcharge.openadr.model.enums.VenRegistrationStatus;
 import com.qcharge.openadr.repository.OptScheduleRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.repository.VenReportRepository;
@@ -11,6 +9,8 @@ import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.report.ReportService;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Optional;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.when;
@@ -34,16 +34,13 @@ class RegistrationServiceCurrentVenIdTest {
     @Mock ReportRequestHandler reportRequestHandler;
     @Mock DrEventHandler drEventHandler;
     @Mock EventPoller eventPoller;
+    @Mock OpenAdrSessionProvider sessionProvider;
     @Mock OpenAdrProperties properties;
-    @Mock OpenAdrProperties.Ven venProperties;
 
     RegistrationService registrationService;
 
     @BeforeEach
     void setUp() {
-        when(properties.getVen()).thenReturn(venProperties);
-        when(venProperties.getId()).thenReturn("TH_VEN");
-
         registrationService = new RegistrationService(
                 properties,
                 registrationRepository,
@@ -53,40 +50,49 @@ class RegistrationServiceCurrentVenIdTest {
                 reportService,
                 reportRequestHandler,
                 drEventHandler,
-                eventPoller
+                eventPoller,
+                sessionProvider
         );
     }
 
     @Test
     void currentVenId_returnsVtnAssignedId_whenRegistrationExists() {
-        VenRegistration registration = new VenRegistration();
-        registration.setVenId("VEN063026_152944_129");
-
-        when(registrationRepository.findFirstByStatusOrderByUpdatedAtDesc(
-                VenRegistrationStatus.REGISTERED
-        )).thenReturn(Optional.of(registration));
+        when(sessionProvider.current()).thenReturn(registeredSession("VEN063026_152944_129"));
 
         assertEquals("VEN063026_152944_129", registrationService.currentVenId());
     }
 
     @Test
     void currentVenId_returnsConfiguredId_whenNoRegistrationExists() {
-        when(registrationRepository.findFirstByStatusOrderByUpdatedAtDesc(
-                VenRegistrationStatus.REGISTERED
-        )).thenReturn(Optional.empty());
+        when(sessionProvider.current()).thenReturn(bootstrapSession());
 
         assertEquals("TH_VEN", registrationService.currentVenId());
     }
 
     @Test
     void currentVenId_returnsConfiguredId_whenRegistrationHasSameId() {
-        VenRegistration registration = new VenRegistration();
-        registration.setVenId("TH_VEN");
-
-        when(registrationRepository.findFirstByStatusOrderByUpdatedAtDesc(
-                VenRegistrationStatus.REGISTERED
-        )).thenReturn(Optional.of(registration));
+        when(sessionProvider.current()).thenReturn(registeredSession("TH_VEN"));
 
         assertEquals("TH_VEN", registrationService.currentVenId());
+    }
+
+    private OpenAdrSessionSnapshot bootstrapSession() {
+        return new OpenAdrSessionSnapshot(
+                null,
+                "TH_VEN",
+                "TH_VTN",
+                null,
+                Duration.ofSeconds(10)
+        );
+    }
+
+    private OpenAdrSessionSnapshot registeredSession(String venId) {
+        return new OpenAdrSessionSnapshot(
+                1L,
+                venId,
+                "TH_VTN",
+                "registration-id",
+                Duration.ofSeconds(10)
+        );
     }
 }
