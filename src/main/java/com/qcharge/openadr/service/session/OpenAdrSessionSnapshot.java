@@ -11,6 +11,7 @@ import java.util.Objects;
  */
 public record OpenAdrSessionSnapshot(
         Long registrationEntityId,
+        long generation,
         String venId,
         String vtnId,
         String registrationId,
@@ -18,6 +19,9 @@ public record OpenAdrSessionSnapshot(
 ) {
 
     public OpenAdrSessionSnapshot {
+        if (generation < 0) {
+            throw new IllegalArgumentException("generation must not be negative");
+        }
         if (venId == null || venId.isBlank()) {
             throw new IllegalArgumentException("venId must not be blank");
         }

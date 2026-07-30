@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -81,5 +82,45 @@ class OpenAdrSessionProviderTest {
         OpenAdrSessionSnapshot snapshot = provider.fromRegistration(registration);
 
         assertEquals(Duration.ofSeconds(30), snapshot.pollFrequency());
+    }
+
+    @Test
+    void generationIsStableForSamePersistedRegistrationVersion() {
+        VenRegistration registration = registration(
+                Instant.parse("2026-07-30T08:00:00Z")
+        );
+
+        OpenAdrSessionSnapshot first = provider.fromRegistration(registration);
+        OpenAdrSessionSnapshot second = provider.fromRegistration(registration);
+
+        assertEquals(first.generation(), second.generation());
+    }
+
+    @Test
+    void generationAdvancesWhenPersistedRegistrationChanges() {
+        VenRegistration registration = registration(
+                Instant.parse("2026-07-30T08:00:00Z")
+        );
+
+        OpenAdrSessionSnapshot first = provider.fromRegistration(registration);
+        registration.setRegistrationId("REG-43");
+        registration.setUpdatedAt(
+                Instant.parse("2026-07-30T08:01:00Z")
+        );
+
+        OpenAdrSessionSnapshot second = provider.fromRegistration(registration);
+
+        assertEquals(first.generation() + 1, second.generation());
+    }
+
+    private VenRegistration registration(Instant updatedAt) {
+        VenRegistration registration = new VenRegistration();
+        registration.setId(42L);
+        registration.setVenId("ASSIGNED-VEN");
+        registration.setVtnId("ACTIVE-VTN");
+        registration.setRegistrationId("REG-42");
+        registration.setRequestedPollFrequency("PT45S");
+        registration.setUpdatedAt(updatedAt);
+        return registration;
     }
 }

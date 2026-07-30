@@ -5,10 +5,10 @@ import com.qcharge.openadr.repository.OptScheduleRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.event.DrEventHandler;
-import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.report.ReportService;
+import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -33,8 +33,8 @@ class RegistrationServiceCurrentVenIdTest {
     @Mock ReportService reportService;
     @Mock ReportRequestHandler reportRequestHandler;
     @Mock DrEventHandler drEventHandler;
-    @Mock EventPoller eventPoller;
     @Mock OpenAdrSessionProvider sessionProvider;
+    @Mock OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
     @Mock OpenAdrProperties properties;
 
     RegistrationService registrationService;
@@ -50,28 +50,30 @@ class RegistrationServiceCurrentVenIdTest {
                 reportService,
                 reportRequestHandler,
                 drEventHandler,
-                eventPoller,
-                sessionProvider
+                sessionProvider,
+                lifecycleCoordinator
         );
     }
 
     @Test
     void currentVenId_returnsVtnAssignedId_whenRegistrationExists() {
-        when(sessionProvider.current()).thenReturn(registeredSession("VEN063026_152944_129"));
+        when(lifecycleCoordinator.currentSession())
+                .thenReturn(registeredSession("VEN063026_152944_129"));
 
         assertEquals("VEN063026_152944_129", registrationService.currentVenId());
     }
 
     @Test
     void currentVenId_returnsConfiguredId_whenNoRegistrationExists() {
-        when(sessionProvider.current()).thenReturn(bootstrapSession());
+        when(lifecycleCoordinator.currentSession()).thenReturn(bootstrapSession());
 
         assertEquals("TH_VEN", registrationService.currentVenId());
     }
 
     @Test
     void currentVenId_returnsConfiguredId_whenRegistrationHasSameId() {
-        when(sessionProvider.current()).thenReturn(registeredSession("TH_VEN"));
+        when(lifecycleCoordinator.currentSession())
+                .thenReturn(registeredSession("TH_VEN"));
 
         assertEquals("TH_VEN", registrationService.currentVenId());
     }
@@ -79,6 +81,7 @@ class RegistrationServiceCurrentVenIdTest {
     private OpenAdrSessionSnapshot bootstrapSession() {
         return new OpenAdrSessionSnapshot(
                 null,
+                0L,
                 "TH_VEN",
                 "TH_VTN",
                 null,
@@ -88,6 +91,7 @@ class RegistrationServiceCurrentVenIdTest {
 
     private OpenAdrSessionSnapshot registeredSession(String venId) {
         return new OpenAdrSessionSnapshot(
+                1L,
                 1L,
                 venId,
                 "TH_VTN",

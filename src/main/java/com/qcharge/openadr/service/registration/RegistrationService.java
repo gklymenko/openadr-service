@@ -22,9 +22,9 @@ import com.qcharge.openadr.repository.OptScheduleRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.event.DrEventHandler;
-import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.report.ReportService;
+import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -60,15 +60,15 @@ public class RegistrationService {
     private final ReportService reportService;
     private final ReportRequestHandler reportRequestHandler;
     private final DrEventHandler drEventHandler;
-    private final EventPoller eventPoller;
     private final OpenAdrSessionProvider sessionProvider;
+    private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
     /**
      * Returns the VEN ID assigned by the VTN for the current active registration.
      * Configured VEN ID is used only before the first successful registration.
      */
     public String currentVenId() {
-        return sessionProvider.current().venId();
+        return lifecycleCoordinator.currentSession().venId();
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -78,7 +78,6 @@ public class RegistrationService {
         try {
             bootstrap();
         } catch (Exception exception) {
-            eventPoller.stop();
             log.error("OpenADR VEN bootstrap failed", exception);
         }
     }
@@ -91,6 +90,10 @@ public class RegistrationService {
      * 4. Start polling using the frequency returned by the VTN or persisted earlier.
      */
     public void bootstrap() {
+        lifecycleCoordinator.bootstrap();
+    }
+
+    public OpenAdrSessionSnapshot performBootstrapRegistration() {
         if (properties.getVen().isQueryRegistrationOnStartup()) {
             queryRegistration();
         }
@@ -101,8 +104,7 @@ public class RegistrationService {
             log.info("No active VEN registration found. Performing new registration.");
 
             RegistrationResult result = registerNew();
-            completeRegistration(result, true);
-            return;
+            return completeRegistration(result, true);
         }
 
         VenRegistration existing = activeRegistration.get();
@@ -113,7 +115,7 @@ public class RegistrationService {
         );
 
         RegistrationResult result = reregister(existing);
-        completeRegistration(result, false);
+        return completeRegistration(result, false);
     }
 
     /**
@@ -160,16 +162,26 @@ public class RegistrationService {
      * re-registration. Otherwise, it creates a new registration instance.
      */
     public void register() {
+        lifecycleCoordinator.register();
+    }
+
+    public OpenAdrSessionSnapshot performRegistration() {
         Optional<VenRegistration> active = findActiveRegistration();
 
         if (active.isPresent()) {
             RegistrationResult result = reregister(active.get());
-            completeRegistration(result, false);
-            return;
+            return completeRegistration(result, false);
         }
 
         RegistrationResult result = registerNew();
-        completeRegistration(result, true);
+        return completeRegistration(result, true);
+    }
+
+    public OpenAdrSessionSnapshot performReregistration(
+            OpenAdrSessionSnapshot session
+    ) {
+        RegistrationResult result = reregister(requireRegistration(session));
+        return completeRegistration(result, false);
     }
 
     /**
@@ -270,7 +282,7 @@ public class RegistrationService {
      * the full metadata/event bootstrap is performed.
      * For an unchanged re-registration instance, polling is simply resumed.
      */
-    private void completeRegistration(
+    private OpenAdrSessionSnapshot completeRegistration(
             RegistrationResult result,
             boolean explicitlyNewRegistration
     ) {
@@ -285,9 +297,8 @@ public class RegistrationService {
             runPostRegistrationFlow(registration);
         }
 
-        Duration pollInterval = resolvePollInterval(registration);
-
-        eventPoller.start(pollInterval);
+        OpenAdrSessionSnapshot registeredSession =
+                sessionProvider.fromRegistration(registration);
 
         log.info(
                 "VEN registration flow completed. " +
@@ -297,8 +308,10 @@ public class RegistrationService {
                 registration.getVtnId(),
                 registration.getRegistrationId(),
                 runFullBootstrap,
-                pollInterval
+                registeredSession.pollFrequency()
         );
+
+        return registeredSession;
     }
 
     /**
@@ -306,9 +319,11 @@ public class RegistrationService {
      * without registrationID even if an active registration exists.
      */
     public void initiateForcedNewRegistration() {
-        log.warn("Forcing a new registration without registrationID");
+        lifecycleCoordinator.forceNewRegistration();
+    }
 
-        eventPoller.stop();
+    public OpenAdrSessionSnapshot performForcedNewRegistration() {
+        log.warn("Forcing a new registration without registrationID");
 
         Optional<VenRegistration> previousActive = findActiveRegistration();
 
@@ -316,15 +331,20 @@ public class RegistrationService {
 
         previousActive.ifPresent(this::markCancelled);
 
-        completeRegistration(result, true);
+        return completeRegistration(result, true);
     }
 
     /**
      * VEN-initiated registration cancellation.
      */
     public void initiateCancelRegistration() {
-        VenRegistration registration = requireActiveRegistration();
-        OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(registration);
+        lifecycleCoordinator.cancel(
+                lifecycleCoordinator.requireRegisteredSession()
+        );
+    }
+
+    public void performCancelRegistration(OpenAdrSessionSnapshot session) {
+        VenRegistration registration = requireRegistration(session);
 
         requireValidPersistedRegistration(registration);
 
@@ -371,7 +391,6 @@ public class RegistrationService {
         }
 
         markCancelled(registration);
-        eventPoller.stop();
 
         log.info(
                 "VEN registration cancelled. registrationId={}", registration.getRegistrationId()
@@ -382,7 +401,10 @@ public class RegistrationService {
      * Handles VTN-initiated re-registration received through oadrPoll.
      */
     public void handleRequestReregistration(OadrRequestReregistrationType request) {
-        handleRequestReregistration(request, sessionProvider.current());
+        handleRequestReregistration(
+                request,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
     }
 
     public void handleRequestReregistration(
@@ -410,11 +432,7 @@ public class RegistrationService {
                 session
         );
 
-        eventPoller.stop();
-
-        RegistrationResult result = reregister(active);
-
-        completeRegistration(result, false);
+        lifecycleCoordinator.reregister(session);
     }
 
     /**
@@ -424,7 +442,10 @@ public class RegistrationService {
     public void handleCancelPartyRegistration(
             OadrCancelPartyRegistrationType request
     ) {
-        handleCancelPartyRegistration(request, sessionProvider.current());
+        handleCancelPartyRegistration(
+                request,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
     }
 
     public void handleCancelPartyRegistration(
@@ -491,16 +512,17 @@ public class RegistrationService {
             return;
         }
 
-        VenRegistration active = activeOptional.orElseThrow();
-
-        markCancelled(active);
-        eventPoller.stop();
+        lifecycleCoordinator.acceptRemoteCancellation(session);
 
         log.info(
                 "VTN-initiated registration cancellation completed. " +
                         "registrationId={}",
                 requestRegistrationId
         );
+    }
+
+    public void performRemoteCancellation(OpenAdrSessionSnapshot session) {
+        markCancelled(requireRegistration(session));
     }
 
     private VenRegistration saveRegistration(
@@ -613,38 +635,6 @@ public class RegistrationService {
             );
             return null;
         }
-    }
-
-    private Duration resolvePollInterval(
-            VenRegistration registration
-    ) {
-        String persistedValue =
-                registration.getRequestedPollFrequency();
-
-        if (hasText(persistedValue)) {
-            try {
-                Duration parsed = Duration.parse(persistedValue);
-
-                if (!parsed.isZero() && !parsed.isNegative()) {
-                    return parsed;
-                }
-            } catch (RuntimeException exception) {
-                log.warn(
-                        "Cannot parse persisted requestedPollFrequency={}",
-                        persistedValue,
-                        exception
-                );
-            }
-        }
-
-        Duration fallback = defaultPollInterval();
-
-        log.warn(
-                "Using configured polling interval fallback={}",
-                fallback
-        );
-
-        return fallback;
     }
 
     private void runPostRegistrationFlow(VenRegistration registration) {
@@ -762,12 +752,6 @@ public class RegistrationService {
         registration.setUpdatedAt(nowUtc());
 
         registrationRepository.save(registration);
-    }
-
-    private Duration defaultPollInterval() {
-        return Duration.ofSeconds(
-                properties.getTransport().getPollIntervalSeconds()
-        );
     }
 
     private String responseCode(

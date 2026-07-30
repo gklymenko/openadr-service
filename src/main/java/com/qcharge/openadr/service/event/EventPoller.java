@@ -14,7 +14,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
-import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.ApplicationErrorAction;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
@@ -46,7 +46,7 @@ public class EventPoller {
     private final TaskScheduler openAdrTaskScheduler;
     private final OpenAdrApplicationErrorMapper applicationErrorMapper;
     private final OpenAdrReplyFactory replyFactory;
-    private final OpenAdrSessionProvider sessionProvider;
+    private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
     /**
      * Lazy provider avoids direct circular dependency:
@@ -117,10 +117,21 @@ public class EventPoller {
             return;
         }
 
+        OpenAdrSessionSnapshot session = null;
+
         try {
-            pollUntilQueueEmpty();
+            session = lifecycleCoordinator.requireRegisteredSession();
+            pollUntilQueueEmpty(session);
         } catch (OpenAdrApplicationException applicationError) {
-            handlePollingApplicationError(applicationError);
+            if (session == null) {
+                log.error(
+                        "OpenADR application error occurred before a registered "
+                                + "polling session was captured",
+                        applicationError
+                );
+            } else {
+                handlePollingApplicationError(applicationError, session);
+            }
         } catch (Exception e) {
             log.error("OpenADR poll cycle failed", e);
         } finally {
@@ -134,6 +145,16 @@ public class EventPoller {
 
     void handlePollingApplicationError(
             OpenAdrApplicationException applicationError
+    ) {
+        handlePollingApplicationError(
+                applicationError,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
+    }
+
+    void handlePollingApplicationError(
+            OpenAdrApplicationException applicationError,
+            OpenAdrSessionSnapshot failedSession
     ) {
         if (applicationError.getAction()
                 != ApplicationErrorAction.REQUIRE_REREGISTRATION) {
@@ -158,18 +179,18 @@ public class EventPoller {
         );
 
         stop();
-        registrationServiceProvider.getObject().register();
+        lifecycleCoordinator.reregister(failedSession);
     }
 
     /**
      * Pull mode rule: if VTN has queued payloads, it returns one payload per oadrPoll.
      * VEN should continue polling until VTN returns oadrResponse.
      */
-    private void pollUntilQueueEmpty() {
+    private void pollUntilQueueEmpty(OpenAdrSessionSnapshot session) {
         int maxIterations = maxQueueDrainPolls();
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
-            PollExchange exchange = sendPoll();
+            PollExchange exchange = sendPoll(session);
             PollResult result = handlePollResponse(exchange);
 
             if (result == PollResult.QUEUE_EMPTY) {
@@ -185,9 +206,7 @@ public class EventPoller {
         log.warn("Stopped polling after reaching max queue drain limit: {}", maxIterations);
     }
 
-    private PollExchange sendPoll() {
-        OpenAdrSessionSnapshot session = sessionProvider.current();
-
+    private PollExchange sendPoll(OpenAdrSessionSnapshot session) {
         OadrPollType pollPayload = Oadr20bPollBuilders
                 .newOadr20bPollBuilder(session.venId())
                 .withSchemaVersion(properties.getVen().getProfile())
@@ -202,6 +221,20 @@ public class EventPoller {
     }
 
     private PollResult handlePollResponse(PollExchange exchange) {
+        return lifecycleCoordinator.executeIfActive(
+                exchange.session(),
+                () -> handleActivePollResponse(exchange)
+        ).orElseGet(() -> {
+            log.info(
+                    "Ignoring poll response from inactive OpenADR session. "
+                            + "generation={}",
+                    exchange.session().generation()
+            );
+            return PollResult.STOP;
+        });
+    }
+
+    private PollResult handleActivePollResponse(PollExchange exchange) {
         Object response = exchange.response();
         if (response == null) {
             log.warn("VTN returned empty response to oadrPoll");

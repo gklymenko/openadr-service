@@ -16,7 +16,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
 import com.qcharge.openadr.repository.VenReportRepository;
-import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
@@ -50,13 +50,16 @@ public class ReportRequestHandler {
     private final VtnTransportService transportService;
     private final ReportService reportService;
     private final TaskScheduler openAdrTaskScheduler;
-    private final OpenAdrSessionProvider sessionProvider;
+    private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
     private final Map<String, ScheduledFuture<?>> activeReportTasks = new ConcurrentHashMap<>();
 
     @Transactional
     public void handleRegisteredReport(OadrRegisteredReportType registeredReport) {
-        handleRegisteredReport(registeredReport, sessionProvider.current());
+        handleRegisteredReport(
+                registeredReport,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
     }
 
     @Transactional
@@ -92,7 +95,10 @@ public class ReportRequestHandler {
 
     @Transactional
     public void handle(OadrCreateReportType createReport) {
-        handle(createReport, sessionProvider.current());
+        handle(
+                createReport,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
     }
 
     @Transactional
@@ -114,7 +120,10 @@ public class ReportRequestHandler {
     }
 
     public void handleRegisterReport(OadrRegisterReportType registerReport) {
-        handleRegisterReport(registerReport, sessionProvider.current());
+        handleRegisterReport(
+                registerReport,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
     }
 
     public void handleRegisterReport(
@@ -144,7 +153,10 @@ public class ReportRequestHandler {
 
     @Transactional
     public void handleCancelReport(OadrCancelReportType cancelReport) {
-        handleCancelReport(cancelReport, sessionProvider.current());
+        handleCancelReport(
+                cancelReport,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
     }
 
     @Transactional
@@ -201,7 +213,10 @@ public class ReportRequestHandler {
     }
 
     public void handleUpdateReport(OadrUpdateReportType updateReport) {
-        handleUpdateReport(updateReport, sessionProvider.current());
+        handleUpdateReport(
+                updateReport,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
     }
 
     public void handleUpdateReport(
@@ -427,7 +442,10 @@ public class ReportRequestHandler {
     }
 
     private void sendUpdateReport(VenReport report) {
-        sendUpdateReport(report, sessionProvider.current());
+        sendUpdateReport(
+                report,
+                lifecycleCoordinator.requireRegisteredSession()
+        );
     }
 
     private void sendUpdateReport(

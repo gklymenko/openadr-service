@@ -1,6 +1,7 @@
 package com.qcharge.openadr.controller;
 
 import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -22,25 +23,28 @@ import org.springframework.web.bind.annotation.RestController;
 public class TestController {
 
     private final RegistrationService registrationService;
+    private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
     @PostMapping("/test/cancel-registration")
     public ResponseEntity<String> cancelRegistration() {
         log.warn("TEST ENDPOINT: manually triggering VEN-initiated registration cancellation");
-        registrationService.initiateCancelRegistration();
+        lifecycleCoordinator.cancel(
+                lifecycleCoordinator.requireRegisteredSession()
+        );
         return ResponseEntity.ok("Cancellation initiated");
     }
 
     @PostMapping("/test/force-new-registration")
     public ResponseEntity<String> forceNewRegistration() {
         log.warn("TEST ENDPOINT: manually triggering forced NEW registration (no registrationID)");
-        registrationService.initiateForcedNewRegistration();
+        lifecycleCoordinator.forceNewRegistration();
         return ResponseEntity.ok("New registration initiated");
     }
 
     @PostMapping("/test/reregister")
     public ResponseEntity<String> reregister() {
         log.warn("TEST ENDPOINT: manually triggering re-registration (with existing registrationID)");
-        registrationService.register();
+        lifecycleCoordinator.register();
         return ResponseEntity.ok("Re-registration initiated");
     }
 

@@ -19,7 +19,8 @@ public final class TestSessionFixtures {
             String registrationId
     ) {
         return new OpenAdrSessionSnapshot(
-                1L, venId, vtnId, registrationId, Duration.ofSeconds(60)
+                1L, 1L, venId, vtnId, registrationId,
+                Duration.ofSeconds(60)
         );
     }
 
@@ -33,6 +34,7 @@ public final class TestSessionFixtures {
     ) {
         return new OpenAdrSessionSnapshot(
                 null,
+                0L,
                 venId,
                 vtnId,
                 null,

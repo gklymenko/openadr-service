@@ -10,7 +10,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledOptType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateOptType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedOptType;
 import com.qcharge.openadr.repository.OptScheduleRepository;
-import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -29,7 +29,7 @@ public class OptService {
     private final OpenAdrProperties properties;
     private final OptScheduleRepository optScheduleRepository;
     private final VtnTransportService transportService;
-    private final OpenAdrSessionProvider sessionProvider;
+    private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
     public void optOutFromEvent(String eventId, long modificationNumber, OptReasonEnumeratedType reason) {
         log.info("Sending optOut for eventId: {}, reason: {}", eventId, reason);
@@ -43,7 +43,8 @@ public class OptService {
 
     private void sendCreateOpt(String eventId, long modificationNumber,
                                 OptTypeType optType, OptReasonEnumeratedType reason) {
-        OpenAdrSessionSnapshot session = sessionProvider.current();
+        OpenAdrSessionSnapshot session =
+                lifecycleCoordinator.requireRegisteredSession();
         String venId = session.venId();
         String requestId = UUID.randomUUID().toString();
         String optId = UUID.randomUUID().toString();
@@ -73,7 +74,8 @@ public class OptService {
     }
 
     public void cancelOpt(String optId) {
-        OpenAdrSessionSnapshot session = sessionProvider.current();
+        OpenAdrSessionSnapshot session =
+                lifecycleCoordinator.requireRegisteredSession();
         String venId = session.venId();
         String requestId = UUID.randomUUID().toString();
 

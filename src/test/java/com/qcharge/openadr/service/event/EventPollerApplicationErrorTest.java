@@ -5,7 +5,8 @@ import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
-import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.ApplicationErrorAction;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrReplyFactory;
@@ -21,6 +22,7 @@ import org.springframework.scheduling.TaskScheduler;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
 
 @ExtendWith(MockitoExtension.class)
 class EventPollerApplicationErrorTest {
@@ -33,8 +35,7 @@ class EventPollerApplicationErrorTest {
     @Mock OpenAdrApplicationErrorMapper applicationErrorMapper;
     @Mock OpenAdrReplyFactory replyFactory;
     @Mock ObjectProvider<RegistrationService> registrationServiceProvider;
-    @Mock RegistrationService registrationService;
-    @Mock OpenAdrSessionProvider sessionProvider;
+    @Mock OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
     private EventPoller eventPoller;
 
@@ -48,15 +49,16 @@ class EventPollerApplicationErrorTest {
                 taskScheduler,
                 applicationErrorMapper,
                 replyFactory,
-                sessionProvider,
+                lifecycleCoordinator,
                 registrationServiceProvider
         );
     }
 
     @Test
     void notRegistered_stopsPollingAndStartsReregistration() {
-        when(registrationServiceProvider.getObject())
-                .thenReturn(registrationService);
+        OpenAdrSessionSnapshot session = registeredSession();
+        when(lifecycleCoordinator.requireRegisteredSession())
+                .thenReturn(session);
 
         eventPoller.handlePollingApplicationError(
                 applicationError(
@@ -65,7 +67,7 @@ class EventPollerApplicationErrorTest {
                 )
         );
 
-        verify(registrationService).register();
+        verify(lifecycleCoordinator).reregister(session);
     }
 
     @Test
@@ -77,7 +79,8 @@ class EventPollerApplicationErrorTest {
                 )
         );
 
-        verify(registrationServiceProvider, never()).getObject();
+        verify(lifecycleCoordinator, never())
+                .reregister(org.mockito.ArgumentMatchers.any());
     }
 
     private OpenAdrApplicationException applicationError(
