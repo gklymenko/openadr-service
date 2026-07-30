@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.model.entity.VenRegistration;
 import com.qcharge.openadr.model.entity.VenReport;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
@@ -48,13 +49,13 @@ public class ReportService {
     private final ObjectProvider<RegistrationService> registrationServiceProvider;
 
     @Transactional
-    public OadrRegisteredReportType registerReportingCapabilities() {
-        String venId = currentVenId();
+    public OadrRegisteredReportType registerReportingCapabilities(String venId) {
         String requestId = UUID.randomUUID().toString();
 
         log.info("Registering reporting capabilities. venId={}", venId);
 
         reportRepository.deleteAll();
+        log.info("Remove all reports, venId={}", venId);
 
         OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportBuilder(requestId, venId)

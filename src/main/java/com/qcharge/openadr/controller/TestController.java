@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -41,5 +42,12 @@ public class TestController {
         log.warn("TEST ENDPOINT: manually triggering re-registration (with existing registrationID)");
         registrationService.register();
         return ResponseEntity.ok("Re-registration initiated");
+    }
+
+    @GetMapping("/test/query-registration")
+    public ResponseEntity<String> queryRegistration() {
+        log.warn("TEST ENDPOINT: manually triggering oadrQueryRegistration");
+        registrationService.queryRegistration();
+        return ResponseEntity.ok("QueryRegistration initiated");
     }
 }

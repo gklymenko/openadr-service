@@ -44,3 +44,8 @@ keytool -genkeypair \
 
 On eonti request DNS was fullfilled like "ds-prod-backend.qchargeapp.com"
 
+
+Registration is implemented on bootstrap. Rules: 401, 405, 402, 406.
+
+![bootsrap.png](bootsrap.png)
+

@@ -57,6 +57,18 @@ public class EventPoller {
         cancelCurrentTask();
         scheduleNextPoll(Duration.ZERO);
 
+        /*
+         * When registration restart is triggered by a payload received inside
+         * the current poll cycle, its finally block will schedule the next poll.
+         */
+        if (pollLock.isHeldByCurrentThread()) {
+            log.info(
+                    "OpenADR polling interval restored inside active poll cycle. interval={}",
+                    pollInterval
+            );
+            return;
+        }
+
         log.info("OpenADR polling started. interval={}", pollInterval);
     }
 
@@ -197,8 +209,7 @@ public class EventPoller {
             case OadrRequestReregistrationType requestReregistration -> {
                 log.warn("Received oadrRequestReregistration. venId={}", requestReregistration.getVenID());
 
-                registrationServiceProvider
-                        .getObject()
+                registrationServiceProvider.getObject()
                         .handleRequestReregistration(requestReregistration);
 
                 yield PollResult.STOP;

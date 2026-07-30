@@ -127,6 +127,8 @@ public class OpenAdrProperties {
 
         @Min(1)
         private int certExpiryCriticalDays = 7;
+
+        private boolean disableHostnameVerification = false;
     }
 
     @Getter

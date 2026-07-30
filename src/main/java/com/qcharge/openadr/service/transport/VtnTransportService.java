@@ -56,11 +56,22 @@ public class VtnTransportService {
     private final ObjectProvider<RegistrationService> registrationServiceProvider;
 
     public Object send(String endpoint, Object payload) {
+        return send(endpoint, payload, allowsEmptyResponse(payload));
+    }
+
+    /**
+     * Sends an OpenADR response/acknowledgement for which the peer may return
+     * HTTP 2xx without another OpenADR payload.
+     */
+    public void sendWithoutResponse(String endpoint, Object payload) {
+        send(endpoint, payload, true);
+    }
+
+    private Object send(String endpoint, Object payload, boolean allowEmptyResponse) {
         try {
             Oadr20bJAXBContext jaxb = properties.getXml().isValidate()
                     ? Oadr20bJAXBContext.getInstance(properties.getXml().getXsdFolderPath())
                     : Oadr20bJAXBContext.getInstance();
-
 
             OadrPayload oadrPayload = Oadr20bFactory.createOadrPayload("oadrSignedObject", payload);
             JAXBElement<OadrPayload> jaxbElement = new JAXBElement<>(
@@ -77,6 +88,14 @@ public class VtnTransportService {
             log.debug("Received OpenADR response from endpoint={}", endpoint);
 
             if (xmlResponse == null || xmlResponse.isBlank()) {
+                if (allowEmptyResponse) {
+                    log.debug(
+                            "VTN returned successful HTTP response without an OpenADR payload. endpoint={}",
+                            endpoint
+                    );
+                    return null;
+                }
+
                 throw new OpenAdrTransportException(
                         "VTN returned empty response body for endpoint=" + endpoint);
             }
@@ -95,6 +114,24 @@ public class VtnTransportService {
         } catch (Oadr20bUnmarshalException e) {
             throw new OpenAdrTransportException("Failed to unmarshal VTN response", e);
         }
+    }
+
+    private boolean allowsEmptyResponse(Object payload) {
+        /*
+         * These payloads are protocol responses/acknowledgements. When the VEN
+         * posts one after receiving a VTN message through oadrPoll, the VTN may
+         * complete the exchange with HTTP 2xx and an empty response body.
+         */
+        return payload instanceof OadrResponseType
+                || payload instanceof OadrCreatedEventType
+                || payload instanceof OadrRegisteredReportType
+                || payload instanceof OadrCreatedReportType
+                || payload instanceof OadrUpdatedReportType
+                || payload instanceof OadrCanceledReportType
+                || payload instanceof OadrCreatedOptType
+                || payload instanceof OadrCanceledOptType
+                || payload instanceof OadrCreatedPartyRegistrationType
+                || payload instanceof OadrCanceledPartyRegistrationType;
     }
 
     private String httpPost(String endpoint, String xmlPayload) {
@@ -134,7 +171,7 @@ public class VtnTransportService {
     }
 
     public OadrResponseType createdEvent(OadrCreatedEventType payload) {
-        return cast(send(Oadr20bUrlPath.EI_EVENT_SERVICE, payload), OadrResponseType.class);
+        return castIfPresent(send(Oadr20bUrlPath.EI_EVENT_SERVICE, payload), OadrResponseType.class);
     }
 
     public OadrRegisteredReportType registerReport(OadrRegisterReportType payload) {
@@ -142,15 +179,15 @@ public class VtnTransportService {
     }
 
     public OadrCreatedReportType createdReport(OadrCreatedReportType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrCreatedReportType.class);
+        return castIfPresent(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrCreatedReportType.class);
     }
 
     public OadrUpdatedReportType updateReport(OadrUpdateReportType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrUpdatedReportType.class);
+        return castIfPresent(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrUpdatedReportType.class);
     }
 
     public OadrCanceledReportType canceledReport(OadrCanceledReportType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrCanceledReportType.class);
+        return castIfPresent(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrCanceledReportType.class);
     }
 
     public OadrCreatedOptType createOpt(OadrCreateOptType payload) {
@@ -262,5 +299,9 @@ public class VtnTransportService {
         }
 
         return expectedType.cast(response);
+    }
+
+    private <T> T castIfPresent(Object response, Class<T> expectedType) {
+        return response == null ? null : cast(response, expectedType);
     }
 }

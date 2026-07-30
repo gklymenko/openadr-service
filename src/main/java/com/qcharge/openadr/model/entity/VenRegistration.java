@@ -1,5 +1,6 @@
 package com.qcharge.openadr.model.entity;
 
+import com.qcharge.openadr.model.enums.VenRegistrationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -38,7 +39,10 @@ public class VenRegistration {
 
     @Column(name = "status", nullable = false)
     @Enumerated(EnumType.STRING)
-    private RegistrationStatus status = RegistrationStatus.PENDING;
+    private VenRegistrationStatus status = VenRegistrationStatus.PENDING;
+
+    @Column(name = "requested_poll_frequency", length = 64)
+    private String requestedPollFrequency;
 
     @Column(name = "registered_at")
     private Instant registeredAt;
@@ -56,9 +60,5 @@ public class VenRegistration {
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();
-    }
-
-    public enum RegistrationStatus {
-        PENDING, REGISTERED, CANCELLED
     }
 }

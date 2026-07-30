@@ -40,6 +40,14 @@ public class HttpClientConfig {
         sslParams.setCipherSuites(supportedOpenAdrCipherSuites(sslContext));
         sslParams.setProtocols(new String[]{"TLSv1.2"});
 
+        if (properties.getSecurity().isDisableHostnameVerification()) {
+            // Disable CN/SAN hostname check — needed for TH cert (CN=vtn vs 127.0.0.1)
+            sslParams.setEndpointIdentificationAlgorithm("");
+            log.warn("TLS hostname verification DISABLED — use only for Test Harness testing");
+        } else {
+            sslParams.setEndpointIdentificationAlgorithm("HTTPS");
+        }
+
         HttpClient httpClient = HttpClient.newBuilder()
                 .sslContext(sslContext)
                 .sslParameters(sslParams)

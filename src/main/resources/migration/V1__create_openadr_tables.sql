@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS ven_registration (
     vtn_id          VARCHAR(64),
     registration_id VARCHAR(64),
     status          VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
+    requested_poll_frequency VARCHAR(64) NULL,
     registered_at DATETIME(3) NULL,
     updated_at DATETIME(3) NOT NULL,
     INDEX idx_ven_id (ven_id)
