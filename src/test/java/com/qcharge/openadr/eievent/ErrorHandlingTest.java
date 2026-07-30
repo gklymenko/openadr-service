@@ -1,7 +1,7 @@
 package com.qcharge.openadr.eievent;
 
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
-import com.qcharge.openadr.exceptions.OpenAdrTransportException;
+import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import org.junit.jupiter.api.Test;
@@ -90,26 +90,20 @@ class ErrorHandlingTest {
         assertEquals(469, ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER);
     }
 
-    // --- 463 exception ---
+    // --- Application exception ---
 
     @Test
-    void openAdrTransportException_463_hasCorrectStatusCode() {
-        var ex = new OpenAdrTransportException(
+    void openAdrApplicationException_463_hasCorrectProtocolContext() {
+        var ex = new OpenAdrApplicationException(
                 "VTN rejected request: 463 Not Registered/Authorized",
                 ApplicationLayerErrorCodes.NOT_REGISTERED,
-                null);
+                "Not Registered/Authorized",
+                "request-123"
+        );
 
-        assertEquals(463, ex.getHttpStatusCode());
+        assertEquals(463, ex.getResponseCode());
+        assertEquals("Not Registered/Authorized", ex.getResponseDescription());
+        assertEquals("request-123", ex.getRequestId());
         assertTrue(ex.getMessage().contains("463"));
-        // 463 is in 4xx range — isClientError() returns true
-        assertTrue(ex.isClientError());
-        assertFalse(ex.isServerError());
-    }
-
-    @Test
-    void openAdrTransportException_463_isClientError_notRetried() {
-        // Verify the RetryHandler would not retry a 463
-        var ex = new OpenAdrTransportException("463", 463, null);
-        assertTrue(ex.isClientError(), "463 must be treated as client error (no retry)");
     }
 }

@@ -2,6 +2,7 @@ package com.qcharge.openadr.eiregisterparty;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.VenRegistration;
+import com.qcharge.openadr.model.enums.VenRegistrationStatus;
 import com.qcharge.openadr.repository.OptScheduleRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.repository.VenReportRepository;
@@ -62,7 +63,7 @@ class RegistrationServiceCurrentVenIdTest {
         registration.setVenId("VEN063026_152944_129");
 
         when(registrationRepository.findFirstByStatusOrderByUpdatedAtDesc(
-                VenRegistration.RegistrationStatus.REGISTERED
+                VenRegistrationStatus.REGISTERED
         )).thenReturn(Optional.of(registration));
 
         assertEquals("VEN063026_152944_129", registrationService.currentVenId());
@@ -71,7 +72,7 @@ class RegistrationServiceCurrentVenIdTest {
     @Test
     void currentVenId_returnsConfiguredId_whenNoRegistrationExists() {
         when(registrationRepository.findFirstByStatusOrderByUpdatedAtDesc(
-                VenRegistration.RegistrationStatus.REGISTERED
+                VenRegistrationStatus.REGISTERED
         )).thenReturn(Optional.empty());
 
         assertEquals("TH_VEN", registrationService.currentVenId());
@@ -83,7 +84,7 @@ class RegistrationServiceCurrentVenIdTest {
         registration.setVenId("TH_VEN");
 
         when(registrationRepository.findFirstByStatusOrderByUpdatedAtDesc(
-                VenRegistration.RegistrationStatus.REGISTERED
+                VenRegistrationStatus.REGISTERED
         )).thenReturn(Optional.of(registration));
 
         assertEquals("TH_VEN", registrationService.currentVenId());

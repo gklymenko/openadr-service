@@ -1,7 +1,7 @@
 package com.qcharge.openadr.service.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.OpenAdrTransportException;
+import com.qcharge.openadr.exceptions.OpenAdrHttpException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -26,12 +26,12 @@ public class RetryHandler {
         long delayMillis = properties.getTransport().getRetryInitialDelayMillis();
         long maxDelayMillis = properties.getTransport().getRetryMaxDelayMillis();
 
-        OpenAdrTransportException lastException = null;
+        OpenAdrHttpException lastException = null;
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 return operation.get();
-            } catch (OpenAdrTransportException e) {
+            } catch (OpenAdrHttpException e) {
                 if (e.isClientError()) {
                     throw e;
                 }
@@ -48,7 +48,7 @@ public class RetryHandler {
             }
         }
 
-        throw new OpenAdrTransportException(
+        throw new OpenAdrHttpException(
                 "OpenADR %s failed after %d attempts".formatted(operationName, maxAttempts),
                 lastException
         );
@@ -59,7 +59,7 @@ public class RetryHandler {
             Thread.sleep(millis);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new OpenAdrTransportException("Retry interrupted", ie);
+            throw new OpenAdrHttpException("Retry interrupted", ie);
         }
     }
 

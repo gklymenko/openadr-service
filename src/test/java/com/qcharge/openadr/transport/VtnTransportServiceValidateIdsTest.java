@@ -2,6 +2,7 @@ package com.qcharge.openadr.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.exceptions.OpenAdrTransportException;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
@@ -90,6 +91,36 @@ class VtnTransportServiceValidateIdsTest {
         );
 
         assertInstanceOf(OadrCreatedPartyRegistrationType.class, result);
+    }
+
+    @Test
+    void send_throwsApplicationException_whenVtnReturnsNotRegistered() throws Exception {
+        EiResponseType eiResponse = Oadr20bResponseBuilders
+                .newOadr20bEiResponseBuilder(
+                        "req-463",
+                        ApplicationLayerErrorCodes.NOT_REGISTERED
+                )
+                .withDescription("Not Registered/Authorized")
+                .build();
+
+        OadrCreatedPartyRegistrationType created = Oadr20bEiRegisterPartyBuilders
+                .newOadr20bCreatedPartyRegistrationBuilder(eiResponse, "TH_VEN", "test-vtn")
+                .build();
+
+        String responseXml = jaxbContext.marshalRoot(created, false);
+        doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
+
+        OpenAdrApplicationException exception = assertThrows(
+                OpenAdrApplicationException.class,
+                () -> service.send(
+                        Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE,
+                        buildOutgoingPayload()
+                )
+        );
+
+        assertEquals(ApplicationLayerErrorCodes.NOT_REGISTERED, exception.getResponseCode());
+        assertEquals("Not Registered/Authorized", exception.getResponseDescription());
+        assertEquals("req-463", exception.getRequestId());
     }
 
     /**

@@ -1,7 +1,9 @@
 package com.qcharge.openadr.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.OpenAdrTransportException;
+import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
+import com.qcharge.openadr.exceptions.OpenAdrHttpException;
 import com.qcharge.openadr.service.transport.RetryHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +39,7 @@ class RetryHandlerTest {
 
         String result = retryHandler.executeWithRetry("test-op", () -> {
             if (calls.incrementAndGet() == 1) {
-                throw new OpenAdrTransportException("HTTP server error 503");
+                throw new OpenAdrHttpException("HTTP server error 503");
             }
             return "recovered";
         });
@@ -50,10 +52,10 @@ class RetryHandlerTest {
     void executeWithRetry_serverError_retriesUpToMaxAttempts() {
         AtomicInteger calls = new AtomicInteger(0);
 
-        OpenAdrTransportException ex = assertThrows(OpenAdrTransportException.class, () ->
+        OpenAdrHttpException ex = assertThrows(OpenAdrHttpException.class, () ->
                 retryHandler.executeWithRetry("test-op", () -> {
                     calls.incrementAndGet();
-                    throw new OpenAdrTransportException("HTTP server error 500", 500, new RuntimeException());
+                    throw new OpenAdrHttpException("HTTP server error 500", 500, new RuntimeException());
                 })
         );
 
@@ -65,10 +67,10 @@ class RetryHandlerTest {
     void executeWithRetry_clientError_doesNotRetry() {
         AtomicInteger calls = new AtomicInteger(0);
 
-        assertThrows(OpenAdrTransportException.class, () ->
+        assertThrows(OpenAdrHttpException.class, () ->
                 retryHandler.executeWithRetry("test-op", () -> {
                     calls.incrementAndGet();
-                    throw new OpenAdrTransportException("HTTP client error 404", 404, new RuntimeException());
+                    throw new OpenAdrHttpException("HTTP client error 404", 404, new RuntimeException());
                 })
         );
 
@@ -79,10 +81,10 @@ class RetryHandlerTest {
     void executeWithRetry_connectionError_retries() {
         AtomicInteger calls = new AtomicInteger(0);
 
-        assertThrows(OpenAdrTransportException.class, () ->
+        assertThrows(OpenAdrHttpException.class, () ->
                 retryHandler.executeWithRetry("test-op", () -> {
                     calls.incrementAndGet();
-                    throw new OpenAdrTransportException("HTTP connection error");
+                    throw new OpenAdrHttpException("HTTP connection error");
                 })
         );
 
@@ -105,10 +107,10 @@ class RetryHandlerTest {
         AtomicInteger calls = new AtomicInteger(0);
         long start = System.currentTimeMillis();
 
-        assertThrows(OpenAdrTransportException.class, () ->
+        assertThrows(OpenAdrHttpException.class, () ->
                 retryHandler.executeWithRetry("test-op", () -> {
                     calls.incrementAndGet();
-                    throw new OpenAdrTransportException("HTTP server error 503", 503, new RuntimeException());
+                    throw new OpenAdrHttpException("HTTP server error 503", 503, new RuntimeException());
                 })
         );
 
@@ -131,10 +133,10 @@ class RetryHandlerTest {
         AtomicInteger calls = new AtomicInteger(0);
         long start = System.currentTimeMillis();
 
-        assertThrows(OpenAdrTransportException.class, () ->
+        assertThrows(OpenAdrHttpException.class, () ->
                 retryHandler.executeWithRetry("test-op", () -> {
                     calls.incrementAndGet();
-                    throw new OpenAdrTransportException("HTTP server error 503", 503, new RuntimeException());
+                    throw new OpenAdrHttpException("HTTP server error 503", 503, new RuntimeException());
                 })
         );
 
@@ -148,22 +150,43 @@ class RetryHandlerTest {
 
     @Test
     void clientError_isClientError_returnsTrue() {
-        var e = new OpenAdrTransportException("HTTP client error 422", 422, new RuntimeException());
+        var e = new OpenAdrHttpException("HTTP client error 422", 422, new RuntimeException());
         assertTrue(e.isClientError());
         assertFalse(e.isServerError());
     }
 
     @Test
     void serverError_isServerError_returnsTrue() {
-        var e = new OpenAdrTransportException("HTTP server error 503", 503, new RuntimeException());
+        var e = new OpenAdrHttpException("HTTP server error 503", 503, new RuntimeException());
         assertTrue(e.isServerError());
         assertFalse(e.isClientError());
     }
 
     @Test
     void noStatusCode_neitherClientNorServerError() {
-        var e = new OpenAdrTransportException("connection refused");
+        var e = new OpenAdrHttpException("connection refused");
         assertFalse(e.isClientError());
         assertFalse(e.isServerError());
+    }
+
+    @Test
+    void applicationError_isNotRetried() {
+        AtomicInteger calls = new AtomicInteger(0);
+
+        OpenAdrApplicationException exception = assertThrows(
+                OpenAdrApplicationException.class,
+                () -> retryHandler.executeWithRetry("test-op", () -> {
+                    calls.incrementAndGet();
+                    throw new OpenAdrApplicationException(
+                            "VTN rejected request",
+                            ApplicationLayerErrorCodes.NOT_REGISTERED,
+                            "Not Registered/Authorized",
+                            "request-123"
+                    );
+                })
+        );
+
+        assertEquals(ApplicationLayerErrorCodes.NOT_REGISTERED, exception.getResponseCode());
+        assertEquals(1, calls.get(), "Application errors must not enter the HTTP retry loop");
     }
 }

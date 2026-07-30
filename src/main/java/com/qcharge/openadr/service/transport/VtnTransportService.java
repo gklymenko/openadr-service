@@ -2,12 +2,15 @@ package com.qcharge.openadr.service.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
+import com.qcharge.openadr.exceptions.OpenAdrHttpException;
 import com.qcharge.openadr.exceptions.OpenAdrTransportException;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bMarshalException;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
+import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelOptType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledOptType;
@@ -144,13 +147,13 @@ public class VtnTransportService {
                     .retrieve()
                     .body(String.class);
         } catch (HttpClientErrorException e) {
-            throw new OpenAdrTransportException(
+            throw new OpenAdrHttpException(
                     "HTTP client error " + e.getStatusCode(), e.getStatusCode().value(), e);
         } catch (HttpServerErrorException e) {
-            throw new OpenAdrTransportException(
+            throw new OpenAdrHttpException(
                     "HTTP server error " + e.getStatusCode(), e.getStatusCode().value(), e);
         } catch (ResourceAccessException e) {
-            throw new OpenAdrTransportException("HTTP connection error", e);
+            throw new OpenAdrHttpException("HTTP connection error", e);
         }
     }
 
@@ -212,36 +215,42 @@ public class VtnTransportService {
     }
 
     private void checkApplicationLayerError(Object response) {
-        String responseCode = extractResponseCode(response);
-        if (String.valueOf(ApplicationLayerErrorCodes.NOT_REGISTERED).equals(responseCode)) {
-            log.error("VTN returned 463 Not Registered/Authorized. " +
-                    "Certificate CN may not match venID. " +
-                    "Check that venID in config matches CN in VEN certificate.");
-            throw new OpenAdrTransportException(
-                    "VTN rejected request: 463 Not Registered/Authorized",
-                    ApplicationLayerErrorCodes.NOT_REGISTERED,
-                    null);
+        EiResponseType eiResponse = extractEiResponse(response);
+        if (eiResponse == null
+                || !String.valueOf(ApplicationLayerErrorCodes.NOT_REGISTERED)
+                .equals(eiResponse.getResponseCode())) {
+            return;
         }
+
+        log.error("VTN returned 463 Not Registered/Authorized. " +
+                "Certificate CN may not match venID. " +
+                "Check that venID in config matches CN in VEN certificate.");
+        throw new OpenAdrApplicationException(
+                "VTN rejected request: 463 Not Registered/Authorized",
+                ApplicationLayerErrorCodes.NOT_REGISTERED,
+                eiResponse.getResponseDescription(),
+                eiResponse.getRequestID()
+        );
     }
 
-    private String extractResponseCode(Object response) {
+    private EiResponseType extractEiResponse(Object response) {
         if (response == null) {
             return null;
         }
 
         return switch (response) {
-            case OadrCreatedPartyRegistrationType r -> r.getEiResponse().getResponseCode();
-            case OadrRegisteredReportType r -> r.getEiResponse().getResponseCode();
-            case OadrResponseType r -> r.getEiResponse().getResponseCode();
+            case OadrCreatedPartyRegistrationType r -> r.getEiResponse();
+            case OadrRegisteredReportType r -> r.getEiResponse();
+            case OadrResponseType r -> r.getEiResponse();
 
-            case OadrCreatedReportType r -> r.getEiResponse().getResponseCode();
-            case OadrUpdatedReportType r -> r.getEiResponse().getResponseCode();
-            case OadrCanceledReportType r -> r.getEiResponse().getResponseCode();
+            case OadrCreatedReportType r -> r.getEiResponse();
+            case OadrUpdatedReportType r -> r.getEiResponse();
+            case OadrCanceledReportType r -> r.getEiResponse();
 
-            case OadrCreatedOptType r -> r.getEiResponse().getResponseCode();
-            case OadrCanceledOptType r -> r.getEiResponse().getResponseCode();
+            case OadrCreatedOptType r -> r.getEiResponse();
+            case OadrCanceledOptType r -> r.getEiResponse();
 
-            case OadrCanceledPartyRegistrationType r -> r.getEiResponse().getResponseCode();
+            case OadrCanceledPartyRegistrationType r -> r.getEiResponse();
 
             default -> null;
         };
