@@ -16,12 +16,13 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
-import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
+import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,11 +46,19 @@ public class DrEventHandler {
     private final EventOptDecisionService eventOptDecisionService;
     private final EventValidationService eventValidationService;
     private final OcppIntegrationService ocppIntegrationService;
-    private final ObjectProvider<RegistrationService> registrationServiceProvider;
+    private final OpenAdrSessionProvider sessionProvider;
 
     @Transactional
     public void handle(OadrDistributeEventType distributeEvent) {
-        String venId = registrationServiceProvider.getObject().currentVenId();
+        handle(distributeEvent, sessionProvider.current());
+    }
+
+    @Transactional
+    public void handle(
+            OadrDistributeEventType distributeEvent,
+            OpenAdrSessionSnapshot session
+    ) {
+        String venId = session.venId();
         String distributeRequestId = safeRequestId(distributeEvent.getRequestID());
 
         EiResponseType eiResponse = Oadr20bResponseBuilders
@@ -63,7 +72,8 @@ public class DrEventHandler {
         Set<String> eventIds = new HashSet<>();
 
         for (OadrEvent oadrEvent : distributeEvent.getOadrEvent()) {
-            EventProcessingResult result = processEventSafely(oadrEvent, eventIds);
+            EventProcessingResult result =
+                    processEventSafely(oadrEvent, eventIds, session.venId());
 
             if (!requiresCreatedEventResponse(oadrEvent)) {
                 continue;
@@ -89,17 +99,18 @@ public class DrEventHandler {
         }
 
         OadrCreatedEventType createdEvent = createdEventBuilder.build();
-        transportService.createdEvent(createdEvent);
+        transportService.send(OpenAdrOperations.CREATED_EVENT, createdEvent, session);
 
         log.info("Sent oadrCreatedEvent. eventResponses={}", eventResponseCount);
     }
 
     private EventProcessingResult processEventSafely(
             OadrEvent oadrEvent,
-            Set<String> eventIds
+            Set<String> eventIds,
+            String venId
     ) {
         try {
-            return processEvent(oadrEvent, eventIds);
+            return processEvent(oadrEvent, eventIds, venId);
         } catch (EventValidationException e) {
             EventDescriptorType descriptor = descriptorOf(oadrEvent);
 
@@ -190,7 +201,8 @@ public class DrEventHandler {
 
     private EventProcessingResult processEvent(
             OadrEvent oadrEvent,
-            Set<String> eventIds
+            Set<String> eventIds,
+            String venId
     ) {
         EventDescriptorType descriptor = requireDescriptor(oadrEvent);
 
@@ -229,7 +241,7 @@ public class DrEventHandler {
             );
         }
 
-        eventValidationService.validateTargetAndMarketContext(oadrEvent);
+        eventValidationService.validateTargetAndMarketContext(oadrEvent, venId);
 
         if (isCancelled(descriptor)) {
             saveCancelledEvent(oadrEvent);

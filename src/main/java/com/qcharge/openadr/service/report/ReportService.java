@@ -1,7 +1,6 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.model.entity.VenRegistration;
 import com.qcharge.openadr.model.entity.VenReport;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
@@ -15,11 +14,12 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrReportDescriptionType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.siscale.SiScaleCodeType;
 import com.qcharge.openadr.repository.VenReportRepository;
-import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
+import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,10 +45,22 @@ public class ReportService {
     private final OpenAdrProperties properties;
     private final VenReportRepository reportRepository;
     private final VtnTransportService transportService;
-    private final ObjectProvider<RegistrationService> registrationServiceProvider;
+    private final OpenAdrSessionProvider sessionProvider;
 
     @Transactional
     public OadrRegisteredReportType registerReportingCapabilities(String venId) {
+        OpenAdrSessionSnapshot session = sessionProvider.current();
+        if (!session.venId().equals(venId)) {
+            throw new IllegalStateException("VEN ID does not match current OpenADR session");
+        }
+        return registerReportingCapabilities(session);
+    }
+
+    @Transactional
+    public OadrRegisteredReportType registerReportingCapabilities(
+            OpenAdrSessionSnapshot session
+    ) {
+        String venId = session.venId();
         String requestId = UUID.randomUUID().toString();
 
         log.info("Registering reporting capabilities. venId={}", venId);
@@ -69,7 +81,11 @@ public class ReportService {
         saveCapability(REPORT_SPECIFIER_ID_TELEMETRY_USAGE, ReportNameEnumeratedType.TELEMETRY_USAGE.value());
         saveCapability(REPORT_SPECIFIER_ID_TELEMETRY_STATUS, ReportNameEnumeratedType.TELEMETRY_STATUS.value());
 
-        Object response = transportService.registerReport(registerReport);
+        Object response = transportService.send(
+                OpenAdrOperations.REGISTER_REPORT,
+                registerReport,
+                session
+        );
 
         if (!(response instanceof OadrRegisteredReportType registeredReport)) {
             throw new IllegalStateException(
@@ -86,7 +102,14 @@ public class ReportService {
     }
 
     public OadrRegisterReportType buildMetadataRegisterReport(String reportRequestId) {
-        String venId = currentVenId();
+        return buildMetadataRegisterReport(reportRequestId, sessionProvider.current());
+    }
+
+    public OadrRegisterReportType buildMetadataRegisterReport(
+            String reportRequestId,
+            OpenAdrSessionSnapshot session
+    ) {
+        String venId = session.venId();
         String requestId = UUID.randomUUID().toString();
 
         OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
@@ -299,10 +322,6 @@ public class ReportService {
         report.setUpdatedAt(nowUtc());
 
         reportRepository.save(report);
-    }
-
-    private String currentVenId() {
-        return registrationServiceProvider.getObject().currentVenId();
     }
 
     private String toXmlDuration(int seconds) {

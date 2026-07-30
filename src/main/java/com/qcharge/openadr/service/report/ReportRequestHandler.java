@@ -16,13 +16,13 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
 import com.qcharge.openadr.repository.VenReportRepository;
-import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,12 +50,20 @@ public class ReportRequestHandler {
     private final VtnTransportService transportService;
     private final ReportService reportService;
     private final TaskScheduler openAdrTaskScheduler;
-    private final ObjectProvider<RegistrationService> registrationServiceProvider;
+    private final OpenAdrSessionProvider sessionProvider;
 
     private final Map<String, ScheduledFuture<?>> activeReportTasks = new ConcurrentHashMap<>();
 
     @Transactional
     public void handleRegisteredReport(OadrRegisteredReportType registeredReport) {
+        handleRegisteredReport(registeredReport, sessionProvider.current());
+    }
+
+    @Transactional
+    public void handleRegisteredReport(
+            OadrRegisteredReportType registeredReport,
+            OpenAdrSessionSnapshot session
+    ) {
         String responseCode = registeredReport.getEiResponse().getResponseCode();
 
         if (!RESPONSE_OK.equals(responseCode)) {
@@ -77,22 +85,42 @@ public class ReportRequestHandler {
 
         processReportRequests(
                 registeredReport.getEiResponse().getRequestID(),
-                registeredReport.getOadrReportRequest()
+                registeredReport.getOadrReportRequest(),
+                session
         );
     }
 
     @Transactional
     public void handle(OadrCreateReportType createReport) {
+        handle(createReport, sessionProvider.current());
+    }
+
+    @Transactional
+    public void handle(
+            OadrCreateReportType createReport,
+            OpenAdrSessionSnapshot session
+    ) {
         log.info(
                 "Received oadrCreateReport. requestId={}, requests={}",
                 createReport.getRequestID(),
                 createReport.getOadrReportRequest().size()
         );
 
-        processReportRequests(createReport.getRequestID(), createReport.getOadrReportRequest());
+        processReportRequests(
+                createReport.getRequestID(),
+                createReport.getOadrReportRequest(),
+                session
+        );
     }
 
     public void handleRegisterReport(OadrRegisterReportType registerReport) {
+        handleRegisterReport(registerReport, sessionProvider.current());
+    }
+
+    public void handleRegisterReport(
+            OadrRegisterReportType registerReport,
+            OpenAdrSessionSnapshot session
+    ) {
         log.info(
                 "Received oadrRegisterReport from VTN. requestId={}, reports={}",
                 registerReport.getRequestID(),
@@ -103,15 +131,27 @@ public class ReportRequestHandler {
                 .newOadr20bRegisteredReportBuilder(
                         registerReport.getRequestID(),
                         ApplicationLayerErrorCodes.OK,
-                        currentVenId()
+                        session.venId()
                 )
                 .build();
 
-        transportService.send(OpenAdrOperations.REGISTERED_REPORT_RESPONSE, response);
+        transportService.send(
+                OpenAdrOperations.REGISTERED_REPORT_RESPONSE,
+                response,
+                session
+        );
     }
 
     @Transactional
     public void handleCancelReport(OadrCancelReportType cancelReport) {
+        handleCancelReport(cancelReport, sessionProvider.current());
+    }
+
+    @Transactional
+    public void handleCancelReport(
+            OadrCancelReportType cancelReport,
+            OpenAdrSessionSnapshot session
+    ) {
         log.info(
                 "Received oadrCancelReport. requestId={}, reportRequestIds={}",
                 cancelReport.getRequestID(),
@@ -124,12 +164,12 @@ public class ReportRequestHandler {
             if (cancelReport.getReportRequestID().isEmpty()) {
                 reportRepository.findAll().stream()
                         .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
-                        .forEach(this::sendUpdateReport);
+                        .forEach(report -> sendUpdateReport(report, session));
             } else {
                 cancelReport.getReportRequestID().forEach(reportRequestId ->
                         reportRepository.findByReportRequestId(reportRequestId)
                                 .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
-                                .ifPresent(this::sendUpdateReport)
+                                .ifPresent(report -> sendUpdateReport(report, session))
                 );
             }
         }
@@ -149,14 +189,25 @@ public class ReportRequestHandler {
                 .newOadr20bCanceledReportBuilder(
                         cancelReport.getRequestID(),
                         allCancelled ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED,
-                        currentVenId()
+                        session.venId()
                 )
                 .build();
 
-        transportService.send(OpenAdrOperations.CANCELED_REPORT_RESPONSE, response);
+        transportService.send(
+                OpenAdrOperations.CANCELED_REPORT_RESPONSE,
+                response,
+                session
+        );
     }
 
     public void handleUpdateReport(OadrUpdateReportType updateReport) {
+        handleUpdateReport(updateReport, sessionProvider.current());
+    }
+
+    public void handleUpdateReport(
+            OadrUpdateReportType updateReport,
+            OpenAdrSessionSnapshot session
+    ) {
         log.info(
                 "Received oadrUpdateReport from VTN. requestId={}, reports={}",
                 updateReport.getRequestID(),
@@ -167,21 +218,29 @@ public class ReportRequestHandler {
                 .newOadr20bUpdatedReportBuilder(
                         updateReport.getRequestID(),
                         ApplicationLayerErrorCodes.OK,
-                        currentVenId()
+                        session.venId()
                 )
                 .build();
 
-        transportService.send(OpenAdrOperations.UPDATED_REPORT_RESPONSE, response);
+        transportService.send(
+                OpenAdrOperations.UPDATED_REPORT_RESPONSE,
+                response,
+                session
+        );
     }
 
-    private void processReportRequests(String requestId, List<OadrReportRequestType> requests) {
+    private void processReportRequests(
+            String requestId,
+            List<OadrReportRequestType> requests,
+            OpenAdrSessionSnapshot session
+    ) {
         List<VenReport> immediateReports = new ArrayList<>();
         List<String> pendingRequestIds = new ArrayList<>();
 
         boolean allSupported = true;
 
         for (OadrReportRequestType request : requests) {
-            ReportRequestResult result = processReportRequest(request);
+            ReportRequestResult result = processReportRequest(request, session);
 
             if (result.supported() && result.pending()) {
                 pendingRequestIds.add(request.getReportRequestID());
@@ -198,18 +257,22 @@ public class ReportRequestHandler {
 
         sendCreatedReport(
                 requestId, pendingRequestIds,
-                allSupported ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED
+                allSupported ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED,
+                session
         );
 
-        immediateReports.forEach(this::sendUpdateReport);
+        immediateReports.forEach(report -> sendUpdateReport(report, session));
     }
 
-    private ReportRequestResult processReportRequest(OadrReportRequestType request) {
+    private ReportRequestResult processReportRequest(
+            OadrReportRequestType request,
+            OpenAdrSessionSnapshot session
+    ) {
         String reportRequestId = request.getReportRequestID();
         String reportSpecifierId = request.getReportSpecifier().getReportSpecifierID();
 
         if (METADATA_REPORT_SPECIFIER_ID.equalsIgnoreCase(reportSpecifierId)) {
-            sendMetadataReportResponse(reportRequestId);
+            sendMetadataReportResponse(reportRequestId, session);
             return ReportRequestResult.acceptedNotPending();
         }
 
@@ -266,27 +329,40 @@ public class ReportRequestHandler {
         return ReportRequestResult.accepted();
     }
 
-    private void sendMetadataReportResponse(String reportRequestId) {
+    private void sendMetadataReportResponse(
+            String reportRequestId,
+            OpenAdrSessionSnapshot session
+    ) {
         log.info("Sending METADATA oadrRegisterReport. reportRequestId={}", reportRequestId);
 
-        OadrRegisterReportType metadataResponse = reportService.buildMetadataRegisterReport(reportRequestId);
+        OadrRegisterReportType metadataResponse =
+                reportService.buildMetadataRegisterReport(reportRequestId, session);
 
-        transportService.registerReport(metadataResponse);
+        transportService.send(OpenAdrOperations.REGISTER_REPORT, metadataResponse, session);
     }
 
-    private void sendCreatedReport(String requestId, List<String> pendingRequestIds, int responseCode) {
+    private void sendCreatedReport(
+            String requestId,
+            List<String> pendingRequestIds,
+            int responseCode,
+            OpenAdrSessionSnapshot session
+    ) {
         var builder = Oadr20bEiReportBuilders
                 .newOadr20bCreatedReportBuilder(
                         requestId,
                         responseCode,
-                        currentVenId()
+                        session.venId()
                 );
 
         pendingRequestIds.forEach(builder::addPendingReportRequestId);
 
         OadrCreatedReportType createdReport = builder.build();
 
-        transportService.createdReport(createdReport);
+        transportService.send(
+                OpenAdrOperations.CREATED_REPORT_RESPONSE,
+                createdReport,
+                session
+        );
 
         log.info(
                 "Sent oadrCreatedReport. requestId={}, pendingRequests={}, responseCode={}",
@@ -351,15 +427,26 @@ public class ReportRequestHandler {
     }
 
     private void sendUpdateReport(VenReport report) {
+        sendUpdateReport(report, sessionProvider.current());
+    }
+
+    private void sendUpdateReport(
+            VenReport report,
+            OpenAdrSessionSnapshot session
+    ) {
         OadrUpdateReportType updateReport = Oadr20bEiReportBuilders
                 .newOadr20bUpdateReportBuilder(
                         java.util.UUID.randomUUID().toString(),
-                        currentVenId()
+                        session.venId()
                 )
                 .addReport(buildReportPayload(report))
                 .build();
 
-        Object response = transportService.updateReport(updateReport);
+        Object response = transportService.send(
+                OpenAdrOperations.UPDATE_REPORT,
+                updateReport,
+                session
+        );
 
         if (response instanceof OadrUpdatedReportType updatedReport) {
             log.info(
@@ -369,7 +456,7 @@ public class ReportRequestHandler {
             );
 
             if (updatedReport.getOadrCancelReport() != null) {
-                handleCancelReport(updatedReport.getOadrCancelReport());
+                handleCancelReport(updatedReport.getOadrCancelReport(), session);
             }
 
             return;
@@ -453,10 +540,6 @@ public class ReportRequestHandler {
         if (task != null) {
             task.cancel(false);
         }
-    }
-
-    private String currentVenId() {
-        return registrationServiceProvider.getObject().currentVenId();
     }
 
     private Duration parseDuration(String rawValue, Duration fallback) {

@@ -31,6 +31,8 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
 import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
@@ -58,8 +60,17 @@ public class VtnTransportService {
     private final OpenAdrApplicationResponseEvaluator applicationResponseEvaluator;
     private final OpenAdrApplicationErrorMapper applicationErrorMapper;
     private final OpenAdrReplyFactory replyFactory;
+    private final OpenAdrSessionProvider sessionProvider;
 
     public <Q, R> R send(OpenAdrOperation<Q, R> operation, Q payload) {
+        return send(operation, payload, sessionProvider.current());
+    }
+
+    public <Q, R> R send(
+            OpenAdrOperation<Q, R> operation,
+            Q payload,
+            OpenAdrSessionSnapshot session
+    ) {
         operation.requireValidRequest(payload);
 
         try {
@@ -118,7 +129,7 @@ public class VtnTransportService {
             R typedResponse = requireExpectedResponse(operation, response);
 
             OpenAdrExchangeContext<Q, R> context =
-                    new OpenAdrExchangeContext<>(operation, payload, typedResponse);
+                    new OpenAdrExchangeContext<>(operation, session, payload, typedResponse);
 
             validateExchange(context);
 
@@ -213,7 +224,14 @@ public class VtnTransportService {
     }
 
     public void sendReply(OpenAdrReply<?, ?> reply) {
-        sendCapturedReply(reply);
+        sendCapturedReply(reply, sessionProvider.current());
+    }
+
+    public void sendReply(
+            OpenAdrReply<?, ?> reply,
+            OpenAdrSessionSnapshot session
+    ) {
+        sendCapturedReply(reply, session);
     }
 
     private <Q, R> void validateExchange(OpenAdrExchangeContext<Q, R> context) {
@@ -225,10 +243,14 @@ public class VtnTransportService {
 
             replyFactory.createApplicationErrorReply(
                             context.response(),
-                            venIdForReply(context.request()),
+                            context.session().venId(),
                             applicationError
                     )
-                    .ifPresent(reply -> sendErrorReply(reply, applicationError));
+                    .ifPresent(reply -> sendErrorReply(
+                            reply,
+                            applicationError,
+                            context.session()
+                    ));
 
             throw applicationError;
         }
@@ -236,10 +258,11 @@ public class VtnTransportService {
 
     private void sendErrorReply(
             OpenAdrReply<?, ?> reply,
-            OpenAdrApplicationException applicationError
+            OpenAdrApplicationException applicationError,
+            OpenAdrSessionSnapshot session
     ) {
         try {
-            sendReply(reply);
+            sendReply(reply, session);
             log.info(
                     "Sent OpenADR application error reply. operation={}, responseCode={}, requestId={}",
                     reply.operation().name(),
@@ -258,21 +281,11 @@ public class VtnTransportService {
         }
     }
 
-    private String venIdForReply(Object request) {
-        if (request instanceof OadrPollType poll) {
-            return poll.getVenID();
-        }
-
-        if (request instanceof OadrRequestEventType requestEvent
-                && requestEvent.getEiRequestEvent() != null) {
-            return requestEvent.getEiRequestEvent().getVenID();
-        }
-
-        return properties.getVen().getId();
-    }
-
-    private <Q, R> void sendCapturedReply(OpenAdrReply<Q, R> reply) {
-        send(reply.operation(), reply.payload());
+    private <Q, R> void sendCapturedReply(
+            OpenAdrReply<Q, R> reply,
+            OpenAdrSessionSnapshot session
+    ) {
+        send(reply.operation(), reply.payload(), session);
     }
 
     private Object unwrapIfNeeded(Object response) {

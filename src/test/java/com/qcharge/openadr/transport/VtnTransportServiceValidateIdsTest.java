@@ -21,6 +21,9 @@ import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorPolicy;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationResponseEvaluator;
 import com.qcharge.openadr.service.transport.RetryHandler;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
+import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
 import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
@@ -29,6 +32,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -39,6 +43,7 @@ import javax.xml.namespace.QName;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -57,6 +62,7 @@ class VtnTransportServiceValidateIdsTest {
     @Mock OpenAdrProperties.Xml xmlProps;
     @Mock OpenAdrProperties.Vtn vtnProps;
     @Mock OpenAdrExchangeValidationService exchangeValidationService;
+    @Mock OpenAdrSessionProvider sessionProvider;
 
     VtnTransportService service;
 
@@ -76,8 +82,12 @@ class VtnTransportServiceValidateIdsTest {
                         new OpenAdrApplicationErrorPolicy()
                 ),
                 new OpenAdrApplicationErrorMapper(),
-                new OpenAdrReplyFactory()
+                new OpenAdrReplyFactory(),
+                sessionProvider
         );
+        when(sessionProvider.current())
+                .thenReturn(com.qcharge.openadr.TestSessionFixtures.bootstrapSession());
+        clearInvocations(sessionProvider);
     }
 
     /**
@@ -212,10 +222,20 @@ class VtnTransportServiceValidateIdsTest {
         String responseXml = jaxbContext.marshalRoot(registeredReport, false);
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
-        assertDoesNotThrow(
-                () -> service.send(OpenAdrOperations.REGISTER_REPORT, buildReportPayload())
-        );
-        verify(exchangeValidationService).validate(any());
+        OpenAdrSessionSnapshot capturedSession =
+                registeredSession("TH_VEN", "test-vtn", "REG-1");
+
+        assertDoesNotThrow(() -> service.send(
+                OpenAdrOperations.REGISTER_REPORT,
+                buildReportPayload(),
+                capturedSession
+        ));
+
+        ArgumentCaptor<OpenAdrExchangeContext<?, ?>> contextCaptor =
+                ArgumentCaptor.forClass(OpenAdrExchangeContext.class);
+        verify(exchangeValidationService).validate(contextCaptor.capture());
+        assertSame(capturedSession, contextCaptor.getValue().session());
+        verifyNoInteractions(sessionProvider);
     }
 
     private com.qcharge.openadr.model.oadr20b.oadr.OadrQueryRegistrationType buildOutgoingPayload() {

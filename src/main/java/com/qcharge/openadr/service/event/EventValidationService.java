@@ -34,11 +34,18 @@ public class EventValidationService {
     public record ParsedSignal(String signalName, String signalType, BigDecimal currentValue) {}
 
     public void validateTargetAndMarketContext(OadrEvent oadrEvent) {
+        validateTargetAndMarketContext(oadrEvent, properties.getVen().getId());
+    }
+
+    public void validateTargetAndMarketContext(
+            OadrEvent oadrEvent,
+            String venId
+    ) {
         if (oadrEvent == null || oadrEvent.getEiEvent() == null) {
             throw new IllegalArgumentException("eiEvent is required");
         }
 
-        validateTarget(oadrEvent);
+        validateTarget(oadrEvent, venId);
         validateMarketContext(oadrEvent);
     }
 
@@ -85,7 +92,7 @@ public class EventValidationService {
         return Optional.empty();
     }
 
-    private void validateTarget(OadrEvent oadrEvent) {
+    private void validateTarget(OadrEvent oadrEvent, String venId) {
         EiTargetType target = oadrEvent.getEiEvent().getEiTarget();
 
         if (target == null) {
@@ -108,7 +115,7 @@ public class EventValidationService {
 
         boolean venMatches = hasVenTarget && containsIgnoreCase(
                 target.getVenID(),
-                properties.getVen().getId()
+                venId
         );
 
         boolean resourceMatches = hasResourceTarget && containsIgnoreCase(

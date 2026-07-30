@@ -13,18 +13,20 @@ import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
-import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,15 +35,16 @@ class EventPerItemValidationTest {
     private final DrEventRepository repository = mock(DrEventRepository.class);
     private final VtnTransportService transportService = mock(VtnTransportService.class);
     private final EventValidationService validationService = mock(EventValidationService.class);
-    private final ObjectProvider<RegistrationService> registrationProvider = mock(ObjectProvider.class);
-    private final RegistrationService registrationService = mock(RegistrationService.class);
+    private final OpenAdrSessionProvider sessionProvider = mock(OpenAdrSessionProvider.class);
 
     private DrEventHandler handler;
 
     @BeforeEach
     void setUp() {
-        when(registrationProvider.getObject()).thenReturn(registrationService);
-        when(registrationService.currentVenId()).thenReturn("VEN-1");
+        when(sessionProvider.current())
+                .thenReturn(com.qcharge.openadr.TestSessionFixtures.registeredSession(
+                        "VEN-1", "VTN-1", "REG-1"
+                ));
         when(repository.findByEventId("EVENT-1")).thenReturn(Optional.empty());
         when(validationService.parseSignal(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Optional.empty());
@@ -53,7 +56,7 @@ class EventPerItemValidationTest {
                 mock(EventOptDecisionService.class),
                 validationService,
                 mock(OcppIntegrationService.class),
-                registrationProvider
+                sessionProvider
         );
     }
 
@@ -103,7 +106,11 @@ class EventPerItemValidationTest {
     private List<EventResponse> capturedResponses() {
         ArgumentCaptor<OadrCreatedEventType> captor =
                 ArgumentCaptor.forClass(OadrCreatedEventType.class);
-        verify(transportService).createdEvent(captor.capture());
+        verify(transportService).send(
+                eq(OpenAdrOperations.CREATED_EVENT),
+                captor.capture(),
+                any()
+        );
         return captor.getValue()
                 .getEiCreatedEvent()
                 .getEventResponses()

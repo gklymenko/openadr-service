@@ -1,8 +1,5 @@
 package com.qcharge.openadr.service.validation;
 
-import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.model.entity.VenRegistration;
-import com.qcharge.openadr.model.enums.VenRegistrationStatus;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledPartyRegistrationType;
@@ -11,14 +8,12 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrProfiles;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrQueryRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrTransportType;
-import com.qcharge.openadr.repository.VenRegistrationRepository;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.Optional;
 
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.hasText;
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.invalidData;
@@ -33,11 +28,7 @@ import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.va
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.validateRequestIdEcho;
 
 @Component
-@RequiredArgsConstructor
 public class RegistrationValidator implements OpenAdrExchangeValidator {
-
-    private final OpenAdrProperties properties;
-    private final VenRegistrationRepository registrationRepository;
 
     @Override
     public boolean supports(OpenAdrExchangeContext<?, ?> context) {
@@ -50,9 +41,17 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
     public void validate(OpenAdrExchangeContext<?, ?> context) {
         switch (context.request()) {
             case OadrQueryRegistrationType request ->
-                    validateQuery(request, (OadrCreatedPartyRegistrationType) context.response());
+                    validateQuery(
+                            request,
+                            (OadrCreatedPartyRegistrationType) context.response(),
+                            context.session()
+                    );
             case OadrCreatePartyRegistrationType request ->
-                    validateCreate(request, (OadrCreatedPartyRegistrationType) context.response());
+                    validateCreate(
+                            request,
+                            (OadrCreatedPartyRegistrationType) context.response(),
+                            context.session()
+                    );
             case OadrCancelPartyRegistrationType request ->
                     validateCancel(request, (OadrCanceledPartyRegistrationType) context.response());
             default -> throw new IllegalArgumentException(
@@ -62,7 +61,9 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
     }
 
     private void validateQuery(
-            OadrQueryRegistrationType request, OadrCreatedPartyRegistrationType response
+            OadrQueryRegistrationType request,
+            OadrCreatedPartyRegistrationType response,
+            OpenAdrSessionSnapshot session
     ) {
         EiResponseType eiResponse = requireEiResponse(
                 response.getEiResponse(),
@@ -75,13 +76,10 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
             return;
         }
 
-        validateVtnId(response.getVtnID(), request.getRequestID());
+        validateVtnId(response.getVtnID(), request.getRequestID(), session);
         validateProfiles(response, null, null, request.getRequestID());
 
-        Optional<VenRegistration> active = registrationRepository
-                .findFirstByStatusOrderByUpdatedAtDesc(VenRegistrationStatus.REGISTERED);
-
-        if (active.isEmpty()) {
+        if (!session.registered()) {
             if (hasText(response.getVenID()) || hasText(response.getRegistrationID())) {
                 throw invalidId(
                         "oadrCreatedPartyRegistration.venID/registrationID",
@@ -93,16 +91,15 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
             return;
         }
 
-        VenRegistration registration = active.get();
         validateOptionalId(
                 "oadrCreatedPartyRegistration.venID",
-                registration.getVenId(),
+                session.venId(),
                 response.getVenID(),
                 request.getRequestID()
         );
         validateOptionalId(
                 "oadrCreatedPartyRegistration.registrationID",
-                registration.getRegistrationId(),
+                session.registrationId(),
                 response.getRegistrationID(),
                 request.getRequestID()
         );
@@ -110,7 +107,8 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
 
     private void validateCreate(
             OadrCreatePartyRegistrationType request,
-            OadrCreatedPartyRegistrationType response
+            OadrCreatedPartyRegistrationType response,
+            OpenAdrSessionSnapshot session
     ) {
         EiResponseType eiResponse = requireEiResponse(
                 response.getEiResponse(),
@@ -123,7 +121,7 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
             return;
         }
 
-        validateVtnId(response.getVtnID(), request.getRequestID());
+        validateVtnId(response.getVtnID(), request.getRequestID(), session);
         requireText(
                 response.getVenID(),
                 "oadrCreatedPartyRegistration.venID",
@@ -190,8 +188,12 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
         );
     }
 
-    private void validateVtnId(String actualVtnId, String requestId) {
-        String expectedVtnId = properties.getVtn().getId();
+    private void validateVtnId(
+            String actualVtnId,
+            String requestId,
+            OpenAdrSessionSnapshot session
+    ) {
+        String expectedVtnId = session.vtnId();
         requireText(actualVtnId, "oadrCreatedPartyRegistration.vtnID", requestId);
 
         if (hasText(expectedVtnId)) {

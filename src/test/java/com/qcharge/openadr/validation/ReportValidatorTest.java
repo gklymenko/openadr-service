@@ -9,7 +9,6 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportDescriptionType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportRequestType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
-import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.validation.ReportValidator;
@@ -17,12 +16,11 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
+import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
 
 class ReportValidatorTest {
 
-    private final ReportValidator validator =
-            new ReportValidator(mock(VenRegistrationRepository.class));
+    private final ReportValidator validator = new ReportValidator();
 
     @Test
     void registeredReportMustEchoRequestId() {
@@ -33,6 +31,7 @@ class ReportValidatorTest {
                 OpenAdrApplicationException.class,
                 () -> validator.validate(new OpenAdrExchangeContext<>(
                         OpenAdrOperations.REGISTER_REPORT,
+                        registeredSession(),
                         request,
                         response
                 ))
@@ -50,6 +49,7 @@ class ReportValidatorTest {
                 OpenAdrApplicationException.class,
                 () -> validator.validate(new OpenAdrExchangeContext<>(
                         OpenAdrOperations.REGISTER_REPORT,
+                        registeredSession(),
                         request,
                         response
                 ))

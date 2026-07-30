@@ -1,8 +1,5 @@
 package com.qcharge.openadr.service.validation;
 
-import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.model.entity.VenRegistration;
-import com.qcharge.openadr.model.enums.VenRegistrationStatus;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledPartyRegistrationType;
@@ -16,9 +13,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestReregistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
-import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.hasText;
@@ -28,11 +23,7 @@ import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.va
  * Rule 21 validation shared by all service-specific validators.
  */
 @Component
-@RequiredArgsConstructor
 public class CommonIdValidator implements OpenAdrExchangeValidator {
-
-    private final OpenAdrProperties properties;
-    private final VenRegistrationRepository registrationRepository;
 
     @Override
     public boolean supports(OpenAdrExchangeContext<?, ?> context) {
@@ -51,28 +42,20 @@ public class CommonIdValidator implements OpenAdrExchangeValidator {
         if (hasText(receivedVenId)) {
             validateOptionalId(
                     response.getClass().getSimpleName() + ".venID",
-                    currentVenId(),
+                    context.session().venId(),
                     receivedVenId,
                     requestId
             );
         }
 
-        if (hasText(receivedVtnId) && hasText(properties.getVtn().getId())) {
+        if (hasText(receivedVtnId) && hasText(context.session().vtnId())) {
             validateOptionalId(
                     response.getClass().getSimpleName() + ".vtnID",
-                    properties.getVtn().getId(),
+                    context.session().vtnId(),
                     receivedVtnId,
                     requestId
             );
         }
-    }
-
-    private String currentVenId() {
-        return registrationRepository
-                .findFirstByStatusOrderByUpdatedAtDesc(VenRegistrationStatus.REGISTERED)
-                .map(VenRegistration::getVenId)
-                .filter(OpenAdrValidationSupport::hasText)
-                .orElse(properties.getVen().getId());
     }
 
     private String venIdOf(Object payload) {

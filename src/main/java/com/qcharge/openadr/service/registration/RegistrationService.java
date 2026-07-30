@@ -25,6 +25,8 @@ import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.report.ReportService;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import lombok.RequiredArgsConstructor;
@@ -59,16 +61,14 @@ public class RegistrationService {
     private final ReportRequestHandler reportRequestHandler;
     private final DrEventHandler drEventHandler;
     private final EventPoller eventPoller;
+    private final OpenAdrSessionProvider sessionProvider;
 
     /**
      * Returns the VEN ID assigned by the VTN for the current active registration.
      * Configured VEN ID is used only before the first successful registration.
      */
     public String currentVenId() {
-        return findActiveRegistration()
-                .map(VenRegistration::getVenId)
-                .filter(this::hasText)
-                .orElse(properties.getVen().getId());
+        return sessionProvider.current().venId();
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -121,6 +121,7 @@ public class RegistrationService {
      * of venID or registrationID for an active registration.
      */
     public void queryRegistration() {
+        OpenAdrSessionSnapshot session = sessionProvider.current();
         String requestId = newRequestId();
 
         OadrQueryRegistrationType payload = Oadr20bEiRegisterPartyBuilders
@@ -132,7 +133,11 @@ public class RegistrationService {
                 requestId
         );
 
-        Object response = transportService.queryRegistration(payload);
+        Object response = transportService.send(
+                OpenAdrOperations.QUERY_REGISTRATION,
+                payload,
+                session
+        );
 
         if (response instanceof OadrCreatedPartyRegistrationType created) {
             log.info(
@@ -171,9 +176,10 @@ public class RegistrationService {
      * Creates a completely new registration request without registrationID.
      */
     private RegistrationResult registerNew() {
-        String venId = properties.getVen().getId();
+        OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
 
-        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(venId, null);
+        OadrCreatedPartyRegistrationType response =
+                sendCreatePartyRegistration(session);
 
         validateCreatedPartyRegistration(response);
 
@@ -187,12 +193,12 @@ public class RegistrationService {
      */
     private RegistrationResult reregister(VenRegistration existing) {
         requireValidPersistedRegistration(existing);
+        OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(existing);
 
         String previousRegistrationId = existing.getRegistrationId();
 
-        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(
-                existing.getVenId(), existing.getRegistrationId()
-        );
+        OadrCreatedPartyRegistrationType response =
+                sendCreatePartyRegistration(session);
 
         validateCreatedPartyRegistration(response);
 
@@ -210,8 +216,10 @@ public class RegistrationService {
     }
 
     private OadrCreatedPartyRegistrationType sendCreatePartyRegistration(
-            String venId, String registrationId
+            OpenAdrSessionSnapshot session
     ) {
+        String venId = session.venId();
+        String registrationId = session.registrationId();
         String requestId = newRequestId();
 
         var builder = Oadr20bEiRegisterPartyBuilders
@@ -241,7 +249,11 @@ public class RegistrationService {
                 venId, requestId, hasText(registrationId)
         );
 
-        Object response = transportService.register(payload);
+        Object response = transportService.send(
+                OpenAdrOperations.CREATE_PARTY_REGISTRATION,
+                payload,
+                session
+        );
 
         if (!(response instanceof OadrCreatedPartyRegistrationType created)) {
             throw new IllegalStateException(
@@ -312,6 +324,7 @@ public class RegistrationService {
      */
     public void initiateCancelRegistration() {
         VenRegistration registration = requireActiveRegistration();
+        OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(registration);
 
         requireValidPersistedRegistration(registration);
 
@@ -331,7 +344,11 @@ public class RegistrationService {
                 registration.getVenId(), registration.getRegistrationId()
         );
 
-        Object response = transportService.cancelPartyRegistration(payload);
+        Object response = transportService.send(
+                OpenAdrOperations.CANCEL_PARTY_REGISTRATION,
+                payload,
+                session
+        );
 
         if (!(response instanceof OadrCanceledPartyRegistrationType canceled)) {
             throw new IllegalStateException(
@@ -365,7 +382,14 @@ public class RegistrationService {
      * Handles VTN-initiated re-registration received through oadrPoll.
      */
     public void handleRequestReregistration(OadrRequestReregistrationType request) {
-        VenRegistration active = requireActiveRegistration();
+        handleRequestReregistration(request, sessionProvider.current());
+    }
+
+    public void handleRequestReregistration(
+            OadrRequestReregistrationType request,
+            OpenAdrSessionSnapshot session
+    ) {
+        VenRegistration active = requireRegistration(session);
 
         log.info(
                 "Received oadrRequestReregistration. requestedVenId={}, activeVenId={}, registrationId={}",
@@ -382,7 +406,8 @@ public class RegistrationService {
 
         transportService.send(
                 OpenAdrOperations.REGISTRATION_RESPONSE,
-                acknowledgement
+                acknowledgement,
+                session
         );
 
         eventPoller.stop();
@@ -399,8 +424,14 @@ public class RegistrationService {
     public void handleCancelPartyRegistration(
             OadrCancelPartyRegistrationType request
     ) {
-        Optional<VenRegistration> activeOptional =
-                findActiveRegistration();
+        handleCancelPartyRegistration(request, sessionProvider.current());
+    }
+
+    public void handleCancelPartyRegistration(
+            OadrCancelPartyRegistrationType request,
+            OpenAdrSessionSnapshot session
+    ) {
+        Optional<VenRegistration> activeOptional = registrationFor(session);
 
         String requestRegistrationId = request.getRegistrationID();
 
@@ -426,7 +457,7 @@ public class RegistrationService {
                     if (hasText(request.getVenID())) {
                         return request.getVenID();
                     }
-                    return properties.getVen().getId();
+                    return session.venId();
                 });
 
         EiResponseType eiResponse = Oadr20bResponseBuilders
@@ -447,7 +478,8 @@ public class RegistrationService {
 
         transportService.send(
                 OpenAdrOperations.CANCELED_PARTY_REGISTRATION_RESPONSE,
-                response
+                response,
+                session
         );
 
         if (!registrationMatches) {
@@ -616,18 +648,20 @@ public class RegistrationService {
     }
 
     private void runPostRegistrationFlow(VenRegistration registration) {
+        OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(registration);
         OadrRegisteredReportType registeredReport =
-                reportService.registerReportingCapabilities(registration.getVenId());
+                reportService.registerReportingCapabilities(session);
 
         reportRequestHandler.handleRegisteredReport(
-                registeredReport
+                registeredReport,
+                session
         );
 
-        requestAllEvents();
+        requestAllEvents(session);
     }
 
-    private void requestAllEvents() {
-        String venId = currentVenId();
+    private void requestAllEvents(OpenAdrSessionSnapshot session) {
+        String venId = session.venId();
         String requestId = newRequestId();
 
         OadrRequestEventType requestEvent =
@@ -640,12 +674,16 @@ public class RegistrationService {
 
         log.info("Sending oadrRequestEvent. venId={}, requestId={}", venId, requestId);
 
-        Object response = transportService.requestEvent(requestEvent);
+        Object response = transportService.send(
+                OpenAdrOperations.REQUEST_EVENT,
+                requestEvent,
+                session
+        );
 
         if (response instanceof OadrDistributeEventType distributeEvent) {
             log.info("Received {} event(s) from oadrRequestEvent", distributeEvent.getOadrEvent().size());
 
-            drEventHandler.handle(distributeEvent);
+            drEventHandler.handle(distributeEvent, session);
             return;
         }
 
@@ -686,6 +724,22 @@ public class RegistrationService {
         return findActiveRegistration()
                 .orElseThrow(() -> new IllegalStateException(
                         "Active VEN registration was not found"
+                ));
+    }
+
+    private Optional<VenRegistration> registrationFor(
+            OpenAdrSessionSnapshot session
+    ) {
+        if (session.registrationEntityId() == null) {
+            return Optional.empty();
+        }
+        return registrationRepository.findById(session.registrationEntityId());
+    }
+
+    private VenRegistration requireRegistration(OpenAdrSessionSnapshot session) {
+        return registrationFor(session)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Registration from OpenADR session snapshot was not found"
                 ));
     }
 

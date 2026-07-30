@@ -14,10 +14,13 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
+import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.ApplicationErrorAction;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrReply;
 import com.qcharge.openadr.service.transport.OpenAdrReplyFactory;
+import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +46,7 @@ public class EventPoller {
     private final TaskScheduler openAdrTaskScheduler;
     private final OpenAdrApplicationErrorMapper applicationErrorMapper;
     private final OpenAdrReplyFactory replyFactory;
+    private final OpenAdrSessionProvider sessionProvider;
 
     /**
      * Lazy provider avoids direct circular dependency:
@@ -165,8 +169,8 @@ public class EventPoller {
         int maxIterations = maxQueueDrainPolls();
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
-            Object response = sendPoll();
-            PollResult result = handlePollResponse(response);
+            PollExchange exchange = sendPoll();
+            PollResult result = handlePollResponse(exchange);
 
             if (result == PollResult.QUEUE_EMPTY) {
                 log.debug("VTN queue is empty after {} poll(s)", iteration);
@@ -181,63 +185,70 @@ public class EventPoller {
         log.warn("Stopped polling after reaching max queue drain limit: {}", maxIterations);
     }
 
-    private Object sendPoll() {
-        String venId = registrationServiceProvider.getObject().currentVenId();
+    private PollExchange sendPoll() {
+        OpenAdrSessionSnapshot session = sessionProvider.current();
 
         OadrPollType pollPayload = Oadr20bPollBuilders
-                .newOadr20bPollBuilder(venId)
+                .newOadr20bPollBuilder(session.venId())
                 .withSchemaVersion(properties.getVen().getProfile())
                 .build();
 
-        log.debug("Sending oadrPoll. venId={}", venId);
+        log.debug("Sending oadrPoll. venId={}", session.venId());
 
-        return transportService.poll(pollPayload);
+        return new PollExchange(
+                session,
+                transportService.send(OpenAdrOperations.POLL, pollPayload, session)
+        );
     }
 
-    private PollResult handlePollResponse(Object response) {
+    private PollResult handlePollResponse(PollExchange exchange) {
+        Object response = exchange.response();
         if (response == null) {
             log.warn("VTN returned empty response to oadrPoll");
             return PollResult.STOP;
         }
 
         try {
-            return dispatchPollResponse(response);
+            return dispatchPollResponse(exchange.session(), response);
         } catch (RuntimeException failure) {
-            return handleApplicationFailure(response, failure);
+            return handleApplicationFailure(exchange.session(), response, failure);
         }
     }
 
-    private PollResult dispatchPollResponse(Object response) {
+    private PollResult dispatchPollResponse(
+            OpenAdrSessionSnapshot session,
+            Object response
+    ) {
         return switch (response) {
             case OadrResponseType oadrResponse -> handleOadrResponse(oadrResponse);
 
             case OadrDistributeEventType distributeEvent -> {
                 log.info("Received oadrDistributeEvent. events={}", distributeEvent.getOadrEvent().size());
-                drEventHandler.handle(distributeEvent);
+                drEventHandler.handle(distributeEvent, session);
                 yield PollResult.CONTINUE;
             }
 
             case OadrCreateReportType createReport -> {
                 log.info("Received oadrCreateReport. requests={}", createReport.getOadrReportRequest().size());
-                reportRequestHandler.handle(createReport);
+                reportRequestHandler.handle(createReport, session);
                 yield PollResult.CONTINUE;
             }
 
             case OadrRegisterReportType registerReport -> {
                 log.info("Received oadrRegisterReport. reports={}", registerReport.getOadrReport().size());
-                reportRequestHandler.handleRegisterReport(registerReport);
+                reportRequestHandler.handleRegisterReport(registerReport, session);
                 yield PollResult.CONTINUE;
             }
 
             case OadrCancelReportType cancelReport -> {
                 log.info("Received oadrCancelReport");
-                reportRequestHandler.handleCancelReport(cancelReport);
+                reportRequestHandler.handleCancelReport(cancelReport, session);
                 yield PollResult.CONTINUE;
             }
 
             case OadrUpdateReportType updateReport -> {
                 log.info("Received oadrUpdateReport. reports={}", updateReport.getOadrReport().size());
-                reportRequestHandler.handleUpdateReport(updateReport);
+                reportRequestHandler.handleUpdateReport(updateReport, session);
                 yield PollResult.CONTINUE;
             }
 
@@ -247,7 +258,7 @@ public class EventPoller {
 
                 registrationServiceProvider
                         .getObject()
-                        .handleCancelPartyRegistration(cancelRegistration);
+                        .handleCancelPartyRegistration(cancelRegistration, session);
 
                 yield PollResult.STOP;
             }
@@ -256,7 +267,7 @@ public class EventPoller {
                 log.warn("Received oadrRequestReregistration. venId={}", requestReregistration.getVenID());
 
                 registrationServiceProvider.getObject()
-                        .handleRequestReregistration(requestReregistration);
+                        .handleRequestReregistration(requestReregistration, session);
 
                 yield PollResult.STOP;
             }
@@ -269,6 +280,7 @@ public class EventPoller {
     }
 
     private PollResult handleApplicationFailure(
+            OpenAdrSessionSnapshot session,
             Object inboundPayload,
             RuntimeException failure
     ) {
@@ -278,13 +290,13 @@ public class EventPoller {
         OpenAdrReply<?, ?> reply = replyFactory
                 .createApplicationErrorReply(
                         inboundPayload,
-                        registrationServiceProvider.getObject().currentVenId(),
+                        session.venId(),
                         applicationError
                 )
                 .orElseThrow(() -> applicationError);
 
         try {
-            transportService.sendReply(reply);
+            transportService.sendReply(reply, session);
         } catch (RuntimeException replyFailure) {
             applicationError.addSuppressed(replyFailure);
             throw applicationError;
@@ -300,6 +312,12 @@ public class EventPoller {
         );
 
         return PollResult.CONTINUE;
+    }
+
+    private record PollExchange(
+            OpenAdrSessionSnapshot session,
+            Object response
+    ) {
     }
 
     private PollResult handleOadrResponse(OadrResponseType response) {

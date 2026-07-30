@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
 
 class EventValidatorTest {
 
@@ -26,7 +27,7 @@ class EventValidatorTest {
     @BeforeEach
     void setUp() {
         properties.getVtn().setId("VTN-1");
-        validator = new EventValidator(properties);
+        validator = new EventValidator();
     }
 
     @Test
@@ -64,7 +65,12 @@ class EventValidatorTest {
     ) {
         OadrPollType request = new OadrPollType();
         request.setVenID("VEN-1");
-        return new OpenAdrExchangeContext<>(OpenAdrOperations.POLL, request, response);
+        return new OpenAdrExchangeContext<>(
+                OpenAdrOperations.POLL,
+                registeredSession("VEN-1", "VTN-1", "REG-1"),
+                request,
+                response
+        );
     }
 
     private OadrDistributeEventType distributeEvent(String eventId) {

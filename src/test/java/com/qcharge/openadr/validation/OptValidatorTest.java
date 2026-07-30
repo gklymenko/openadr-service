@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
 
 class OptValidatorTest {
 
@@ -26,6 +27,7 @@ class OptValidatorTest {
                 OpenAdrApplicationException.class,
                 () -> validator.validate(new OpenAdrExchangeContext<>(
                         OpenAdrOperations.CREATE_OPT,
+                        registeredSession(),
                         request,
                         response
                 ))
@@ -44,6 +46,7 @@ class OptValidatorTest {
                 OpenAdrApplicationException.class,
                 () -> validator.validate(new OpenAdrExchangeContext<>(
                         OpenAdrOperations.CREATE_OPT,
+                        registeredSession(),
                         request,
                         response
                 ))

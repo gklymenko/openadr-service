@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.qcharge.openadr.TestSessionFixtures.bootstrapSession;
 
 class OpenAdrOperationTest {
 
@@ -62,11 +63,13 @@ class OpenAdrOperationTest {
                 OadrCreatedPartyRegistrationType
                 > context = new OpenAdrExchangeContext<>(
                 OpenAdrOperations.QUERY_REGISTRATION,
+                bootstrapSession(),
                 request,
                 response
         );
 
         assertSame(OpenAdrOperations.QUERY_REGISTRATION, context.operation());
+        assertEquals("TH_VEN", context.session().venId());
         assertSame(request, context.request());
         assertSame(response, context.response());
     }

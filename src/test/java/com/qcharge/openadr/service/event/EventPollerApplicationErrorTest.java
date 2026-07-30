@@ -5,6 +5,7 @@ import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
+import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.transport.ApplicationErrorAction;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrReplyFactory;
@@ -33,6 +34,7 @@ class EventPollerApplicationErrorTest {
     @Mock OpenAdrReplyFactory replyFactory;
     @Mock ObjectProvider<RegistrationService> registrationServiceProvider;
     @Mock RegistrationService registrationService;
+    @Mock OpenAdrSessionProvider sessionProvider;
 
     private EventPoller eventPoller;
 
@@ -46,6 +48,7 @@ class EventPollerApplicationErrorTest {
                 taskScheduler,
                 applicationErrorMapper,
                 replyFactory,
+                sessionProvider,
                 registrationServiceProvider
         );
     }

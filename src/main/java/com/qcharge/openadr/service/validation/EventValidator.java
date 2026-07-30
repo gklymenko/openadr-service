@@ -1,6 +1,5 @@
 package com.qcharge.openadr.service.validation;
 
-import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
@@ -9,7 +8,6 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.hasText;
@@ -19,10 +17,7 @@ import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.re
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.validateRequestIdEcho;
 
 @Component
-@RequiredArgsConstructor
 public class EventValidator implements OpenAdrExchangeValidator {
-
-    private final OpenAdrProperties properties;
 
     @Override
     public boolean supports(OpenAdrExchangeContext<?, ?> context) {
@@ -35,7 +30,7 @@ public class EventValidator implements OpenAdrExchangeValidator {
     @Override
     public void validate(OpenAdrExchangeContext<?, ?> context) {
         if (context.response() instanceof OadrDistributeEventType response) {
-            validateDistributeEvent(context.request(), response);
+            validateDistributeEvent(context, response);
             return;
         }
 
@@ -64,11 +59,12 @@ public class EventValidator implements OpenAdrExchangeValidator {
     }
 
     private void validateDistributeEvent(
-            Object request,
+            OpenAdrExchangeContext<?, ?> context,
             OadrDistributeEventType response
     ) {
         String requestId = response.getRequestID();
-        String expectedVtnId = properties.getVtn().getId();
+        String expectedVtnId = context.session().vtnId();
+        Object request = context.request();
 
         requireText(response.getVtnID(), "oadrDistributeEvent.vtnID", requestId);
         if (hasText(expectedVtnId)) {

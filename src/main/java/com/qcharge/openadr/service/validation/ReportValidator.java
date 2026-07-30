@@ -1,7 +1,5 @@
 package com.qcharge.openadr.service.validation;
 
-import com.qcharge.openadr.model.entity.VenRegistration;
-import com.qcharge.openadr.model.enums.VenRegistrationStatus;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.ei.SpecifierPayloadType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledReportType;
@@ -13,10 +11,8 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
-import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -35,12 +31,9 @@ import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.va
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.validateRequestIdEcho;
 
 @Component
-@RequiredArgsConstructor
 public class ReportValidator implements OpenAdrExchangeValidator {
 
     private static final String METADATA = "METADATA";
-
-    private final VenRegistrationRepository registrationRepository;
 
     @Override
     public boolean supports(OpenAdrExchangeContext<?, ?> context) {
@@ -67,7 +60,7 @@ public class ReportValidator implements OpenAdrExchangeValidator {
                 context.response().getClass().getSimpleName()
         );
 
-        validateResponseVenId(context.response(), requestId);
+        validateResponseVenId(context, requestId);
 
         if (!isSuccess(eiResponse)) {
             return;
@@ -197,7 +190,11 @@ public class ReportValidator implements OpenAdrExchangeValidator {
         return result;
     }
 
-    private void validateResponseVenId(Object response, String requestId) {
+    private void validateResponseVenId(
+            OpenAdrExchangeContext<?, ?> context,
+            String requestId
+    ) {
+        Object response = context.response();
         String actualVenId = switch (response) {
             case OadrRegisteredReportType value -> value.getVenID();
             case OadrUpdatedReportType value -> value.getVenID();
@@ -209,14 +206,9 @@ public class ReportValidator implements OpenAdrExchangeValidator {
             return;
         }
 
-        String expectedVenId = registrationRepository
-                .findFirstByStatusOrderByUpdatedAtDesc(VenRegistrationStatus.REGISTERED)
-                .map(VenRegistration::getVenId)
-                .orElse(null);
-
         validateOptionalId(
                 response.getClass().getSimpleName() + ".venID",
-                expectedVenId,
+                context.session().venId(),
                 actualVenId,
                 requestId
         );
