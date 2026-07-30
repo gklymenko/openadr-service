@@ -3,7 +3,6 @@ package com.qcharge.openadr.service.registration;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.VenRegistration;
 import com.qcharge.openadr.model.enums.VenRegistrationStatus;
-import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiRegisterPartyBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
@@ -27,6 +26,7 @@ import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.report.ReportService;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -132,10 +132,7 @@ public class RegistrationService {
                 requestId
         );
 
-        Object response = transportService.send(
-                Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE,
-                payload
-        );
+        Object response = transportService.queryRegistration(payload);
 
         if (response instanceof OadrCreatedPartyRegistrationType created) {
             log.info(
@@ -244,9 +241,7 @@ public class RegistrationService {
                 venId, requestId, hasText(registrationId)
         );
 
-        Object response = transportService.send(
-                Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload
-        );
+        Object response = transportService.register(payload);
 
         if (!(response instanceof OadrCreatedPartyRegistrationType created)) {
             throw new IllegalStateException(
@@ -336,9 +331,7 @@ public class RegistrationService {
                 registration.getVenId(), registration.getRegistrationId()
         );
 
-        Object response = transportService.send(
-                Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload
-        );
+        Object response = transportService.cancelPartyRegistration(payload);
 
         if (!(response instanceof OadrCanceledPartyRegistrationType canceled)) {
             throw new IllegalStateException(
@@ -388,7 +381,7 @@ public class RegistrationService {
                 .build();
 
         transportService.send(
-                Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE,
+                OpenAdrOperations.REGISTRATION_RESPONSE,
                 acknowledgement
         );
 
@@ -453,7 +446,7 @@ public class RegistrationService {
                         .build();
 
         transportService.send(
-                Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE,
+                OpenAdrOperations.CANCELED_PARTY_REGISTRATION_RESPONSE,
                 response
         );
 
@@ -647,10 +640,7 @@ public class RegistrationService {
 
         log.info("Sending oadrRequestEvent. venId={}, requestId={}", venId, requestId);
 
-        Object response = transportService.send(
-                Oadr20bUrlPath.EI_EVENT_SERVICE,
-                requestEvent
-        );
+        Object response = transportService.requestEvent(requestEvent);
 
         if (response instanceof OadrDistributeEventType distributeEvent) {
             log.info("Received {} event(s) from oadrRequestEvent", distributeEvent.getOadrEvent().size());

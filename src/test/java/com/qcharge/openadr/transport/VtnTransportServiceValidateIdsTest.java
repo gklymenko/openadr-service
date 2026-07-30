@@ -6,16 +6,17 @@ import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.exceptions.OpenAdrTransportException;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
-import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiRegisterPartyBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.transport.OpenAdrHttpStatusPolicy;
+import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.RetryHandler;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import jakarta.xml.bind.JAXBElement;
@@ -94,7 +95,7 @@ class VtnTransportServiceValidateIdsTest {
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         Object result = assertDoesNotThrow(
-                () -> service.send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, buildOutgoingPayload())
+                () -> service.send(OpenAdrOperations.QUERY_REGISTRATION, buildOutgoingPayload())
         );
 
         assertInstanceOf(OadrCreatedPartyRegistrationType.class, result);
@@ -120,7 +121,7 @@ class VtnTransportServiceValidateIdsTest {
         OpenAdrApplicationException exception = assertThrows(
                 OpenAdrApplicationException.class,
                 () -> service.send(
-                        Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE,
+                        OpenAdrOperations.QUERY_REGISTRATION,
                         buildOutgoingPayload()
                 )
         );
@@ -148,7 +149,7 @@ class VtnTransportServiceValidateIdsTest {
 
         OpenAdrTransportException ex = assertThrows(
                 OpenAdrTransportException.class,
-                () -> service.send(Oadr20bUrlPath.EI_REPORT_SERVICE, buildOutgoingPayload())
+                () -> service.send(OpenAdrOperations.REGISTER_REPORT, buildReportPayload())
         );
 
         assertTrue(ex.getMessage().contains("venID mismatch"),
@@ -157,6 +158,32 @@ class VtnTransportServiceValidateIdsTest {
                 "Exception must include expectedVenId");
         assertTrue(ex.getMessage().contains("VEN_DIFFERENT"),
                 "Exception must include receivedVenId");
+    }
+
+    @Test
+    void send_throwsTransportException_whenResponseTypeDoesNotMatchOperation() throws Exception {
+        OadrRegisteredReportType registeredReport = Oadr20bEiReportBuilders
+                .newOadr20bRegisteredReportBuilder(
+                        "req-001",
+                        ApplicationLayerErrorCodes.OK,
+                        "TH_VEN"
+                )
+                .build();
+
+        String responseXml = jaxbContext.marshalRoot(registeredReport, false);
+        doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
+
+        OpenAdrTransportException exception = assertThrows(
+                OpenAdrTransportException.class,
+                () -> service.send(
+                        OpenAdrOperations.QUERY_REGISTRATION,
+                        buildOutgoingPayload()
+                )
+        );
+
+        assertTrue(exception.getMessage().contains("queryRegistration"));
+        assertTrue(exception.getMessage().contains("OadrCreatedPartyRegistrationType"));
+        assertTrue(exception.getMessage().contains("OadrRegisteredReportType"));
     }
 
     /**
@@ -176,13 +203,19 @@ class VtnTransportServiceValidateIdsTest {
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         assertDoesNotThrow(
-                () -> service.send(Oadr20bUrlPath.EI_REPORT_SERVICE, buildOutgoingPayload())
+                () -> service.send(OpenAdrOperations.REGISTER_REPORT, buildReportPayload())
         );
     }
 
-    private Object buildOutgoingPayload() {
+    private com.qcharge.openadr.model.oadr20b.oadr.OadrQueryRegistrationType buildOutgoingPayload() {
         return Oadr20bEiRegisterPartyBuilders
                 .newOadr20bQueryRegistrationBuilder("req-outgoing")
+                .build();
+    }
+
+    private OadrRegisterReportType buildReportPayload() {
+        return Oadr20bEiReportBuilders
+                .newOadr20bRegisterReportBuilder("req-outgoing", "TH_VEN")
                 .build();
     }
 }

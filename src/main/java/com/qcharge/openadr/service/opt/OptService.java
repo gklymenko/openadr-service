@@ -2,7 +2,6 @@ package com.qcharge.openadr.service.opt;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.OptSchedule;
-import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiOptBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.OptReasonEnumeratedType;
 import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
@@ -53,7 +52,7 @@ public class OptService {
                 )
                 .build();
 
-        Object response = transportService.send(Oadr20bUrlPath.EI_OPT_SERVICE, createOpt);
+        Object response = transportService.createOpt(createOpt);
 
         if (response instanceof OadrCreatedOptType created) {
             OptSchedule.OptType scheduleType = optType == OptTypeType.OPT_IN
@@ -76,10 +75,7 @@ public class OptService {
 
         log.info("Sending cancelOpt for optId: {}", optId);
 
-        Object response = transportService.send(
-                Oadr20bUrlPath.EI_OPT_SERVICE,
-                cancelOpt
-        );
+        Object response = transportService.cancelOpt(cancelOpt);
 
         if (response instanceof OadrCanceledOptType) {
             optScheduleRepository.findByOptId(optId).ifPresent(opt -> {

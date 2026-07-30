@@ -4,7 +4,6 @@ import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.VenRegistration;
 import com.qcharge.openadr.model.entity.VenReport;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
-import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.eireport.PowerRealUnitType;
 import com.qcharge.openadr.model.oadr20b.ei.ReadingTypeEnumeratedType;
@@ -70,7 +69,7 @@ public class ReportService {
         saveCapability(REPORT_SPECIFIER_ID_TELEMETRY_USAGE, ReportNameEnumeratedType.TELEMETRY_USAGE.value());
         saveCapability(REPORT_SPECIFIER_ID_TELEMETRY_STATUS, ReportNameEnumeratedType.TELEMETRY_STATUS.value());
 
-        Object response = transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, registerReport);
+        Object response = transportService.registerReport(registerReport);
 
         if (!(response instanceof OadrRegisteredReportType registeredReport)) {
             throw new IllegalStateException(

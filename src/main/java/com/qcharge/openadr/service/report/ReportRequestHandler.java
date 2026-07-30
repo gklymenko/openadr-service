@@ -3,7 +3,6 @@ package com.qcharge.openadr.service.report;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.model.entity.VenReport;
-import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.SpecifierPayloadType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelReportType;
@@ -19,6 +18,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
 import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -107,7 +107,7 @@ public class ReportRequestHandler {
                 )
                 .build();
 
-        transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, response);
+        transportService.send(OpenAdrOperations.REGISTERED_REPORT_RESPONSE, response);
     }
 
     @Transactional
@@ -153,7 +153,7 @@ public class ReportRequestHandler {
                 )
                 .build();
 
-        transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, response);
+        transportService.send(OpenAdrOperations.CANCELED_REPORT_RESPONSE, response);
     }
 
     public void handleUpdateReport(OadrUpdateReportType updateReport) {
@@ -171,7 +171,7 @@ public class ReportRequestHandler {
                 )
                 .build();
 
-        transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, response);
+        transportService.send(OpenAdrOperations.UPDATED_REPORT_RESPONSE, response);
     }
 
     private void processReportRequests(String requestId, List<OadrReportRequestType> requests) {
@@ -271,7 +271,7 @@ public class ReportRequestHandler {
 
         OadrRegisterReportType metadataResponse = reportService.buildMetadataRegisterReport(reportRequestId);
 
-        transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, metadataResponse);
+        transportService.registerReport(metadataResponse);
     }
 
     private void sendCreatedReport(String requestId, List<String> pendingRequestIds, int responseCode) {
@@ -286,7 +286,7 @@ public class ReportRequestHandler {
 
         OadrCreatedReportType createdReport = builder.build();
 
-        transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, createdReport);
+        transportService.createdReport(createdReport);
 
         log.info(
                 "Sent oadrCreatedReport. requestId={}, pendingRequests={}, responseCode={}",
@@ -359,7 +359,7 @@ public class ReportRequestHandler {
                 .addReport(buildReportPayload(report))
                 .build();
 
-        Object response = transportService.send(Oadr20bUrlPath.EI_REPORT_SERVICE, updateReport);
+        Object response = transportService.updateReport(updateReport);
 
         if (response instanceof OadrUpdatedReportType updatedReport) {
             log.info(

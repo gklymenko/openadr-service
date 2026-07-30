@@ -59,19 +59,9 @@ public class VtnTransportService {
     private final OpenAdrHttpStatusPolicy httpStatusPolicy;
     private final ObjectProvider<RegistrationService> registrationServiceProvider;
 
-    public Object send(String endpoint, Object payload) {
-        return send(endpoint, payload, allowsEmptyResponse(payload));
-    }
+    public <Q, R> R send(OpenAdrOperation<Q, R> operation, Q payload) {
+        operation.requireValidRequest(payload);
 
-    /**
-     * Sends an OpenADR response/acknowledgement for which the peer may return
-     * HTTP 200 without another OpenADR payload.
-     */
-    public void sendWithoutResponse(String endpoint, Object payload) {
-        send(endpoint, payload, true);
-    }
-
-    private Object send(String endpoint, Object payload, boolean allowEmptyResponse) {
         try {
             Oadr20bJAXBContext jaxb = properties.getXml().isValidate()
                     ? Oadr20bJAXBContext.getInstance(properties.getXml().getXsdFolderPath())
@@ -85,32 +75,54 @@ public class VtnTransportService {
             );
             String xmlPayload = jaxb.marshal(jaxbElement, false);
 
-            log.debug("Sending OpenADR payload to endpoint={}", endpoint);
+            log.debug(
+                    "Sending OpenADR payload. operation={}, endpoint={}",
+                    operation.name(),
+                    operation.endpoint()
+            );
 
-            String xmlResponse = retryHandler.executeWithRetry(endpoint, () -> httpPost(endpoint, xmlPayload));
+            String xmlResponse = retryHandler.executeWithRetry(
+                    operation.name(),
+                    () -> httpPost(operation.endpoint(), xmlPayload)
+            );
 
-            log.debug("Received OpenADR response from endpoint={}", endpoint);
+            log.debug(
+                    "Received OpenADR response. operation={}, endpoint={}",
+                    operation.name(),
+                    operation.endpoint()
+            );
 
             if (xmlResponse == null || xmlResponse.isBlank()) {
-                if (allowEmptyResponse) {
+                if (operation.allowsEmptyResponse()) {
                     log.debug(
-                            "VTN returned successful HTTP response without an OpenADR payload. endpoint={}",
-                            endpoint
+                            "VTN returned HTTP 200 without an OpenADR payload. operation={}, endpoint={}",
+                            operation.name(),
+                            operation.endpoint()
                     );
                     return null;
                 }
 
                 throw new OpenAdrTransportException(
-                        "VTN returned empty response body for endpoint=" + endpoint);
+                        "VTN returned empty response body for operation=%s, endpoint=%s"
+                                .formatted(operation.name(), operation.endpoint())
+                );
             }
 
             Object rawResponse = jaxb.unmarshal(xmlResponse, properties.getXml().isValidate());
             Object response = unwrapIfNeeded(rawResponse);
 
-            validateIds(response);
+            // Application errors are valid OpenADR payloads and must not be
+            // hidden by success-response type validation.
             checkApplicationLayerError(response);
 
-            return response;
+            R typedResponse = requireExpectedResponse(operation, response);
+
+            OpenAdrExchangeContext<Q, R> context =
+                    new OpenAdrExchangeContext<>(operation, payload, typedResponse);
+
+            validateIds(context);
+
+            return typedResponse;
         } catch (JAXBException e) {
             throw new OpenAdrTransportException("Failed to initialize JAXB context", e);
         } catch (Oadr20bMarshalException e) {
@@ -118,24 +130,6 @@ public class VtnTransportService {
         } catch (Oadr20bUnmarshalException e) {
             throw new OpenAdrTransportException("Failed to unmarshal VTN response", e);
         }
-    }
-
-    private boolean allowsEmptyResponse(Object payload) {
-        /*
-         * These payloads are protocol responses/acknowledgements. When the VEN
-         * posts one after receiving a VTN message through oadrPoll, the VTN may
-         * complete the exchange with HTTP 2xx and an empty response body.
-         */
-        return payload instanceof OadrResponseType
-                || payload instanceof OadrCreatedEventType
-                || payload instanceof OadrRegisteredReportType
-                || payload instanceof OadrCreatedReportType
-                || payload instanceof OadrUpdatedReportType
-                || payload instanceof OadrCanceledReportType
-                || payload instanceof OadrCreatedOptType
-                || payload instanceof OadrCanceledOptType
-                || payload instanceof OadrCreatedPartyRegistrationType
-                || payload instanceof OadrCanceledPartyRegistrationType;
     }
 
     private String httpPost(String endpoint, String xmlPayload) {
@@ -171,51 +165,51 @@ public class VtnTransportService {
     }
 
     public Object queryRegistration(OadrQueryRegistrationType payload) {
-        return send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload);
+        return send(OpenAdrOperations.QUERY_REGISTRATION, payload);
     }
 
     public OadrCreatedPartyRegistrationType register(OadrCreatePartyRegistrationType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload), OadrCreatedPartyRegistrationType.class);
+        return send(OpenAdrOperations.CREATE_PARTY_REGISTRATION, payload);
     }
 
     public Object poll(OadrPollType payload) {
-        return send(Oadr20bUrlPath.OADR_POLL_SERVICE, payload);
+        return send(OpenAdrOperations.POLL, payload);
     }
 
     public Object requestEvent(OadrRequestEventType payload) {
-        return send(Oadr20bUrlPath.EI_EVENT_SERVICE, payload);
+        return send(OpenAdrOperations.REQUEST_EVENT, payload);
     }
 
     public OadrResponseType createdEvent(OadrCreatedEventType payload) {
-        return castIfPresent(send(Oadr20bUrlPath.EI_EVENT_SERVICE, payload), OadrResponseType.class);
+        return send(OpenAdrOperations.CREATED_EVENT, payload);
     }
 
     public OadrRegisteredReportType registerReport(OadrRegisterReportType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrRegisteredReportType.class);
+        return send(OpenAdrOperations.REGISTER_REPORT, payload);
     }
 
-    public OadrCreatedReportType createdReport(OadrCreatedReportType payload) {
-        return castIfPresent(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrCreatedReportType.class);
+    public OadrResponseType createdReport(OadrCreatedReportType payload) {
+        return send(OpenAdrOperations.CREATED_REPORT_RESPONSE, payload);
     }
 
     public OadrUpdatedReportType updateReport(OadrUpdateReportType payload) {
-        return castIfPresent(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrUpdatedReportType.class);
+        return send(OpenAdrOperations.UPDATE_REPORT, payload);
     }
 
-    public OadrCanceledReportType canceledReport(OadrCanceledReportType payload) {
-        return castIfPresent(send(Oadr20bUrlPath.EI_REPORT_SERVICE, payload), OadrCanceledReportType.class);
+    public OadrResponseType canceledReport(OadrCanceledReportType payload) {
+        return send(OpenAdrOperations.CANCELED_REPORT_RESPONSE, payload);
     }
 
     public OadrCreatedOptType createOpt(OadrCreateOptType payload) {
-        return cast(send(Oadr20bUrlPath.EI_OPT_SERVICE, payload), OadrCreatedOptType.class);
+        return send(OpenAdrOperations.CREATE_OPT, payload);
     }
 
     public OadrCanceledOptType cancelOpt(OadrCancelOptType payload) {
-        return cast(send(Oadr20bUrlPath.EI_OPT_SERVICE, payload), OadrCanceledOptType.class);
+        return send(OpenAdrOperations.CANCEL_OPT, payload);
     }
 
     public OadrCanceledPartyRegistrationType cancelPartyRegistration(OadrCancelPartyRegistrationType payload) {
-        return cast(send(Oadr20bUrlPath.EI_REGISTER_PARTY_SERVICE, payload), OadrCanceledPartyRegistrationType.class);
+        return send(OpenAdrOperations.CANCEL_PARTY_REGISTRATION, payload);
     }
 
     private Object unwrapIfNeeded(Object response) {
@@ -279,7 +273,8 @@ public class VtnTransportService {
         return baseUrl + Oadr20bUrlPath.OADR_BASE_PATH + endpoint;
     }
 
-    private void validateIds(Object response) {
+    private void validateIds(OpenAdrExchangeContext<?, ?> context) {
+        Object response = context.response();
         if (response == null) {
             return;
         }
@@ -297,7 +292,9 @@ public class VtnTransportService {
         String receivedVenId = Oadr20bPayloadIds.venIdOf(response);
         String receivedVtnId = Oadr20bPayloadIds.vtnIdOf(response);
 
-        if (receivedVenId != null && !receivedVenId.isBlank() && !expectedVenId.equals(receivedVenId)) {
+        if (expectedVenId != null && !expectedVenId.isBlank()
+                && receivedVenId != null && !receivedVenId.isBlank()
+                && !expectedVenId.equals(receivedVenId)) {
             throw new OpenAdrTransportException(
                     "venID mismatch: expected=%s, received=%s".formatted(expectedVenId, receivedVenId)
             );
@@ -312,18 +309,22 @@ public class VtnTransportService {
         }
     }
 
-    private <T> T cast(Object response, Class<T> expectedType) {
-        if (!expectedType.isInstance(response)) {
+    @SuppressWarnings("unchecked")
+    private <Q, R> R requireExpectedResponse(OpenAdrOperation<Q, R> operation, Object response) {
+        if (!operation.acceptsResponse(response)) {
             throw new OpenAdrTransportException(
-                    "Unexpected OpenADR response type. Expected=%s, actual=%s"
-                            .formatted(expectedType.getSimpleName(), response == null ? "null" : response.getClass().getName())
+                    "Unexpected OpenADR response type for operation=%s. Expected one of=%s, actual=%s"
+                            .formatted(
+                                    operation.name(),
+                                    operation.responseTypes().stream()
+                                            .map(Class::getSimpleName)
+                                            .sorted()
+                                            .toList(),
+                                    response == null ? "null" : response.getClass().getName()
+                            )
             );
         }
 
-        return expectedType.cast(response);
-    }
-
-    private <T> T castIfPresent(Object response, Class<T> expectedType) {
-        return response == null ? null : cast(response, expectedType);
+        return (R) response;
     }
 }
