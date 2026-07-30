@@ -50,5 +50,6 @@ class CommonIdValidatorTest {
         );
 
         assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals("REQ-1", exception.getRequestId());
     }
 }

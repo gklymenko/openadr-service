@@ -14,7 +14,9 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.service.transport.OpenAdrHttpStatusPolicy;
+import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
+import com.qcharge.openadr.service.transport.OpenAdrReplyFactory;
 import com.qcharge.openadr.service.transport.RetryHandler;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
@@ -67,7 +69,9 @@ class VtnTransportServiceValidateIdsTest {
                 properties,
                 retryHandler,
                 new OpenAdrHttpStatusPolicy(),
-                exchangeValidationService
+                exchangeValidationService,
+                new OpenAdrApplicationErrorMapper(),
+                new OpenAdrReplyFactory()
         );
     }
 

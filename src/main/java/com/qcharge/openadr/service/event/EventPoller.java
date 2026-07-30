@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.event;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bPollBuilders;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelReportType;
@@ -13,6 +14,9 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
+import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
+import com.qcharge.openadr.service.transport.OpenAdrReply;
+import com.qcharge.openadr.service.transport.OpenAdrReplyFactory;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +40,8 @@ public class EventPoller {
     private final DrEventHandler drEventHandler;
     private final ReportRequestHandler reportRequestHandler;
     private final TaskScheduler openAdrTaskScheduler;
+    private final OpenAdrApplicationErrorMapper applicationErrorMapper;
+    private final OpenAdrReplyFactory replyFactory;
 
     /**
      * Lazy provider avoids direct circular dependency:
@@ -162,6 +168,14 @@ public class EventPoller {
             return PollResult.STOP;
         }
 
+        try {
+            return dispatchPollResponse(response);
+        } catch (RuntimeException failure) {
+            return handleApplicationFailure(response, failure);
+        }
+    }
+
+    private PollResult dispatchPollResponse(Object response) {
         return switch (response) {
             case OadrResponseType oadrResponse -> handleOadrResponse(oadrResponse);
 
@@ -220,6 +234,40 @@ public class EventPoller {
                 yield PollResult.STOP;
             }
         };
+    }
+
+    private PollResult handleApplicationFailure(
+            Object inboundPayload,
+            RuntimeException failure
+    ) {
+        OpenAdrApplicationException applicationError =
+                applicationErrorMapper.map(failure, inboundPayload);
+
+        OpenAdrReply<?, ?> reply = replyFactory
+                .createApplicationErrorReply(
+                        inboundPayload,
+                        registrationServiceProvider.getObject().currentVenId(),
+                        applicationError
+                )
+                .orElseThrow(() -> applicationError);
+
+        try {
+            transportService.sendReply(reply);
+        } catch (RuntimeException replyFailure) {
+            applicationError.addSuppressed(replyFailure);
+            throw applicationError;
+        }
+
+        log.warn(
+                "OpenADR request failed and application error reply was sent. " +
+                        "requestType={}, replyOperation={}, responseCode={}, requestId={}",
+                inboundPayload.getClass().getSimpleName(),
+                reply.operation().name(),
+                applicationError.getResponseCode(),
+                applicationError.getRequestId()
+        );
+
+        return PollResult.CONTINUE;
     }
 
     private PollResult handleOadrResponse(OadrResponseType response) {

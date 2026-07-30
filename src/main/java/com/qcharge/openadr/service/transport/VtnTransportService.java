@@ -56,6 +56,8 @@ public class VtnTransportService {
     private final RetryHandler retryHandler;
     private final OpenAdrHttpStatusPolicy httpStatusPolicy;
     private final OpenAdrExchangeValidationService exchangeValidationService;
+    private final OpenAdrApplicationErrorMapper applicationErrorMapper;
+    private final OpenAdrReplyFactory replyFactory;
 
     public <Q, R> R send(OpenAdrOperation<Q, R> operation, Q payload) {
         operation.requireValidRequest(payload);
@@ -118,7 +120,7 @@ public class VtnTransportService {
             OpenAdrExchangeContext<Q, R> context =
                     new OpenAdrExchangeContext<>(operation, payload, typedResponse);
 
-            exchangeValidationService.validate(context);
+            validateExchange(context);
 
             return typedResponse;
         } catch (JAXBException e) {
@@ -208,6 +210,69 @@ public class VtnTransportService {
 
     public OadrCanceledPartyRegistrationType cancelPartyRegistration(OadrCancelPartyRegistrationType payload) {
         return send(OpenAdrOperations.CANCEL_PARTY_REGISTRATION, payload);
+    }
+
+    public void sendReply(OpenAdrReply<?, ?> reply) {
+        sendCapturedReply(reply);
+    }
+
+    private <Q, R> void validateExchange(OpenAdrExchangeContext<Q, R> context) {
+        try {
+            exchangeValidationService.validate(context);
+        } catch (RuntimeException failure) {
+            OpenAdrApplicationException applicationError =
+                    applicationErrorMapper.map(failure, context.response());
+
+            replyFactory.createApplicationErrorReply(
+                            context.response(),
+                            venIdForReply(context.request()),
+                            applicationError
+                    )
+                    .ifPresent(reply -> sendErrorReply(reply, applicationError));
+
+            throw applicationError;
+        }
+    }
+
+    private void sendErrorReply(
+            OpenAdrReply<?, ?> reply,
+            OpenAdrApplicationException applicationError
+    ) {
+        try {
+            sendReply(reply);
+            log.info(
+                    "Sent OpenADR application error reply. operation={}, responseCode={}, requestId={}",
+                    reply.operation().name(),
+                    applicationError.getResponseCode(),
+                    applicationError.getRequestId()
+            );
+        } catch (RuntimeException replyFailure) {
+            applicationError.addSuppressed(replyFailure);
+            log.error(
+                    "Failed to send OpenADR application error reply. operation={}, responseCode={}, requestId={}",
+                    reply.operation().name(),
+                    applicationError.getResponseCode(),
+                    applicationError.getRequestId(),
+                    replyFailure
+            );
+        }
+    }
+
+    private String venIdForReply(Object request) {
+        if (request instanceof OadrPollType poll) {
+            return poll.getVenID();
+        }
+
+        if (request instanceof OadrRequestEventType requestEvent
+                && requestEvent.getEiRequestEvent() != null) {
+            return requestEvent.getEiRequestEvent().getVenID();
+        }
+
+        return properties.getVen().getId();
+    }
+
+    private <Q, R> void sendCapturedReply(OpenAdrReply<Q, R> reply) {
+        send(reply.operation(), reply.payload());
     }
 
     private Object unwrapIfNeeded(Object response) {

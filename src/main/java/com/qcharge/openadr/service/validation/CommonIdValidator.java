@@ -43,7 +43,7 @@ public class CommonIdValidator implements OpenAdrExchangeValidator {
     @Override
     public void validate(OpenAdrExchangeContext<?, ?> context) {
         Object response = context.response();
-        String requestId = context.operation().name();
+        String requestId = requestIdOf(response);
 
         String receivedVenId = venIdOf(response);
         String receivedVtnId = vtnIdOf(response);
@@ -96,5 +96,40 @@ public class CommonIdValidator implements OpenAdrExchangeValidator {
         return payload instanceof OadrDistributeEventType value
                 ? value.getVtnID()
                 : null;
+    }
+
+    private String requestIdOf(Object payload) {
+        return switch (payload) {
+            case OadrResponseType value ->
+                    value.getEiResponse() == null
+                            ? null
+                            : value.getEiResponse().getRequestID();
+            case OadrRegisteredReportType value ->
+                    value.getEiResponse() == null
+                            ? null
+                            : value.getEiResponse().getRequestID();
+            case OadrCreatedReportType value ->
+                    value.getEiResponse() == null
+                            ? null
+                            : value.getEiResponse().getRequestID();
+            case OadrUpdatedReportType value ->
+                    value.getEiResponse() == null
+                            ? null
+                            : value.getEiResponse().getRequestID();
+            case OadrCanceledReportType value ->
+                    value.getEiResponse() == null
+                            ? null
+                            : value.getEiResponse().getRequestID();
+            case OadrCanceledPartyRegistrationType value ->
+                    value.getEiResponse() == null
+                            ? null
+                            : value.getEiResponse().getRequestID();
+            case OadrCreateReportType value -> value.getRequestID();
+            case OadrCancelReportType value -> value.getRequestID();
+            case OadrUpdateReportType value -> value.getRequestID();
+            case OadrCancelPartyRegistrationType value -> value.getRequestID();
+            case OadrDistributeEventType value -> value.getRequestID();
+            default -> null;
+        };
     }
 }
