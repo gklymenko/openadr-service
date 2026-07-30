@@ -40,11 +40,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import javax.xml.namespace.QName;
 
@@ -56,6 +56,7 @@ public class VtnTransportService {
     private final RestClient restClient;
     private final OpenAdrProperties properties;
     private final RetryHandler retryHandler;
+    private final OpenAdrHttpStatusPolicy httpStatusPolicy;
     private final ObjectProvider<RegistrationService> registrationServiceProvider;
 
     public Object send(String endpoint, Object payload) {
@@ -64,7 +65,7 @@ public class VtnTransportService {
 
     /**
      * Sends an OpenADR response/acknowledgement for which the peer may return
-     * HTTP 2xx without another OpenADR payload.
+     * HTTP 200 without another OpenADR payload.
      */
     public void sendWithoutResponse(String endpoint, Object payload) {
         send(endpoint, payload, true);
@@ -139,19 +140,31 @@ public class VtnTransportService {
 
     private String httpPost(String endpoint, String xmlPayload) {
         try {
-            return restClient.post()
+            ResponseEntity<String> response = restClient.post()
                     .uri(buildUrl(endpoint))
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_XML_VALUE)
                     .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_XML_VALUE)
                     .body(xmlPayload)
                     .retrieve()
-                    .body(String.class);
-        } catch (HttpClientErrorException e) {
+                    .toEntity(String.class);
+
+            int httpStatusCode = response.getStatusCode().value();
+            if (httpStatusPolicy.classify(httpStatusCode) != HttpStatusAction.ACCEPT) {
+                throw new OpenAdrHttpException(
+                        "Unsupported OpenADR HTTP status " + httpStatusCode
+                                + "; OpenADR Simple HTTP requires 200 for a handled response",
+                        httpStatusCode,
+                        null
+                );
+            }
+
+            return response.getBody();
+        } catch (RestClientResponseException e) {
             throw new OpenAdrHttpException(
-                    "HTTP client error " + e.getStatusCode(), e.getStatusCode().value(), e);
-        } catch (HttpServerErrorException e) {
-            throw new OpenAdrHttpException(
-                    "HTTP server error " + e.getStatusCode(), e.getStatusCode().value(), e);
+                    "OpenADR HTTP error " + e.getStatusCode(),
+                    e.getStatusCode().value(),
+                    e
+            );
         } catch (ResourceAccessException e) {
             throw new OpenAdrHttpException("HTTP connection error", e);
         }

@@ -15,6 +15,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.transport.OpenAdrHttpStatusPolicy;
 import com.qcharge.openadr.service.transport.RetryHandler;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import jakarta.xml.bind.JAXBElement;
@@ -66,7 +67,13 @@ class VtnTransportServiceValidateIdsTest {
         when(registrationServiceProvider.getObject()).thenReturn(registrationService);
         when(registrationService.currentVenId()).thenReturn("TH_VEN");
 
-        service = new VtnTransportService(restClient, properties, retryHandler, registrationServiceProvider);
+        service = new VtnTransportService(
+                restClient,
+                properties,
+                retryHandler,
+                new OpenAdrHttpStatusPolicy(),
+                registrationServiceProvider
+        );
     }
 
     /**

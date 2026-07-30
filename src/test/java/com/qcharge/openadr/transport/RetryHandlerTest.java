@@ -4,6 +4,7 @@ import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.exceptions.OpenAdrHttpException;
+import com.qcharge.openadr.service.transport.OpenAdrHttpStatusPolicy;
 import com.qcharge.openadr.service.transport.RetryHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class RetryHandlerTest {
         properties.getTransport().setRetryMaxAttempts(3);
         properties.getTransport().setRetryInitialDelayMillis(0); // no sleep in tests
         properties.getTransport().setRetryMaxDelayMillis(0);
-        retryHandler = new RetryHandler(properties);
+        retryHandler = new RetryHandler(properties, new OpenAdrHttpStatusPolicy());
     }
 
     @Test
@@ -96,13 +97,13 @@ class RetryHandlerTest {
         properties.getTransport().setRetryInitialDelayMillis(100);
         properties.getTransport().setRetryMaxDelayMillis(10000);
         properties.getTransport().setRetryMaxAttempts(4);
-        retryHandler = new RetryHandler(properties);
+        retryHandler = new RetryHandler(properties, new OpenAdrHttpStatusPolicy());
 
         // Capture delays by overriding sleep indirectly — verify via timing would be flaky.
         // Instead verify that the delay sequence is bounded by maxDelay.
         // We use a cap of 200ms to validate truncation.
         properties.getTransport().setRetryMaxDelayMillis(150);
-        retryHandler = new RetryHandler(properties);
+        retryHandler = new RetryHandler(properties, new OpenAdrHttpStatusPolicy());
 
         AtomicInteger calls = new AtomicInteger(0);
         long start = System.currentTimeMillis();
@@ -128,7 +129,7 @@ class RetryHandlerTest {
         properties.getTransport().setRetryInitialDelayMillis(1000);
         properties.getTransport().setRetryMaxDelayMillis(500);
         properties.getTransport().setRetryMaxAttempts(2);
-        retryHandler = new RetryHandler(properties);
+        retryHandler = new RetryHandler(properties, new OpenAdrHttpStatusPolicy());
 
         AtomicInteger calls = new AtomicInteger(0);
         long start = System.currentTimeMillis();
@@ -146,27 +147,6 @@ class RetryHandlerTest {
         assertTrue(elapsed < 800, "Delay should be capped at maxDelayMillis=500ms, got " + elapsed + "ms");
         assertTrue(elapsed >= 450, "Expected at least ~500ms elapsed, got " + elapsed + "ms");
         assertEquals(2, calls.get());
-    }
-
-    @Test
-    void clientError_isClientError_returnsTrue() {
-        var e = new OpenAdrHttpException("HTTP client error 422", 422, new RuntimeException());
-        assertTrue(e.isClientError());
-        assertFalse(e.isServerError());
-    }
-
-    @Test
-    void serverError_isServerError_returnsTrue() {
-        var e = new OpenAdrHttpException("HTTP server error 503", 503, new RuntimeException());
-        assertTrue(e.isServerError());
-        assertFalse(e.isClientError());
-    }
-
-    @Test
-    void noStatusCode_neitherClientNorServerError() {
-        var e = new OpenAdrHttpException("connection refused");
-        assertFalse(e.isClientError());
-        assertFalse(e.isServerError());
     }
 
     @Test
@@ -188,5 +168,42 @@ class RetryHandlerTest {
 
         assertEquals(ApplicationLayerErrorCodes.NOT_REGISTERED, exception.getResponseCode());
         assertEquals(1, calls.get(), "Application errors must not enter the HTTP retry loop");
+    }
+
+    @Test
+    void executeWithRetry_notImplemented_doesNotRetry() {
+        AtomicInteger calls = new AtomicInteger(0);
+
+        OpenAdrHttpException exception = assertThrows(
+                OpenAdrHttpException.class,
+                () -> retryHandler.executeWithRetry("test-op", () -> {
+                    calls.incrementAndGet();
+                    throw new OpenAdrHttpException(
+                            "HTTP server error 501",
+                            501,
+                            new RuntimeException()
+                    );
+                })
+        );
+
+        assertEquals(Integer.valueOf(501), exception.getHttpStatusCode());
+        assertEquals(1, calls.get(), "HTTP 501 must not be retried");
+    }
+
+    @Test
+    void executeWithRetry_exhausted_preservesLastHttpStatus() {
+        OpenAdrHttpException exception = assertThrows(
+                OpenAdrHttpException.class,
+                () -> retryHandler.executeWithRetry("test-op", () -> {
+                    throw new OpenAdrHttpException(
+                            "HTTP server error 503",
+                            503,
+                            new RuntimeException()
+                    );
+                })
+        );
+
+        assertEquals(Integer.valueOf(503), exception.getHttpStatusCode());
+        assertInstanceOf(OpenAdrHttpException.class, exception.getCause());
     }
 }

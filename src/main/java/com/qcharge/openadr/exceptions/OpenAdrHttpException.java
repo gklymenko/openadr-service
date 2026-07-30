@@ -1,7 +1,6 @@
 package com.qcharge.openadr.exceptions;
 
 import lombok.Getter;
-import org.springframework.web.client.HttpServerErrorException;
 
 /**
  * Represents an HTTP exchange failure.
@@ -24,16 +23,8 @@ public class OpenAdrHttpException extends OpenAdrTransportException {
         this.httpStatusCode = null;
     }
 
-    public OpenAdrHttpException(String message, int httpStatusCode, Throwable cause) {
+    public OpenAdrHttpException(String message, Integer httpStatusCode, Throwable cause) {
         super(message, cause);
         this.httpStatusCode = httpStatusCode;
-    }
-
-    public boolean isClientError() {
-        return httpStatusCode != null && httpStatusCode >= 400 && httpStatusCode < 500;
-    }
-
-    public boolean isServerError() {
-        return httpStatusCode != null && httpStatusCode >= 500;
     }
 }

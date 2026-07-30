@@ -12,7 +12,7 @@ import java.util.function.Supplier;
  * Truncated binary exponential backoff per OpenADR spec Section 9.1.7.
  *
  * Delay sequence: initialDelay → initialDelay*2 → initialDelay*4 → ... → maxDelay
- * 4xx errors are not retried (client error — fix the request).
+ * Retry decisions are delegated to {@link OpenAdrHttpStatusPolicy}.
  */
 @Slf4j
 @Component
@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 public class RetryHandler {
 
     private final OpenAdrProperties properties;
+    private final OpenAdrHttpStatusPolicy httpStatusPolicy;
 
     public <T> T executeWithRetry(String operationName, Supplier<T> operation) {
         int maxAttempts = properties.getTransport().getRetryMaxAttempts();
@@ -32,7 +33,8 @@ public class RetryHandler {
             try {
                 return operation.get();
             } catch (OpenAdrHttpException e) {
-                if (e.isClientError()) {
+                HttpStatusAction action = httpStatusPolicy.classify(e.getHttpStatusCode());
+                if (action != HttpStatusAction.RETRY_AFTER_QUIESCE) {
                     throw e;
                 }
                 lastException = e;
@@ -50,6 +52,7 @@ public class RetryHandler {
 
         throw new OpenAdrHttpException(
                 "OpenADR %s failed after %d attempts".formatted(operationName, maxAttempts),
+                lastException != null ? lastException.getHttpStatusCode() : null,
                 lastException
         );
     }
