@@ -10,7 +10,6 @@ import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bMarshalException;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
-import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelOptType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledOptType;
@@ -56,6 +55,7 @@ public class VtnTransportService {
     private final RetryHandler retryHandler;
     private final OpenAdrHttpStatusPolicy httpStatusPolicy;
     private final OpenAdrExchangeValidationService exchangeValidationService;
+    private final OpenAdrApplicationResponseEvaluator applicationResponseEvaluator;
     private final OpenAdrApplicationErrorMapper applicationErrorMapper;
     private final OpenAdrReplyFactory replyFactory;
 
@@ -113,7 +113,7 @@ public class VtnTransportService {
 
             // Application errors are valid OpenADR payloads and must not be
             // hidden by success-response type validation.
-            checkApplicationLayerError(response);
+            applicationResponseEvaluator.evaluate(operation, response);
 
             R typedResponse = requireExpectedResponse(operation, response);
 
@@ -282,48 +282,6 @@ public class VtnTransportService {
         }
 
         return response;
-    }
-
-    private void checkApplicationLayerError(Object response) {
-        EiResponseType eiResponse = extractEiResponse(response);
-        if (eiResponse == null
-                || !String.valueOf(ApplicationLayerErrorCodes.NOT_REGISTERED)
-                .equals(eiResponse.getResponseCode())) {
-            return;
-        }
-
-        log.error("VTN returned 463 Not Registered/Authorized. " +
-                "Certificate CN may not match venID. " +
-                "Check that venID in config matches CN in VEN certificate.");
-        throw new OpenAdrApplicationException(
-                "VTN rejected request: 463 Not Registered/Authorized",
-                ApplicationLayerErrorCodes.NOT_REGISTERED,
-                eiResponse.getResponseDescription(),
-                eiResponse.getRequestID()
-        );
-    }
-
-    private EiResponseType extractEiResponse(Object response) {
-        if (response == null) {
-            return null;
-        }
-
-        return switch (response) {
-            case OadrCreatedPartyRegistrationType r -> r.getEiResponse();
-            case OadrRegisteredReportType r -> r.getEiResponse();
-            case OadrResponseType r -> r.getEiResponse();
-
-            case OadrCreatedReportType r -> r.getEiResponse();
-            case OadrUpdatedReportType r -> r.getEiResponse();
-            case OadrCanceledReportType r -> r.getEiResponse();
-
-            case OadrCreatedOptType r -> r.getEiResponse();
-            case OadrCanceledOptType r -> r.getEiResponse();
-
-            case OadrCanceledPartyRegistrationType r -> r.getEiResponse();
-
-            default -> null;
-        };
     }
 
     private String buildUrl(String endpoint) {

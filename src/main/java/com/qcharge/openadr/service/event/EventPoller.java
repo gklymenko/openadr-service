@@ -14,6 +14,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
+import com.qcharge.openadr.service.transport.ApplicationErrorAction;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrReply;
 import com.qcharge.openadr.service.transport.OpenAdrReplyFactory;
@@ -114,6 +115,8 @@ public class EventPoller {
 
         try {
             pollUntilQueueEmpty();
+        } catch (OpenAdrApplicationException applicationError) {
+            handlePollingApplicationError(applicationError);
         } catch (Exception e) {
             log.error("OpenADR poll cycle failed", e);
         } finally {
@@ -123,6 +126,35 @@ public class EventPoller {
                 scheduleNextPoll(delayWithJitter());
             }
         }
+    }
+
+    void handlePollingApplicationError(
+            OpenAdrApplicationException applicationError
+    ) {
+        if (applicationError.getAction()
+                != ApplicationErrorAction.REQUIRE_REREGISTRATION) {
+            log.error(
+                    "OpenADR poll operation failed. operation={}, "
+                            + "responseCode={}, requestId={}, action={}",
+                    applicationError.getOperationName(),
+                    applicationError.getResponseCode(),
+                    applicationError.getRequestId(),
+                    applicationError.getAction(),
+                    applicationError
+            );
+            return;
+        }
+
+        log.warn(
+                "VTN requires VEN re-registration. operation={}, "
+                        + "responseCode={}, requestId={}",
+                applicationError.getOperationName(),
+                applicationError.getResponseCode(),
+                applicationError.getRequestId()
+        );
+
+        stop();
+        registrationServiceProvider.getObject().register();
     }
 
     /**

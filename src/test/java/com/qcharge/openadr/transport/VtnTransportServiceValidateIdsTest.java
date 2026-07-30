@@ -17,6 +17,8 @@ import com.qcharge.openadr.service.transport.OpenAdrHttpStatusPolicy;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.OpenAdrReplyFactory;
+import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorPolicy;
+import com.qcharge.openadr.service.transport.OpenAdrApplicationResponseEvaluator;
 import com.qcharge.openadr.service.transport.RetryHandler;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
@@ -70,6 +72,9 @@ class VtnTransportServiceValidateIdsTest {
                 retryHandler,
                 new OpenAdrHttpStatusPolicy(),
                 exchangeValidationService,
+                new OpenAdrApplicationResponseEvaluator(
+                        new OpenAdrApplicationErrorPolicy()
+                ),
                 new OpenAdrApplicationErrorMapper(),
                 new OpenAdrReplyFactory()
         );
@@ -127,6 +132,12 @@ class VtnTransportServiceValidateIdsTest {
         assertEquals(ApplicationLayerErrorCodes.NOT_REGISTERED, exception.getResponseCode());
         assertEquals("Not Registered/Authorized", exception.getResponseDescription());
         assertEquals("req-463", exception.getRequestId());
+        assertEquals("queryRegistration", exception.getOperationName());
+        assertEquals(
+                com.qcharge.openadr.service.transport.ApplicationErrorAction
+                        .REQUIRE_REREGISTRATION,
+                exception.getAction()
+        );
     }
 
     @Test
@@ -157,6 +168,32 @@ class VtnTransportServiceValidateIdsTest {
                 ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
                 exception.getResponseCode()
         );
+    }
+
+    @Test
+    void send_preservesApplicationErrorBeforeResponseTypeValidation() throws Exception {
+        OadrRegisteredReportType registeredReport = Oadr20bEiReportBuilders
+                .newOadr20bRegisteredReportBuilder(
+                        "req-452",
+                        ApplicationLayerErrorCodes.INVALID_ID,
+                        "TH_VEN"
+                )
+                .build();
+
+        String responseXml = jaxbContext.marshalRoot(registeredReport, false);
+        doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
+
+        OpenAdrApplicationException exception = assertThrows(
+                OpenAdrApplicationException.class,
+                () -> service.send(
+                        OpenAdrOperations.QUERY_REGISTRATION,
+                        buildOutgoingPayload()
+                )
+        );
+
+        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals("req-452", exception.getRequestId());
+        assertEquals("queryRegistration", exception.getOperationName());
     }
 
     /**
