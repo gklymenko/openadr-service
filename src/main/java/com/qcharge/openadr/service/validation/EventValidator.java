@@ -66,6 +66,16 @@ public class EventValidator implements OpenAdrExchangeValidator {
         String expectedVtnId = context.session().vtnId();
         Object request = context.request();
 
+        String originatingRequestId = request instanceof OadrRequestEventType requestEvent
+                ? requestIdOf(requestEvent)
+                : null;
+
+        requireText(
+                requestId,
+                "oadrDistributeEvent.requestID",
+                originatingRequestId
+        );
+
         requireText(response.getVtnID(), "oadrDistributeEvent.vtnID", requestId);
         if (hasText(expectedVtnId)) {
             requireMatchingId(
@@ -76,17 +86,14 @@ public class EventValidator implements OpenAdrExchangeValidator {
             );
         }
 
-        if (request instanceof OadrRequestEventType requestEvent) {
-            String expectedRequestId = requestIdOf(requestEvent);
-            EiResponseType eiResponse = requireEiResponse(
+        if (request instanceof OadrRequestEventType) {
+            // Rule 40 requires eiResponse for a distributeEvent returned from
+            // oadrRequestEvent. Its requestID may be empty; event correlation
+            // uses the top-level oadrDistributeEvent.requestID (Rules 41-42).
+            requireEiResponse(
                     response.getEiResponse(),
                     "oadrDistributeEvent",
-                    expectedRequestId
-            );
-            validateRequestIdEcho(
-                    expectedRequestId,
-                    eiResponse,
-                    "oadrDistributeEvent"
+                    originatingRequestId
             );
         }
 

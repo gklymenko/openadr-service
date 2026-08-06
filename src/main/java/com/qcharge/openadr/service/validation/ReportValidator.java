@@ -54,11 +54,13 @@ public class ReportValidator implements OpenAdrExchangeValidator {
                 requestId
         );
 
-        validateRequestIdEcho(
-                requestId,
-                eiResponse,
-                context.response().getClass().getSimpleName()
-        );
+        if (requiresRequestIdEcho(context)) {
+            validateRequestIdEcho(
+                    requestId,
+                    eiResponse,
+                    context.response().getClass().getSimpleName()
+            );
+        }
 
         validateResponseVenId(context, requestId);
 
@@ -212,6 +214,11 @@ public class ReportValidator implements OpenAdrExchangeValidator {
                 actualVenId,
                 requestId
         );
+    }
+
+    private boolean requiresRequestIdEcho(OpenAdrExchangeContext<?, ?> context) {
+        return context.operation() == OpenAdrOperations.REGISTER_REPORT
+                || context.operation() == OpenAdrOperations.UPDATE_REPORT;
     }
 
     private String requestIdOf(Object request) {

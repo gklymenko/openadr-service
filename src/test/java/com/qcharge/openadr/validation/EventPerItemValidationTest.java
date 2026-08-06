@@ -103,7 +103,39 @@ class EventPerItemValidationTest {
         );
     }
 
+    @Test
+    void createdEventCorrelatesThroughEventResponseRequestId() {
+        OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
+        distributeEvent.setRequestID("DIST-1");
+        distributeEvent.setVtnID("VTN-1");
+        distributeEvent.getOadrEvent().add(event("EVENT-1"));
+
+        handler.handle(distributeEvent);
+
+        OadrCreatedEventType createdEvent = capturedCreatedEvent();
+
+        assertEquals(
+                "",
+                createdEvent.getEiCreatedEvent().getEiResponse().getRequestID()
+        );
+        assertEquals(
+                "DIST-1",
+                createdEvent.getEiCreatedEvent()
+                        .getEventResponses()
+                        .getEventResponse()
+                        .getFirst()
+                        .getRequestID()
+        );
+    }
+
     private List<EventResponse> capturedResponses() {
+        return capturedCreatedEvent()
+                .getEiCreatedEvent()
+                .getEventResponses()
+                .getEventResponse();
+    }
+
+    private OadrCreatedEventType capturedCreatedEvent() {
         ArgumentCaptor<OadrCreatedEventType> captor =
                 ArgumentCaptor.forClass(OadrCreatedEventType.class);
         verify(transportService).send(
@@ -111,10 +143,7 @@ class EventPerItemValidationTest {
                 captor.capture(),
                 any()
         );
-        return captor.getValue()
-                .getEiCreatedEvent()
-                .getEventResponses()
-                .getEventResponse();
+        return captor.getValue();
     }
 
     private OadrDistributeEventType.OadrEvent event(String eventId) {

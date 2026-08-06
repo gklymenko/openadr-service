@@ -3,10 +3,12 @@ package com.qcharge.openadr.validation;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
+import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EiEventType;
 import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPollType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
@@ -60,6 +62,54 @@ class EventValidatorTest {
         assertDoesNotThrow(() -> validator.validate(context(response)));
     }
 
+    @Test
+    void requestEventAllowsEmptyEiResponseRequestId() {
+        OadrDistributeEventType response = distributeEvent("EVENT-1");
+
+        assertDoesNotThrow(() -> validator.validate(requestEventContext(response)));
+    }
+
+    @Test
+    void requestEventAllowsDifferentEiResponseRequestId() {
+        OadrDistributeEventType response = distributeEvent("EVENT-1");
+        response.getEiResponse().setRequestID("VTN-RESPONSE-1");
+
+        assertDoesNotThrow(() -> validator.validate(requestEventContext(response)));
+    }
+
+    @Test
+    void requestEventRequiresEiResponse() {
+        OadrDistributeEventType response = distributeEvent("EVENT-1");
+        response.setEiResponse(null);
+
+        OpenAdrApplicationException exception = assertThrows(
+                OpenAdrApplicationException.class,
+                () -> validator.validate(requestEventContext(response))
+        );
+
+        assertEquals(
+                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                exception.getResponseCode()
+        );
+    }
+
+    @Test
+    void distributeEventRequiresTopLevelRequestId() {
+        OadrDistributeEventType response = distributeEvent("EVENT-1");
+        response.setRequestID("");
+
+        OpenAdrApplicationException exception = assertThrows(
+                OpenAdrApplicationException.class,
+                () -> validator.validate(requestEventContext(response))
+        );
+
+        assertEquals(
+                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                exception.getResponseCode()
+        );
+        assertEquals("REQUEST-1", exception.getRequestId());
+    }
+
     private OpenAdrExchangeContext<OadrPollType, Object> context(
             OadrDistributeEventType response
     ) {
@@ -67,6 +117,21 @@ class EventValidatorTest {
         request.setVenID("VEN-1");
         return new OpenAdrExchangeContext<>(
                 OpenAdrOperations.POLL,
+                registeredSession("VEN-1", "VTN-1", "REG-1"),
+                request,
+                response
+        );
+    }
+
+    private OpenAdrExchangeContext<OadrRequestEventType, Object> requestEventContext(
+            OadrDistributeEventType response
+    ) {
+        OadrRequestEventType request = Oadr20bEiEventBuilders
+                .newOadrRequestEventBuilder("VEN-1", "REQUEST-1")
+                .build();
+
+        return new OpenAdrExchangeContext<>(
+                OpenAdrOperations.REQUEST_EVENT,
                 registeredSession("VEN-1", "VTN-1", "REG-1"),
                 request,
                 response

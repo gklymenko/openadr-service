@@ -61,8 +61,10 @@ public class DrEventHandler {
         String venId = session.venId();
         String distributeRequestId = safeRequestId(distributeEvent.getRequestID());
 
+        // Rule 42: with eventResponses present, eiResponse.requestID is empty;
+        // each eventResponse carries oadrDistributeEvent.requestID instead.
         EiResponseType eiResponse = Oadr20bResponseBuilders
-                .newOadr20bEiResponseBuilder(distributeRequestId, ApplicationLayerErrorCodes.OK)
+                .newOadr20bEiResponseBuilder("", ApplicationLayerErrorCodes.OK)
                 .build();
 
         var createdEventBuilder = Oadr20bEiEventBuilders
