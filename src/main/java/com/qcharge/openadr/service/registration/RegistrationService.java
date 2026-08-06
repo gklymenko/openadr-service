@@ -651,8 +651,19 @@ public class RegistrationService {
     }
 
     private void requestAllEvents(OpenAdrSessionSnapshot session) {
+        requestAllEvents(session, newRequestId());
+    }
+
+    public void requestAllEvents(
+            OpenAdrSessionSnapshot session,
+            String requestId
+    ) {
+        Objects.requireNonNull(session, "session");
+        if (!hasText(requestId)) {
+            throw new IllegalArgumentException("requestId must not be blank");
+        }
+
         String venId = session.venId();
-        String requestId = newRequestId();
 
         OadrRequestEventType requestEvent =
                 Oadr20bEiEventBuilders

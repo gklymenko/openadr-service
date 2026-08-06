@@ -1,5 +1,6 @@
 package com.qcharge.openadr.controller;
 
+import com.qcharge.openadr.service.event.ManualRequestEventService;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,21 @@ public class TestController {
 
     private final RegistrationService registrationService;
     private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
+    private final ManualRequestEventService manualRequestEventService;
+
+    @PostMapping("/test/request-event")
+    public ResponseEntity<RequestEventAcceptedResponse> requestEvent() {
+        String requestId = manualRequestEventService.requestEvents();
+
+        log.warn(
+                "TEST ENDPOINT: asynchronously queued oadrRequestEvent. requestId={}",
+                requestId
+        );
+
+        return ResponseEntity.accepted().body(
+                new RequestEventAcceptedResponse(requestId, "ACCEPTED")
+        );
+    }
 
     @PostMapping("/test/cancel-registration")
     public ResponseEntity<String> cancelRegistration() {
@@ -53,5 +69,11 @@ public class TestController {
         log.warn("TEST ENDPOINT: manually triggering oadrQueryRegistration");
         registrationService.queryRegistration();
         return ResponseEntity.ok("QueryRegistration initiated");
+    }
+
+    public record RequestEventAcceptedResponse(
+            String requestId,
+            String status
+    ) {
     }
 }

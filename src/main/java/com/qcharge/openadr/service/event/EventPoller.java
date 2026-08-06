@@ -106,6 +106,22 @@ public class EventPoller {
         }
     }
 
+    /**
+     * Runs a manual VEN pull operation without overlapping an active oadrPoll.
+     *
+     * <p>If a poll cycle is already running, the caller waits until that cycle
+     * releases the lock. A scheduled poll that starts while the manual operation
+     * owns the lock is skipped and rescheduled by the normal polling flow.</p>
+     */
+    public void executeExclusivelyWithPolling(Runnable action) {
+        pollLock.lock();
+        try {
+            action.run();
+        } finally {
+            pollLock.unlock();
+        }
+    }
+
     private void runPollCycle() {
         if (!running) {
             return;
