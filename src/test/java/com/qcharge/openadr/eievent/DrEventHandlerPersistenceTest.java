@@ -18,6 +18,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.io.File;
 import java.util.Optional;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -60,7 +61,18 @@ class DrEventHandlerPersistenceTest extends AbstractOadrTest {
         DrEvent saved = captor.getValue();
 
         assertEquals(2, saved.getSignals().size());
+        assertEquals(DrEvent.ExecutionStatus.SCHEDULED, saved.getExecutionStatus());
+        assertEquals(Instant.parse("2001-12-17T09:40:47Z"), saved.getRequestedStartTime());
+        assertEquals(180L, saved.getStartAfterSeconds());
+        assertEquals(
+                saved.getRequestedStartTime().plusSeconds(saved.getRandomOffsetSeconds()),
+                saved.getStartTime()
+        );
+        assertEquals(300L, saved.getRampUpSeconds());
+        assertEquals(300L, saved.getRecoverySeconds());
         assertEquals("SIG_01", saved.getSignals().getFirst().getSignalId());
+        assertEquals(false, saved.getSignals().getFirst().isSelectedForExecution());
+        assertEquals(true, saved.getSignals().get(1).isSelectedForExecution());
         assertEquals(2, saved.getSignals().getFirst().getIntervals().size());
         assertEquals("0", saved.getSignals().getFirst().getIntervals().getFirst().getIntervalUid());
         assertEquals(900L, saved.getSignals().getFirst().getIntervals().getFirst().getDurationSeconds());

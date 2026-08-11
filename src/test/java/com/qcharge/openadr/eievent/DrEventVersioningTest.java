@@ -27,6 +27,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.File;
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -112,7 +113,35 @@ class DrEventVersioningTest extends AbstractOadrTest {
 
         assertResponseCode(ApplicationLayerErrorCodes.OK);
         verify(repository).save(any());
-        verify(ocppIntegrationService).applySignal(eq("Event_939393"), any());
+        verify(ocppIntegrationService, never()).applySignal(any(), any());
+    }
+
+    @Test
+    void modificationKeepsRandomOffsetWhenStartAfterIsUnchanged()
+            throws Oadr20bUnmarshalException {
+        OadrDistributeEventType distributeEvent = loadEvent();
+        distributeEvent.getOadrEvent().getFirst().getEiEvent()
+                .getEventDescriptor().setModificationNumber(1);
+        DrEvent existing = existingEvent(0);
+        existing.setStartAfterSeconds(180L);
+        existing.setRandomOffsetSeconds(73L);
+        existing.setRequestedStartTime(Instant.parse("2001-12-17T09:35:47Z"));
+        existing.setStartTime(existing.getRequestedStartTime().plusSeconds(73L));
+        when(repository.findByEventId("Event_939393")).thenReturn(Optional.of(existing));
+
+        handler.handle(distributeEvent, TestSessionFixtures.registeredSession(
+                "VEN-1", "VTN-1", "REG-1"
+        ));
+
+        ArgumentCaptor<DrEvent> captor = ArgumentCaptor.forClass(DrEvent.class);
+        verify(repository).save(captor.capture());
+        DrEvent saved = captor.getValue();
+        assertEquals(73L, saved.getRandomOffsetSeconds());
+        assertEquals(
+                saved.getRequestedStartTime().plusSeconds(73L),
+                saved.getStartTime()
+        );
+        verify(ocppIntegrationService, never()).applySignal(any(), any());
     }
 
     @Test
@@ -148,7 +177,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
         assertEquals(String.valueOf(ApplicationLayerErrorCodes.OK), response.getResponseCode());
         assertEquals(OptTypeType.OPT_IN, response.getOptType());
         verify(repository, never()).save(any());
-        verify(ocppIntegrationService, never()).clearEvent(any());
+        verify(ocppIntegrationService, never()).clearEvent(any(), any());
     }
 
     private OadrDistributeEventType loadEvent() throws Oadr20bUnmarshalException {

@@ -1,0 +1,192 @@
+package com.qcharge.openadr.service.event;
+
+import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
+import com.qcharge.openadr.integration.ocpp.OcppIntegrationService.ClearReason;
+import com.qcharge.openadr.model.entity.DrEvent;
+import com.qcharge.openadr.model.entity.DrEventInterval;
+import com.qcharge.openadr.model.entity.DrEventSignal;
+import com.qcharge.openadr.repository.DrEventRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class EventLifecycleSchedulerTest {
+
+    private static final Instant START = Instant.parse("2026-08-11T12:00:00Z");
+
+    @Mock
+    private DrEventRepository repository;
+    @Mock
+    private OcppIntegrationService ocppIntegrationService;
+    private EventLifecycleScheduler scheduler;
+
+    @BeforeEach
+    void setUp() {
+        scheduler = new EventLifecycleScheduler(
+                repository,
+                ocppIntegrationService,
+                Clock.fixed(START, ZoneOffset.UTC)
+        );
+    }
+
+    @Test
+    void farEventIsNotAppliedBeforeActualStart() {
+        DrEvent event = event(1800L);
+        event.setRampUpSeconds(300L);
+        when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
+
+        scheduler.processAt(START.minusSeconds(301));
+
+        assertEquals(DrEvent.EventStatus.FAR, event.getStatus());
+        assertEquals(DrEvent.ExecutionStatus.SCHEDULED, event.getExecutionStatus());
+        verify(ocppIntegrationService, never()).applySignalInterval(
+                any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
+                any(Integer.class), any());
+    }
+
+    @Test
+    void transitionsThroughNearAndAppliesEachIntervalOnce() {
+        DrEvent event = event(1800L);
+        event.setRampUpSeconds(300L);
+        when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
+
+        scheduler.processAt(START.minusSeconds(60));
+        assertEquals(DrEvent.EventStatus.NEAR, event.getStatus());
+
+        scheduler.processAt(START);
+        assertEquals(DrEvent.EventStatus.ACTIVE, event.getStatus());
+        assertEquals(DrEvent.ExecutionStatus.APPLIED, event.getExecutionStatus());
+        assertEquals(0, event.getLastAppliedInterval());
+        verify(ocppIntegrationService).applySignalInterval(
+                eq("event-1"), eq(0), eq("signal-1"), eq("0"), eq("SIMPLE"), eq("level"),
+                eq(BigDecimal.ONE), eq(null), eq(null), eq(0), eq(START));
+
+        scheduler.processAt(START.plusSeconds(100));
+        scheduler.processAt(START.plusSeconds(900));
+        assertEquals(1, event.getLastAppliedInterval());
+        verify(ocppIntegrationService).applySignalInterval(
+                eq("event-1"), eq(0), eq("signal-1"), eq("1"), eq("SIMPLE"), eq("level"),
+                eq(BigDecimal.valueOf(2)), eq(null), eq(null), eq(1), eq(START.plusSeconds(900)));
+    }
+
+    @Test
+    void completedEventClearsAppliedProfile() {
+        DrEvent event = event(1800L);
+        event.setExecutionStatus(DrEvent.ExecutionStatus.APPLIED);
+        event.setLastAppliedInterval(1);
+        when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
+
+        scheduler.processAt(START.plusSeconds(1800));
+
+        assertEquals(DrEvent.EventStatus.COMPLETED, event.getStatus());
+        assertEquals(DrEvent.ExecutionStatus.COMPLETED, event.getExecutionStatus());
+        assertEquals(START.plusSeconds(1800), event.getCompletedAt());
+        verify(ocppIntegrationService).clearEvent("event-1", ClearReason.COMPLETED);
+    }
+
+    @Test
+    void durationZeroKeepsLastIntervalActiveUntilCancellation() {
+        DrEvent event = event(0L);
+        when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
+
+        scheduler.processAt(START.plusSeconds(3600));
+
+        assertEquals(DrEvent.EventStatus.ACTIVE, event.getStatus());
+        assertEquals(1, event.getLastAppliedInterval());
+        verify(ocppIntegrationService, never()).clearEvent(any(), any());
+    }
+
+    @Test
+    void cancellationPendingKeepsAppliedIntervalUntilEffectiveTime() {
+        DrEvent event = event(1800L);
+        event.setStatus(DrEvent.EventStatus.ACTIVE);
+        event.setExecutionStatus(DrEvent.ExecutionStatus.CANCEL_PENDING);
+        event.setLastAppliedInterval(0);
+        event.setAppliedAt(START);
+        event.setCancellationType(DrEvent.CancellationType.IMPLICIT);
+        event.setCancellationRequestedAt(START.plusSeconds(100L));
+        event.setCancellationEffectiveAt(START.plusSeconds(160L));
+        when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
+
+        scheduler.processAt(START.plusSeconds(159L));
+
+        assertEquals(DrEvent.EventStatus.ACTIVE, event.getStatus());
+        assertEquals(DrEvent.ExecutionStatus.CANCEL_PENDING, event.getExecutionStatus());
+        verify(ocppIntegrationService, never()).clearEvent(any(), any());
+        verify(ocppIntegrationService, never()).applySignalInterval(
+                any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
+                any(Integer.class), any());
+    }
+
+    @Test
+    void cancellationPendingIsClearedAndFinalizedAtEffectiveTime() {
+        DrEvent event = event(1800L);
+        event.setStatus(DrEvent.EventStatus.ACTIVE);
+        event.setExecutionStatus(DrEvent.ExecutionStatus.CANCEL_PENDING);
+        event.setLastAppliedInterval(0);
+        event.setAppliedAt(START);
+        event.setCancellationType(DrEvent.CancellationType.EXPLICIT);
+        event.setCancellationRequestedAt(START.plusSeconds(100L));
+        event.setCancellationEffectiveAt(START.plusSeconds(160L));
+        when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
+
+        scheduler.processAt(START.plusSeconds(160L));
+
+        assertEquals(DrEvent.EventStatus.CANCELLED, event.getStatus());
+        assertEquals(DrEvent.ExecutionStatus.CANCELLED, event.getExecutionStatus());
+        assertEquals(START.plusSeconds(160L), event.getCompletedAt());
+        verify(ocppIntegrationService).clearEvent(
+                "event-1", ClearReason.CANCELLED);
+    }
+
+    private DrEvent event(long durationSeconds) {
+        DrEvent event = new DrEvent();
+        event.setEventId("event-1");
+        event.setStatus(DrEvent.EventStatus.FAR);
+        event.setVtnStatus(DrEvent.EventStatus.FAR);
+        event.setExecutionStatus(DrEvent.ExecutionStatus.SCHEDULED);
+        event.setOptType(DrEvent.OptType.OPT_IN);
+        event.setRequestedStartTime(START);
+        event.setStartTime(START);
+        event.setStartAfterSeconds(0L);
+        event.setRandomOffsetSeconds(0L);
+        event.setDurationSeconds(durationSeconds);
+        event.setLastAppliedInterval(-1);
+
+        DrEventSignal signal = new DrEventSignal();
+        signal.setEvent(event);
+        signal.setSignalId("signal-1");
+        signal.setSignalName("SIMPLE");
+        signal.setSignalType("level");
+        signal.setSelectedForExecution(true);
+        signal.addInterval(interval(0, 900L, BigDecimal.ONE));
+        signal.addInterval(interval(1, 900L, BigDecimal.valueOf(2)));
+        event.getSignals().add(signal);
+        return event;
+    }
+
+    private DrEventInterval interval(int sequence, long duration, BigDecimal value) {
+        DrEventInterval interval = new DrEventInterval();
+        interval.setSequenceNumber(sequence);
+        interval.setIntervalUid(Integer.toString(sequence));
+        interval.setDurationSeconds(duration);
+        interval.setPayloadValue(value);
+        return interval;
+    }
+}

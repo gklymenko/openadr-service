@@ -45,6 +45,9 @@ public class DrEventSignal {
     @Column(name = "sequence_number", nullable = false)
     private Integer sequenceNumber;
 
+    @Column(name = "selected_for_execution", nullable = false)
+    private boolean selectedForExecution;
+
     @Column(name = "signal_id", nullable = false, length = 128)
     private String signalId;
 

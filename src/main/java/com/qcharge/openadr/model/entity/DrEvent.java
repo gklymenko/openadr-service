@@ -14,6 +14,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -45,9 +46,21 @@ public class DrEvent {
     @Column(name = "modification_number", nullable = false)
     private Integer modificationNumber = 0;
 
+    @Version
+    @Column(name = "row_version", nullable = false)
+    private Long rowVersion = 0L;
+
     @Column(name = "status", nullable = false)
     @Enumerated(EnumType.STRING)
     private EventStatus status;
+
+    @Column(name = "vtn_status", nullable = false)
+    @Enumerated(EnumType.STRING)
+    private EventStatus vtnStatus;
+
+    @Column(name = "execution_status", nullable = false)
+    @Enumerated(EnumType.STRING)
+    private ExecutionStatus executionStatus = ExecutionStatus.RECEIVED;
 
     @Column(name = "opt_type")
     @Enumerated(EnumType.STRING)
@@ -59,8 +72,42 @@ public class DrEvent {
     @Column(name = "start_time", nullable = false)
     private Instant startTime;
 
+    @Column(name = "requested_start_time", nullable = false)
+    private Instant requestedStartTime;
+
+    @Column(name = "start_after_seconds", nullable = false)
+    private Long startAfterSeconds = 0L;
+
+    @Column(name = "random_offset_seconds", nullable = false)
+    private Long randomOffsetSeconds = 0L;
+
+    @Column(name = "ramp_up_seconds")
+    private Long rampUpSeconds;
+
+    @Column(name = "recovery_seconds")
+    private Long recoverySeconds;
+
     @Column(name = "duration_seconds")
     private Long durationSeconds;
+
+    @Column(name = "last_applied_interval", nullable = false)
+    private Integer lastAppliedInterval = -1;
+
+    @Column(name = "applied_at")
+    private Instant appliedAt;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
+    @Column(name = "cancellation_type")
+    @Enumerated(EnumType.STRING)
+    private CancellationType cancellationType;
+
+    @Column(name = "cancellation_requested_at")
+    private Instant cancellationRequestedAt;
+
+    @Column(name = "cancellation_effective_at")
+    private Instant cancellationEffectiveAt;
 
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sequenceNumber ASC")
@@ -106,5 +153,20 @@ public class DrEvent {
     public enum OptType {
         OPT_IN,
         OPT_OUT
+    }
+
+    public enum ExecutionStatus {
+        RECEIVED,
+        SCHEDULED,
+        APPLIED,
+        CANCEL_PENDING,
+        COMPLETED,
+        CANCELLED,
+        FAILED
+    }
+
+    public enum CancellationType {
+        EXPLICIT,
+        IMPLICIT
     }
 }

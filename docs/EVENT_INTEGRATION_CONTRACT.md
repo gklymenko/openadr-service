@@ -59,6 +59,11 @@ the resolution snapshot with the event version.
 
 ## Apply or replace a charging profile
 
+`openadr-service` does not send this command when the event is received. It persists the
+plan first and sends the command only when the locally calculated timeline reaches the
+corresponding interval. After restart it resumes from persisted `actualStartTime` and
+`lastAppliedInterval`.
+
 `PUT /internal/openadr/v1/events/{eventId}/resources/{resourceId}/profile`
 
 ```json
@@ -83,6 +88,27 @@ the resolution snapshot with the event version.
 }
 ```
 
+For an interval transition, the same endpoint receives the complete remaining plan or a
+single active period, depending on the final charging-profile-service API. The initial
+implementation in `openadr-service` exposes the following logical command to its port:
+
+```json
+{
+  "eventId": "event-123",
+  "modificationNumber": 2,
+  "signalId": "signal-load",
+  "intervalUid": "1",
+  "intervalIndex": 1,
+  "effectiveFrom": "2026-08-11T11:15:00Z",
+  "value": 11000,
+  "units": "W",
+  "siScaleCode": "none"
+}
+```
+
+The downstream call must be idempotent by
+`(eventId, modificationNumber, signalId, intervalUid, resourceId)`.
+
 Return `200` for an idempotent replay and `202` for pending execution. A higher
 modification atomically replaces the previous OpenADR-owned profile; an equal one is an
 idempotent replay; a lower one returns `409 OUT_OF_SEQUENCE`.
@@ -93,6 +119,31 @@ idempotent replay; a lower one returns `409 OUT_OF_SEQUENCE`.
 
 Reasons: `CANCELLED`, `COMPLETED`, `IMPLICIT_CANCELLATION`, `OPT_OUT`,
 `MANUAL_OVERRIDE`. Only the profile owned by that OpenADR event may be cleared.
+
+## Cancellation lifecycle
+
+`oadrDistributeEvent` is treated as the VTN's complete snapshot of applicable
+events. A locally known event in `RECEIVED`, `SCHEDULED`, `APPLIED`, or `FAILED`
+that is absent from the next snapshot is implicitly cancelled. Implicit
+cancellation is silent at protocol level: no `oadrCreatedEvent` is generated for
+the omitted event.
+
+Cancellation state is persisted by `openadr-service`:
+
+- `cancellationType`: `EXPLICIT` or `IMPLICIT`;
+- `cancellationRequestedAt`: receipt/reconciliation time;
+- `cancellationEffectiveAt`: actual termination time;
+- `executionStatus`: `CANCEL_PENDING` while an applied profile remains active.
+
+For an already applied event with `startafter > 0`, `openadr-service` chooses a
+new termination offset in `0..startafter` for both explicit and implicit
+cancellation. It sends the clear request only at `cancellationEffectiveAt`.
+The scheduler recovers `CANCEL_PENDING` rows after restart and retries a failed
+clear without choosing another offset. A pending event that was never applied is
+cancelled immediately and must never be sent downstream.
+
+The downstream clear reason is derived from `cancellationType`:
+`EXPLICIT -> CANCELLED`, `IMPLICIT -> IMPLICIT_CANCELLATION`.
 
 ## Kafka messages
 

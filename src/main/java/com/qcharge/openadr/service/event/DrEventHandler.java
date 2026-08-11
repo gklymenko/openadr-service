@@ -31,10 +31,13 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.xml.datatype.XMLGregorianCalendar;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Component
@@ -42,6 +45,12 @@ import java.util.Set;
 public class DrEventHandler {
 
     private static final String RESPONSE_REQUIRED_ALWAYS = "always";
+    private static final EnumSet<DrEvent.ExecutionStatus> KNOWN_EVENT_STATUSES = EnumSet.of(
+            DrEvent.ExecutionStatus.RECEIVED,
+            DrEvent.ExecutionStatus.SCHEDULED,
+            DrEvent.ExecutionStatus.APPLIED,
+            DrEvent.ExecutionStatus.FAILED
+    );
 
     private final OpenAdrProperties properties;
     private final DrEventRepository drEventRepository;
@@ -99,6 +108,8 @@ public class DrEventHandler {
             createdEventBuilder.addEventResponse(eventResponse);
             eventResponseCount++;
         }
+
+        reconcileImplicitCancellations(eventIds);
 
         if (eventResponseCount == 0) {
             log.info("No oadrCreatedEvent sent because no event required application response");
@@ -265,7 +276,6 @@ public class DrEventHandler {
                 return successfulDuplicate(existingEvent, eventId, modificationNumber);
             }
             saveCancelledEvent(oadrEvent, existingEvent);
-            ocppIntegrationService.clearEvent(eventId);
 
             return new EventProcessingResult(
                     eventId,
@@ -276,18 +286,22 @@ public class DrEventHandler {
         }
 
         if (isCompleted(descriptor)) {
-            if (versionState == EventVersionState.DUPLICATE
-                    && existingEvent.getStatus() == DrEvent.EventStatus.COMPLETED) {
+            if (versionState == EventVersionState.DUPLICATE) {
+                if (existingEvent.getVtnStatus() != DrEvent.EventStatus.COMPLETED) {
+                    existingEvent.setVtnStatus(DrEvent.EventStatus.COMPLETED);
+                    drEventRepository.save(existingEvent);
+                }
                 return successfulDuplicate(existingEvent, eventId, modificationNumber);
             }
             saveCompletedEvent(oadrEvent, existingEvent);
-            ocppIntegrationService.clearEvent(eventId);
 
             return new EventProcessingResult(
                     eventId,
                     modificationNumber,
                     ApplicationLayerErrorCodes.OK,
-                    OptTypeType.OPT_OUT
+                    existingEvent != null && existingEvent.getOptType() == DrEvent.OptType.OPT_IN
+                            ? OptTypeType.OPT_IN
+                            : OptTypeType.OPT_OUT
             );
         }
 
@@ -313,13 +327,13 @@ public class DrEventHandler {
             return successfulDuplicate(existingEvent, eventId, modificationNumber);
         }
 
-        saveOrUpdateEvent(oadrEvent, existingEvent, optType, parsedSignals);
+        saveOrUpdateEvent(oadrEvent, existingEvent, optType, parsedSignals, signal.signalId());
 
-        if (optType == OptTypeType.OPT_IN) {
-            ocppIntegrationService.applySignal(eventId, signal);
-        } else {
-            log.info("Event was not applied to OCPP because VEN opted out. eventId={}", eventId);
-        }
+        log.info(
+                "OpenADR event persisted for lifecycle execution. eventId={}, optType={}",
+                eventId,
+                optType
+        );
 
         return new EventProcessingResult(
                 eventId,
@@ -374,7 +388,8 @@ public class DrEventHandler {
             OadrEvent oadrEvent,
             DrEvent existingEvent,
             OptTypeType optType,
-            List<ParsedSignal> parsedSignals
+            List<ParsedSignal> parsedSignals,
+            String selectedSignalId
     ) {
         EventDescriptorType descriptor = requireDescriptor(oadrEvent);
         String eventId = requireEventId(descriptor);
@@ -383,12 +398,30 @@ public class DrEventHandler {
 
         drEvent.setEventId(eventId);
         drEvent.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
-        drEvent.setStatus(mapStatus(descriptor));
+        DrEvent.EventStatus receivedStatus = mapStatus(descriptor);
+        EventTiming timing = extractTiming(oadrEvent, existingEvent);
+
+        drEvent.setStatus(receivedStatus);
+        drEvent.setVtnStatus(receivedStatus);
         drEvent.setOptType(mapOptType(optType));
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
-        drEvent.setStartTime(extractStartTime(oadrEvent));
+        drEvent.setRequestedStartTime(timing.requestedStartTime());
+        drEvent.setStartAfterSeconds(timing.startAfterSeconds());
+        drEvent.setRandomOffsetSeconds(timing.randomOffsetSeconds());
+        drEvent.setStartTime(timing.actualStartTime());
+        drEvent.setRampUpSeconds(timing.rampUpSeconds());
+        drEvent.setRecoverySeconds(timing.recoverySeconds());
         drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
-        drEvent.replaceSignals(toSignalEntities(parsedSignals));
+        drEvent.setExecutionStatus(optType == OptTypeType.OPT_IN
+                ? DrEvent.ExecutionStatus.SCHEDULED
+                : DrEvent.ExecutionStatus.RECEIVED);
+        drEvent.setLastAppliedInterval(-1);
+        drEvent.setAppliedAt(null);
+        drEvent.setCompletedAt(null);
+        drEvent.setCancellationType(null);
+        drEvent.setCancellationRequestedAt(null);
+        drEvent.setCancellationEffectiveAt(null);
+        drEvent.replaceSignals(toSignalEntities(parsedSignals, selectedSignalId));
         drEvent.setUpdatedAt(Instant.now());
 
         drEventRepository.save(drEvent);
@@ -402,17 +435,97 @@ public class DrEventHandler {
 
         drEvent.setEventId(eventId);
         drEvent.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
-        drEvent.setStatus(DrEvent.EventStatus.CANCELLED);
+        drEvent.setVtnStatus(DrEvent.EventStatus.CANCELLED);
         drEvent.setOptType(DrEvent.OptType.OPT_IN);
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
-        drEvent.setStartTime(extractStartTime(oadrEvent));
-        drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
-        drEvent.replaceSignals(List.of());
-        drEvent.setUpdatedAt(Instant.now());
+        if (existingEvent == null) {
+            EventTiming timing = extractTiming(oadrEvent, null);
+            drEvent.setRequestedStartTime(timing.requestedStartTime());
+            drEvent.setStartAfterSeconds(timing.startAfterSeconds());
+            drEvent.setRandomOffsetSeconds(timing.randomOffsetSeconds());
+            drEvent.setStartTime(timing.actualStartTime());
+            drEvent.setRampUpSeconds(timing.rampUpSeconds());
+            drEvent.setRecoverySeconds(timing.recoverySeconds());
+            drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
+        }
 
-        drEventRepository.save(drEvent);
+        requestCancellation(drEvent, DrEvent.CancellationType.EXPLICIT);
 
-        log.info("Saved cancelled OpenADR event. eventId={}", eventId);
+        log.info("Accepted explicit OpenADR event cancellation. eventId={}, effectiveAt={}",
+                eventId, drEvent.getCancellationEffectiveAt());
+    }
+
+    /**
+     * Rule 61: every oadrDistributeEvent is the VTN's complete event snapshot.
+     * Previously known pending/active events omitted from it are silently cancelled.
+     */
+    private void reconcileImplicitCancellations(Set<String> receivedEventIds) {
+        List<DrEvent> knownEvents = drEventRepository.findAllByExecutionStatusIn(KNOWN_EVENT_STATUSES);
+        if (knownEvents == null || knownEvents.isEmpty()) {
+            return;
+        }
+
+        knownEvents.stream()
+                .filter(event -> !receivedEventIds.contains(event.getEventId()))
+                .forEach(event -> {
+                    requestCancellation(event, DrEvent.CancellationType.IMPLICIT);
+                    log.info(
+                            "Implicitly cancelled OpenADR event omitted from snapshot. eventId={}, effectiveAt={}",
+                            event.getEventId(), event.getCancellationEffectiveAt()
+                    );
+                });
+    }
+
+    /**
+     * Rule 65: an already applied event with startafter terminates at a newly
+     * randomized instant in [cancellation receipt, receipt + startafter]. A
+     * pending event has no operational load to ramp out and is cancelled now,
+     * which also guarantees that it cannot start after being omitted/cancelled.
+     */
+    private void requestCancellation(
+            DrEvent event,
+            DrEvent.CancellationType cancellationType
+    ) {
+        if (event.getExecutionStatus() == DrEvent.ExecutionStatus.CANCEL_PENDING
+                || event.getExecutionStatus() == DrEvent.ExecutionStatus.CANCELLED) {
+            event.setVtnStatus(DrEvent.EventStatus.CANCELLED);
+            if (event.getCancellationType() == null) {
+                event.setCancellationType(cancellationType);
+            }
+            drEventRepository.save(event);
+            return;
+        }
+
+        Instant requestedAt = Instant.now();
+        boolean isOperationallyActive = event.getExecutionStatus() == DrEvent.ExecutionStatus.APPLIED
+                || event.getLastAppliedInterval() >= 0
+                || event.getAppliedAt() != null;
+        long terminationOffsetSeconds = isOperationallyActive
+                ? randomOffset(event.getStartAfterSeconds())
+                : 0L;
+
+        event.setVtnStatus(DrEvent.EventStatus.CANCELLED);
+        event.setCancellationType(cancellationType);
+        event.setCancellationRequestedAt(requestedAt);
+        event.setCancellationEffectiveAt(requestedAt.plusSeconds(terminationOffsetSeconds));
+        event.setUpdatedAt(requestedAt);
+
+        if (isOperationallyActive) {
+            event.setExecutionStatus(DrEvent.ExecutionStatus.CANCEL_PENDING);
+        } else {
+            event.setStatus(DrEvent.EventStatus.CANCELLED);
+            event.setExecutionStatus(DrEvent.ExecutionStatus.CANCELLED);
+            event.setCompletedAt(requestedAt);
+        }
+
+        drEventRepository.save(event);
+    }
+
+    private long randomOffset(Long windowSeconds) {
+        if (windowSeconds == null || windowSeconds <= 0L) {
+            return 0L;
+        }
+        return ThreadLocalRandom.current().nextLong(windowSeconds + 1L);
     }
 
     private void saveCompletedEvent(OadrEvent oadrEvent, DrEvent existingEvent) {
@@ -423,12 +536,21 @@ public class DrEventHandler {
 
         drEvent.setEventId(eventId);
         drEvent.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
-        drEvent.setStatus(DrEvent.EventStatus.COMPLETED);
-        drEvent.setOptType(DrEvent.OptType.OPT_OUT);
+        drEvent.setVtnStatus(DrEvent.EventStatus.COMPLETED);
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
-        drEvent.setStartTime(extractStartTime(oadrEvent));
-        drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
-        drEvent.replaceSignals(List.of());
+        if (existingEvent == null) {
+            EventTiming timing = extractTiming(oadrEvent, null);
+            drEvent.setStatus(DrEvent.EventStatus.COMPLETED);
+            drEvent.setOptType(DrEvent.OptType.OPT_OUT);
+            drEvent.setExecutionStatus(DrEvent.ExecutionStatus.COMPLETED);
+            drEvent.setRequestedStartTime(timing.requestedStartTime());
+            drEvent.setStartAfterSeconds(timing.startAfterSeconds());
+            drEvent.setRandomOffsetSeconds(timing.randomOffsetSeconds());
+            drEvent.setStartTime(timing.actualStartTime());
+            drEvent.setRampUpSeconds(timing.rampUpSeconds());
+            drEvent.setRecoverySeconds(timing.recoverySeconds());
+            drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
+        }
         drEvent.setUpdatedAt(Instant.now());
 
         drEventRepository.save(drEvent);
@@ -436,15 +558,24 @@ public class DrEventHandler {
         log.info("Saved completed OpenADR event. eventId={}", eventId);
     }
 
-    private List<DrEventSignal> toSignalEntities(List<ParsedSignal> parsedSignals) {
+    private List<DrEventSignal> toSignalEntities(
+            List<ParsedSignal> parsedSignals,
+            String selectedSignalId
+    ) {
         return java.util.stream.IntStream.range(0, parsedSignals.size())
-                .mapToObj(sequence -> toSignalEntity(parsedSignals.get(sequence), sequence))
+                .mapToObj(sequence -> toSignalEntity(
+                        parsedSignals.get(sequence), sequence, selectedSignalId))
                 .toList();
     }
 
-    private DrEventSignal toSignalEntity(ParsedSignal parsed, int sequence) {
+    private DrEventSignal toSignalEntity(
+            ParsedSignal parsed,
+            int sequence,
+            String selectedSignalId
+    ) {
         DrEventSignal entity = new DrEventSignal();
         entity.setSequenceNumber(sequence);
+        entity.setSelectedForExecution(Objects.equals(parsed.signalId(), selectedSignalId));
         entity.setSignalId(parsed.signalId());
         entity.setSignalName(parsed.signalName());
         entity.setSignalType(parsed.signalType());
@@ -510,7 +641,7 @@ public class DrEventHandler {
                 : DrEvent.OptType.OPT_IN;
     }
 
-    private Instant extractStartTime(OadrEvent oadrEvent) {
+    private EventTiming extractTiming(OadrEvent oadrEvent, DrEvent existingEvent) {
         XMLGregorianCalendar dateTime = oadrEvent
                 .getEiEvent()
                 .getEiActivePeriod()
@@ -518,21 +649,57 @@ public class DrEventHandler {
                 .getDtstart()
                 .getDateTime();
 
-        Instant dtstart = OpenAdrTimeUtils.fromXmlDateTime(dateTime);
-
-        String startAfter = null;
-
-        var tolerance = oadrEvent
+        Instant requestedStartTime = OpenAdrTimeUtils.fromXmlDateTime(dateTime);
+        var activePeriodProperties = oadrEvent
                 .getEiEvent()
                 .getEiActivePeriod()
-                .getProperties()
-                .getTolerance();
+                .getProperties();
+        String startAfter = null;
+        var tolerance = activePeriodProperties.getTolerance();
 
         if (tolerance != null && tolerance.getTolerate() != null) {
             startAfter = tolerance.getTolerate().getStartafter();
         }
 
-        return OpenAdrTimeUtils.applyStartAfterJitter(dtstart, startAfter);
+        long startAfterSeconds = durationSeconds(startAfter, 0L);
+        if (startAfterSeconds < 0) {
+            throw new IllegalArgumentException("startafter must not be negative");
+        }
+
+        long randomOffsetSeconds;
+        if (existingEvent != null
+                && Objects.equals(existingEvent.getStartAfterSeconds(), startAfterSeconds)) {
+            randomOffsetSeconds = existingEvent.getRandomOffsetSeconds();
+        } else if (startAfterSeconds == 0L) {
+            randomOffsetSeconds = 0L;
+        } else {
+            randomOffsetSeconds = ThreadLocalRandom.current().nextLong(startAfterSeconds + 1L);
+        }
+
+        return new EventTiming(
+                requestedStartTime,
+                startAfterSeconds,
+                randomOffsetSeconds,
+                requestedStartTime.plusSeconds(randomOffsetSeconds),
+                durationSeconds(
+                        activePeriodProperties.getXEiRampUp() != null
+                                ? activePeriodProperties.getXEiRampUp().getDuration()
+                                : null,
+                        null
+                ),
+                durationSeconds(
+                        activePeriodProperties.getXEiRecovery() != null
+                                ? activePeriodProperties.getXEiRecovery().getDuration()
+                                : null,
+                        null
+                )
+        );
+    }
+
+    private Long durationSeconds(String value, Long defaultValue) {
+        return OpenAdrTimeUtils.parseOpenAdrDuration(value)
+                .map(Duration::getSeconds)
+                .orElse(defaultValue);
     }
 
     private Long extractDurationSeconds(OadrEvent oadrEvent) {
@@ -600,5 +767,15 @@ public class DrEventHandler {
         MODIFIED,
         DUPLICATE,
         OUT_OF_SEQUENCE
+    }
+
+    private record EventTiming(
+            Instant requestedStartTime,
+            long startAfterSeconds,
+            long randomOffsetSeconds,
+            Instant actualStartTime,
+            Long rampUpSeconds,
+            Long recoverySeconds
+    ) {
     }
 }

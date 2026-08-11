@@ -144,6 +144,10 @@ public class OpenAdrProperties {
          * Empty list means accept any marketContext.
          */
         private java.util.List<String> allowedMarketContexts = new java.util.ArrayList<>();
+
+        /** How often persisted event timelines are evaluated. */
+        @Min(100)
+        private long schedulerDelayMillis = 1000;
     }
 
     @Getter
