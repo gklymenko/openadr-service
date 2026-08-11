@@ -347,11 +347,8 @@ public class DrEventHandler {
             DrEvent existingEvent,
             long receivedModificationNumber
     ) {
-        if (existingEvent == null) {
-            return receivedModificationNumber >= 0
-                    ? EventVersionState.NEW
-                    : EventVersionState.OUT_OF_SEQUENCE;
-        }
+        if (existingEvent == null)
+            return EventVersionState.NEW;
 
         int storedModificationNumber = existingEvent.getModificationNumber();
         if (receivedModificationNumber == storedModificationNumber) {
