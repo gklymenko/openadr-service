@@ -58,6 +58,8 @@ public class DrEventHandler {
             OadrDistributeEventType distributeEvent,
             OpenAdrSessionSnapshot session
     ) {
+        VtnEventLogger.logReceivedEvents(distributeEvent);
+
         String venId = session.venId();
         String distributeRequestId = safeRequestId(distributeEvent.getRequestID());
 

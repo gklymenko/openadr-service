@@ -97,6 +97,8 @@ public class VtnTransportService {
                     () -> httpPost(operation.endpoint(), xmlPayload)
             );
 
+            logRawEventResponse(operation, xmlResponse);
+
             log.debug(
                     "Received OpenADR response. operation={}, endpoint={}",
                     operation.name(),
@@ -140,6 +142,21 @@ public class VtnTransportService {
             throw new OpenAdrTransportException("Failed to marshal OpenADR payload", e);
         } catch (Oadr20bUnmarshalException e) {
             throw new OpenAdrTransportException("Failed to unmarshal VTN response", e);
+        }
+    }
+
+    private void logRawEventResponse(
+            OpenAdrOperation<?, ?> operation,
+            String xmlResponse
+    ) {
+        if (operation == OpenAdrOperations.POLL
+                || operation == OpenAdrOperations.REQUEST_EVENT) {
+            log.info(
+                    "Raw VTN event response. operation={}, endpoint={}, xml={}",
+                    operation.name(),
+                    operation.endpoint(),
+                    xmlResponse
+            );
         }
     }
 

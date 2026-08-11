@@ -5,6 +5,7 @@ import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
+import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiRegisterPartyBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
@@ -13,6 +14,8 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.service.transport.OpenAdrHttpStatusPolicy;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
@@ -36,6 +39,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.web.client.RestClient;
 
 import javax.xml.namespace.QName;
@@ -45,7 +50,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 @MockitoSettings(strictness = Strictness.LENIENT)
 class VtnTransportServiceValidateIdsTest {
 
@@ -206,6 +211,49 @@ class VtnTransportServiceValidateIdsTest {
         assertEquals("queryRegistration", exception.getOperationName());
     }
 
+    @Test
+    void send_logsRawVtnResponse_forRequestEvent(CapturedOutput output) throws Exception {
+        OadrResponseType response = Oadr20bResponseBuilders
+                .newOadr20bResponseBuilder(
+                        "request-event-001",
+                        ApplicationLayerErrorCodes.OK,
+                        "TH_VEN"
+                )
+                .build();
+
+        String responseXml = jaxbContext.marshalRoot(response, false);
+        doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
+
+        service.send(OpenAdrOperations.REQUEST_EVENT, buildRequestEventPayload());
+
+        assertTrue(output.getOut().contains(
+                "Raw VTN event response. operation=requestEvent"
+        ));
+        assertTrue(output.getOut().contains(responseXml));
+    }
+
+    @Test
+    void send_doesNotLogRawVtnEventResponse_forRegistration(CapturedOutput output) throws Exception {
+        EiResponseType eiResponse = Oadr20bResponseBuilders
+                .newOadr20bEiResponseBuilder("req-001", ApplicationLayerErrorCodes.OK)
+                .build();
+
+        OadrCreatedPartyRegistrationType created = Oadr20bEiRegisterPartyBuilders
+                .newOadr20bCreatedPartyRegistrationBuilder(
+                        eiResponse,
+                        "TH_VEN",
+                        "test-vtn"
+                )
+                .build();
+
+        String responseXml = jaxbContext.marshalRoot(created, false);
+        doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
+
+        service.send(OpenAdrOperations.QUERY_REGISTRATION, buildOutgoingPayload());
+
+        assertFalse(output.getOut().contains("Raw VTN event response"));
+    }
+
     /**
      * When the response venId matches currentVenId(), no exception is thrown.
      */
@@ -247,6 +295,12 @@ class VtnTransportServiceValidateIdsTest {
     private OadrRegisterReportType buildReportPayload() {
         return Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportBuilder("req-outgoing", "TH_VEN")
+                .build();
+    }
+
+    private OadrRequestEventType buildRequestEventPayload() {
+        return Oadr20bEiEventBuilders
+                .newOadrRequestEventBuilder("TH_VEN", "request-event-001")
                 .build();
     }
 }
