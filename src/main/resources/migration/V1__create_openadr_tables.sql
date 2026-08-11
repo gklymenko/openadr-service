@@ -22,9 +22,6 @@ CREATE TABLE IF NOT EXISTS dr_event (
     raw_payload      TEXT,
     created_at DATETIME(3) NOT NULL,
     updated_at DATETIME(3) NOT NULL,
-    signal_name VARCHAR(64) NULL,
-    signal_type VARCHAR(64) NULL,
-    signal_value DECIMAL(10,3) NULL,
     INDEX idx_event_id (event_id),
     INDEX idx_status (status)
     );

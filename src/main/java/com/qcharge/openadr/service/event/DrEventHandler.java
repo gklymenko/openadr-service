@@ -5,6 +5,8 @@ import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
 import com.qcharge.openadr.model.entity.DrEvent;
+import com.qcharge.openadr.model.entity.DrEventInterval;
+import com.qcharge.openadr.model.entity.DrEventSignal;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
@@ -30,6 +32,7 @@ import javax.xml.datatype.XMLGregorianCalendar;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -222,9 +225,7 @@ public class DrEventHandler {
 
         log.info(
                 "Processing OpenADR event. eventId={}, status={}, modificationNumber={}",
-                eventId,
-                descriptor.getEventStatus(),
-                modificationNumber
+                eventId, descriptor.getEventStatus(), modificationNumber
         );
 
         DrEvent existingEvent = drEventRepository.findByEventId(eventId).orElse(null);
@@ -232,16 +233,13 @@ public class DrEventHandler {
         if (isOutOfSequence(existingEvent, modificationNumber)) {
             log.warn(
                     "Out-of-sequence OpenADR event. eventId={}, currentModificationNumber={}, receivedModificationNumber={}",
-                    eventId,
-                    existingEvent.getModificationNumber(),
+                    eventId, existingEvent.getModificationNumber(),
                     modificationNumber
             );
 
             return new EventProcessingResult(
-                    eventId,
-                    modificationNumber,
-                    ApplicationLayerErrorCodes.OUT_OF_SEQUENCE,
-                    OptTypeType.OPT_OUT
+                    eventId, modificationNumber,
+                    ApplicationLayerErrorCodes.OUT_OF_SEQUENCE, OptTypeType.OPT_OUT
             );
         }
 
@@ -271,7 +269,8 @@ public class DrEventHandler {
             );
         }
 
-        Optional<ParsedSignal> parsedSignal = eventValidationService.parseSignal(oadrEvent);
+        List<ParsedSignal> parsedSignals = eventValidationService.parseSignals(oadrEvent);
+        Optional<ParsedSignal> parsedSignal = eventValidationService.selectPreferredSignal(parsedSignals);
 
         if (parsedSignal.isEmpty()) {
             log.warn("Unsupported event signal. eventId={} -> responseCode={}", eventId,
@@ -288,7 +287,7 @@ public class DrEventHandler {
         ParsedSignal signal = parsedSignal.get();
         OptTypeType optType = eventOptDecisionService.determineOptType(oadrEvent, signal);
 
-        saveOrUpdateEvent(oadrEvent, optType, signal);
+        saveOrUpdateEvent(oadrEvent, optType, signal, parsedSignals);
 
         if (optType == OptTypeType.OPT_IN) {
             ocppIntegrationService.applySignal(eventId, signal);
@@ -310,7 +309,12 @@ public class DrEventHandler {
                 && receivedModificationNumber < existingEvent.getModificationNumber();
     }
 
-    private void saveOrUpdateEvent(OadrEvent oadrEvent, OptTypeType optType, ParsedSignal signal) {
+    private void saveOrUpdateEvent(
+            OadrEvent oadrEvent,
+            OptTypeType optType,
+            ParsedSignal selectedSignal,
+            List<ParsedSignal> parsedSignals
+    ) {
         EventDescriptorType descriptor = requireDescriptor(oadrEvent);
         String eventId = requireEventId(descriptor);
 
@@ -324,9 +328,7 @@ public class DrEventHandler {
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
         drEvent.setStartTime(extractStartTime(oadrEvent));
         drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
-        drEvent.setSignalName(signal.signalName());
-        drEvent.setSignalType(signal.signalType());
-        drEvent.setSignalValue(signal.currentValue());
+        drEvent.replaceSignals(toSignalEntities(parsedSignals));
         drEvent.setUpdatedAt(Instant.now());
 
         drEventRepository.save(drEvent);
@@ -346,9 +348,7 @@ public class DrEventHandler {
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
         drEvent.setStartTime(extractStartTime(oadrEvent));
         drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
-        drEvent.setSignalName(null);
-        drEvent.setSignalType(null);
-        drEvent.setSignalValue(null);
+        drEvent.replaceSignals(List.of());
         drEvent.setUpdatedAt(Instant.now());
 
         drEventRepository.save(drEvent);
@@ -370,14 +370,41 @@ public class DrEventHandler {
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
         drEvent.setStartTime(extractStartTime(oadrEvent));
         drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
-        drEvent.setSignalName(null);
-        drEvent.setSignalType(null);
-        drEvent.setSignalValue(null);
+        drEvent.replaceSignals(List.of());
         drEvent.setUpdatedAt(Instant.now());
 
         drEventRepository.save(drEvent);
 
         log.info("Saved completed OpenADR event. eventId={}", eventId);
+    }
+
+    private List<DrEventSignal> toSignalEntities(List<ParsedSignal> parsedSignals) {
+        return java.util.stream.IntStream.range(0, parsedSignals.size())
+                .mapToObj(sequence -> toSignalEntity(parsedSignals.get(sequence), sequence))
+                .toList();
+    }
+
+    private DrEventSignal toSignalEntity(ParsedSignal parsed, int sequence) {
+        DrEventSignal entity = new DrEventSignal();
+        entity.setSequenceNumber(sequence);
+        entity.setSignalId(parsed.signalId());
+        entity.setSignalName(parsed.signalName());
+        entity.setSignalType(parsed.signalType());
+        entity.setCurrentValue(parsed.currentValue());
+        entity.setItemBaseElement(parsed.itemBaseElement());
+        entity.setItemBaseType(parsed.itemBaseType());
+        entity.setItemUnits(parsed.itemUnits());
+        entity.setSiScaleCode(parsed.siScaleCode());
+
+        parsed.intervals().forEach(parsedInterval -> {
+            DrEventInterval interval = new DrEventInterval();
+            interval.setSequenceNumber(parsedInterval.sequenceNumber());
+            interval.setIntervalUid(parsedInterval.uid());
+            interval.setDurationSeconds(parsedInterval.durationSeconds());
+            interval.setPayloadValue(parsedInterval.payloadValue());
+            entity.addInterval(interval);
+        });
+        return entity;
     }
 
     private boolean requiresCreatedEventResponse(OadrEvent oadrEvent) {

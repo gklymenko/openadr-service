@@ -1,5 +1,6 @@
 package com.qcharge.openadr.model.entity;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -7,6 +8,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -17,6 +20,8 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -34,7 +39,7 @@ public class DrEvent {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "event_id", nullable = false)
+    @Column(name = "event_id", nullable = false, unique = true)
     private String eventId;
 
     @Column(name = "modification_number", nullable = false)
@@ -57,14 +62,9 @@ public class DrEvent {
     @Column(name = "duration_seconds")
     private Long durationSeconds;
 
-    @Column(name = "signal_name")
-    private String signalName;
-
-    @Column(name = "signal_type")
-    private String signalType;
-
-    @Column(name = "signal_value", precision = 10, scale = 3)
-    private BigDecimal signalValue;
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sequenceNumber ASC")
+    private List<DrEventSignal> signals = new ArrayList<>();
 
     @Column(name = "raw_payload", columnDefinition = "TEXT")
     private String rawPayload;
@@ -85,6 +85,14 @@ public class DrEvent {
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();
+    }
+
+    public void replaceSignals(List<DrEventSignal> replacements) {
+        signals.clear();
+        replacements.forEach(signal -> {
+            signal.setEvent(this);
+            signals.add(signal);
+        });
     }
 
     public enum EventStatus {

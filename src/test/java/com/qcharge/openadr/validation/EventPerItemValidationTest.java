@@ -46,7 +46,9 @@ class EventPerItemValidationTest {
                         "VEN-1", "VTN-1", "REG-1"
                 ));
         when(repository.findByEventId("EVENT-1")).thenReturn(Optional.empty());
-        when(validationService.parseSignal(org.mockito.ArgumentMatchers.any()))
+        when(validationService.parseSignals(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of());
+        when(validationService.selectPreferredSignal(org.mockito.ArgumentMatchers.anyList()))
                 .thenReturn(Optional.empty());
 
         handler = new DrEventHandler(
