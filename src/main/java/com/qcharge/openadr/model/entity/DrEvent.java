@@ -69,6 +69,9 @@ public class DrEvent {
     @Column(name = "priority")
     private Integer priority;
 
+    @Column(name = "test_event", nullable = false)
+    private boolean testEvent;
+
     @Column(name = "start_time", nullable = false)
     private Instant startTime;
 

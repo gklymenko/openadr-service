@@ -185,6 +185,42 @@ class SignalParsingTest extends AbstractOadrTest {
     }
 
     @Test
+    void parseSignals_acceptsZeroIntervalForOpenEndedEvent() throws Oadr20bUnmarshalException {
+        OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
+        event.getEiEvent().getEiActivePeriod().getProperties()
+                .getDuration().setDuration("PT0S");
+        event.getEiEvent().getEiEventSignals().getEiEventSignal().forEach(signal -> {
+            signal.getIntervals().getInterval().subList(
+                    1, signal.getIntervals().getInterval().size()).clear();
+            signal.getIntervals().getInterval().getFirst()
+                    .getDuration().setDuration("PT0S");
+        });
+
+        List<ParsedSignal> signals = service.parseSignals(event);
+
+        assertEquals(2, signals.size());
+        assertTrue(signals.stream().allMatch(signal ->
+                signal.intervals().size() == 1
+                        && signal.intervals().getFirst().durationSeconds() == 0L));
+    }
+
+    @Test
+    void parseSignals_rejectsZeroIntervalForFiniteEvent() throws Oadr20bUnmarshalException {
+        OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
+        event.getEiEvent().getEiEventSignals().getEiEventSignal().getFirst()
+                .getIntervals().getInterval().getFirst()
+                .getDuration().setDuration("PT0S");
+
+        EventValidationException exception = assertThrows(
+                EventValidationException.class,
+                () -> service.parseSignals(event)
+        );
+
+        assertEquals(459, exception.getResponseCode());
+        assertTrue(exception.getMessage().contains("unless the event is open-ended"));
+    }
+
+    @Test
     void parseSignals_rejectsSimpleValueOutsideZeroToThree() throws Oadr20bUnmarshalException {
         OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
         var simple = event.getEiEvent().getEiEventSignals().getEiEventSignal().getFirst();

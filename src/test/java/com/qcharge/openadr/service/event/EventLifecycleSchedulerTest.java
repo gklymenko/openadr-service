@@ -113,6 +113,24 @@ class EventLifecycleSchedulerTest {
     }
 
     @Test
+    void testEventAdvancesLifecycleWithoutOperationalActions() {
+        DrEvent event = event(1800L);
+        event.setTestEvent(true);
+        when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
+
+        scheduler.processAt(START);
+        scheduler.processAt(START.plusSeconds(1800));
+
+        assertEquals(DrEvent.EventStatus.COMPLETED, event.getStatus());
+        assertEquals(DrEvent.ExecutionStatus.COMPLETED, event.getExecutionStatus());
+        assertEquals(0, event.getLastAppliedInterval());
+        verify(ocppIntegrationService, never()).applySignalInterval(
+                any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
+                any(Integer.class), any());
+        verify(ocppIntegrationService, never()).clearEvent(any(), any());
+    }
+
+    @Test
     void cancellationPendingKeepsAppliedIntervalUntilEffectiveTime() {
         DrEvent event = event(1800L);
         event.setStatus(DrEvent.EventStatus.ACTIVE);

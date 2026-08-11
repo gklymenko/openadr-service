@@ -99,11 +99,14 @@ public class EventValidationService {
             return List.of();
         }
 
+        long eventDurationSeconds = eventDurationSeconds(oadrEvent);
+        boolean openEnded = eventDurationSeconds == 0L;
+
         List<ParsedSignal> parsedSignals = oadrEvent.getEiEvent()
                 .getEiEventSignals()
                 .getEiEventSignal()
                 .stream()
-                .map(this::toParsedSignal)
+                .map(signal -> toParsedSignal(signal, openEnded))
                 .toList();
 
         boolean hasUnsupportedSignal = parsedSignals.stream()
@@ -115,7 +118,7 @@ public class EventValidationService {
         }
 
         validateUniqueSignalIds(parsedSignals);
-        validateIntervalDurations(oadrEvent, parsedSignals);
+        validateIntervalDurations(eventDurationSeconds, parsedSignals);
         validateSignalValues(oadrEvent, parsedSignals);
         return List.copyOf(parsedSignals);
     }
@@ -152,9 +155,8 @@ public class EventValidationService {
         }
     }
 
-    private void validateIntervalDurations(OadrEvent event, List<ParsedSignal> signals) {
-        Long eventDurationSeconds = eventDurationSeconds(event);
-        if (eventDurationSeconds == null || eventDurationSeconds == 0L) {
+    private void validateIntervalDurations(long eventDurationSeconds, List<ParsedSignal> signals) {
+        if (eventDurationSeconds == 0L) {
             return;
         }
 
@@ -367,7 +369,7 @@ public class EventValidationService {
         }
     }
 
-    private ParsedSignal toParsedSignal(EiEventSignalType signal) {
+    private ParsedSignal toParsedSignal(EiEventSignalType signal, boolean openEnded) {
         String signalType = signal.getSignalType() != null
                 ? signal.getSignalType().value()
                 : null;
@@ -396,7 +398,8 @@ public class EventValidationService {
 
         List<ParsedInterval> intervals = new ArrayList<>();
         for (int sequence = 0; sequence < sourceIntervals.size(); sequence++) {
-            intervals.add(toParsedInterval(signal.getSignalID(), sourceIntervals.get(sequence), sequence));
+            intervals.add(toParsedInterval(
+                    signal.getSignalID(), sourceIntervals.get(sequence), sequence, openEnded));
         }
 
         return new ParsedSignal(
@@ -412,7 +415,12 @@ public class EventValidationService {
         );
     }
 
-    private ParsedInterval toParsedInterval(String signalId, IntervalType interval, int sequence) {
+    private ParsedInterval toParsedInterval(
+            String signalId,
+            IntervalType interval,
+            int sequence,
+            boolean openEnded
+    ) {
         if (interval.getDtstart() != null) {
             throw complianceError("Interval dtstart is not allowed for signal " + signalId);
         }
@@ -433,9 +441,10 @@ public class EventValidationService {
                 durationValue,
                 "interval for signal %s, uid=%s".formatted(signalId, uid)
         );
-        if (durationSeconds <= 0) {
+        if (durationSeconds < 0 || (durationSeconds == 0 && !openEnded)) {
             throw complianceError(
-                    "Interval duration must be positive for signal %s, uid=%s"
+                    "Interval duration must be positive unless the event is open-ended "
+                            + "for signal %s, uid=%s"
                             .formatted(signalId, uid)
             );
         }

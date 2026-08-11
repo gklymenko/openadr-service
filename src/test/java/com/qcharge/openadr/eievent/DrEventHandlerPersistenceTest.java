@@ -22,6 +22,7 @@ import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,6 +51,8 @@ class DrEventHandlerPersistenceTest extends AbstractOadrTest {
                 new File(EIEVENT_PATH + "oadrDistributeEvent.xml"),
                 OadrDistributeEventType.class
         );
+        distributeEvent.getOadrEvent().getFirst().getEiEvent()
+                .getEventDescriptor().setTestEvent("certification-test");
 
         handler.handle(
                 distributeEvent,
@@ -61,6 +64,7 @@ class DrEventHandlerPersistenceTest extends AbstractOadrTest {
         DrEvent saved = captor.getValue();
 
         assertEquals(2, saved.getSignals().size());
+        assertTrue(saved.isTestEvent());
         assertEquals(DrEvent.ExecutionStatus.SCHEDULED, saved.getExecutionStatus());
         assertEquals(Instant.parse("2001-12-17T09:40:47Z"), saved.getRequestedStartTime());
         assertEquals(180L, saved.getStartAfterSeconds());

@@ -100,19 +100,27 @@ public class EventLifecycleScheduler {
         }
 
         DrEventInterval interval = signal.getIntervals().get(intervalIndex);
-        ocppIntegrationService.applySignalInterval(
-                event.getEventId(),
-                event.getModificationNumber(),
-                signal.getSignalId(),
-                interval.getIntervalUid(),
-                signal.getSignalName(),
-                signal.getSignalType(),
-                interval.getPayloadValue(),
-                signal.getItemUnits(),
-                signal.getSiScaleCode(),
-                intervalIndex,
-                intervalStart(event, signal, intervalIndex)
-        );
+        if (event.isTestEvent()) {
+            log.info(
+                    "Skipping operational signal application for OpenADR test event. "
+                            + "eventId={}, signalId={}, intervalUid={}",
+                    event.getEventId(), signal.getSignalId(), interval.getIntervalUid()
+            );
+        } else {
+            ocppIntegrationService.applySignalInterval(
+                    event.getEventId(),
+                    event.getModificationNumber(),
+                    signal.getSignalId(),
+                    interval.getIntervalUid(),
+                    signal.getSignalName(),
+                    signal.getSignalType(),
+                    interval.getPayloadValue(),
+                    signal.getItemUnits(),
+                    signal.getSiScaleCode(),
+                    intervalIndex,
+                    intervalStart(event, signal, intervalIndex)
+            );
+        }
 
         event.setExecutionStatus(cancellationPending
                 ? DrEvent.ExecutionStatus.CANCEL_PENDING
@@ -123,7 +131,8 @@ public class EventLifecycleScheduler {
     }
 
     private void terminateCancellation(DrEvent event, Instant now) {
-        if (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null) {
+        if (!event.isTestEvent()
+                && (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null)) {
             ClearReason reason = event.getCancellationType() == DrEvent.CancellationType.IMPLICIT
                     ? ClearReason.IMPLICIT_CANCELLATION
                     : ClearReason.CANCELLED;
@@ -142,7 +151,8 @@ public class EventLifecycleScheduler {
     }
 
     private void complete(DrEvent event, Instant now) {
-        if (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null) {
+        if (!event.isTestEvent()
+                && (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null)) {
             ocppIntegrationService.clearEvent(event.getEventId(), ClearReason.COMPLETED);
         }
         event.setExecutionStatus(DrEvent.ExecutionStatus.COMPLETED);

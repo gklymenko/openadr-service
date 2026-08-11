@@ -402,6 +402,7 @@ public class DrEventHandler {
         drEvent.setVtnStatus(receivedStatus);
         drEvent.setOptType(mapOptType(optType));
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
+        drEvent.setTestEvent(isTestEvent(descriptor));
         drEvent.setRequestedStartTime(timing.requestedStartTime());
         drEvent.setStartAfterSeconds(timing.startAfterSeconds());
         drEvent.setRandomOffsetSeconds(timing.randomOffsetSeconds());
@@ -435,6 +436,9 @@ public class DrEventHandler {
         drEvent.setVtnStatus(DrEvent.EventStatus.CANCELLED);
         drEvent.setOptType(DrEvent.OptType.OPT_IN);
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
+        drEvent.setTestEvent(existingEvent != null
+                ? existingEvent.isTestEvent()
+                : isTestEvent(descriptor));
         if (existingEvent == null) {
             EventTiming timing = extractTiming(oadrEvent, null);
             drEvent.setRequestedStartTime(timing.requestedStartTime());
@@ -535,6 +539,9 @@ public class DrEventHandler {
         drEvent.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
         drEvent.setVtnStatus(DrEvent.EventStatus.COMPLETED);
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
+        drEvent.setTestEvent(existingEvent != null
+                ? existingEvent.isTestEvent()
+                : isTestEvent(descriptor));
         if (existingEvent == null) {
             EventTiming timing = extractTiming(oadrEvent, null);
             drEvent.setStatus(DrEvent.EventStatus.COMPLETED);
@@ -613,6 +620,12 @@ public class DrEventHandler {
         return descriptor.getEventStatus() != null
                 && DrEvent.EventStatus.COMPLETED.name()
                 .equalsIgnoreCase(descriptor.getEventStatus().value());
+    }
+
+    /** Rule 6: only the exact value "false" denotes a non-test event. */
+    private boolean isTestEvent(EventDescriptorType descriptor) {
+        String value = descriptor.getTestEvent();
+        return value != null && !"false".equals(value);
     }
 
     private DrEvent.EventStatus mapStatus(EventDescriptorType descriptor) {
