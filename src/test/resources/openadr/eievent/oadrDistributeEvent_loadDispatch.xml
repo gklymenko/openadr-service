@@ -59,6 +59,16 @@
                     <ei:signalName>LOAD_DISPATCH</ei:signalName>
                     <ei:signalType>setpoint</ei:signalType>
                     <ei:signalID>SIG_LD_01</ei:signalID>
+                    <power:powerReal>
+                        <power:itemDescription>RealPower</power:itemDescription>
+                        <power:itemUnits>W</power:itemUnits>
+                        <scale:siScaleCode>k</scale:siScaleCode>
+                        <power:powerAttributes>
+                            <power:hertz>60</power:hertz>
+                            <power:voltage>230</power:voltage>
+                            <power:ac>true</power:ac>
+                        </power:powerAttributes>
+                    </power:powerReal>
                     <ei:currentValue>
                         <ei:payloadFloat>
                             <ei:value>25.0</ei:value>

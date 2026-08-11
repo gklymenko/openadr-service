@@ -20,7 +20,7 @@
 		<ei:eiEvent>
 			<ei:eventDescriptor>
 				<ei:eventID>Event_939393</ei:eventID>
-				<ei:modificationNumber>1</ei:modificationNumber>
+				<ei:modificationNumber>0</ei:modificationNumber>
 				<ei:modificationDateTime>2001-12-17T09:30:47.000Z
 				</ei:modificationDateTime>
 				<ei:modificationReason>Update</ei:modificationReason>

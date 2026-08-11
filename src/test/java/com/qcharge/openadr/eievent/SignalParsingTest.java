@@ -47,6 +47,9 @@ class SignalParsingTest extends AbstractOadrTest {
         assertEquals(3600, signal.intervals().getFirst().durationSeconds());
         assertEquals(0, BigDecimal.valueOf(25.0)
                 .compareTo(signal.intervals().getFirst().payloadValue()));
+        assertEquals("powerReal", signal.itemBaseElement());
+        assertEquals("W", signal.itemUnits());
+        assertEquals("k", signal.siScaleCode());
     }
 
     @Test
@@ -179,6 +182,52 @@ class SignalParsingTest extends AbstractOadrTest {
 
         assertEquals(459, exception.getResponseCode());
         assertTrue(exception.getMessage().contains("sum to"));
+    }
+
+    @Test
+    void parseSignals_rejectsSimpleValueOutsideZeroToThree() throws Oadr20bUnmarshalException {
+        OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
+        var simple = event.getEiEvent().getEiEventSignals().getEiEventSignal().getFirst();
+        var payload = (com.qcharge.openadr.model.oadr20b.ei.SignalPayloadType)
+                simple.getIntervals().getInterval().getFirst()
+                        .getStreamPayloadBase().getFirst().getValue();
+        var payloadFloat = (com.qcharge.openadr.model.oadr20b.ei.PayloadFloatType)
+                payload.getPayloadBase().getValue();
+        payloadFloat.setValue(4.0f);
+
+        EventValidationException exception = assertThrows(
+                EventValidationException.class,
+                () -> service.parseSignals(event)
+        );
+
+        assertEquals(454, exception.getResponseCode());
+        assertTrue(exception.getMessage().contains("0, 1, 2, 3"));
+    }
+
+    @Test
+    void parseSignals_rejectsNonZeroSimpleCurrentValueForFarEvent()
+            throws Oadr20bUnmarshalException {
+        OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
+        var simple = event.getEiEvent().getEiEventSignals().getEiEventSignal().getFirst();
+        simple.getCurrentValue().getPayloadFloat().setValue(2.0f);
+
+        EventValidationException exception = assertThrows(
+                EventValidationException.class,
+                () -> service.parseSignals(event)
+        );
+
+        assertEquals(454, exception.getResponseCode());
+        assertTrue(exception.getMessage().contains("must be 0"));
+    }
+
+    @Test
+    void parseSignals_rejectsElectricityPriceWithoutCurrencyPerKWhUnit()
+            throws Oadr20bUnmarshalException {
+        OadrEvent event = loadFirstEvent("oadrDistributeEvent_electricityPrice.xml");
+        event.getEiEvent().getEiEventSignals().getEiEventSignal().getFirst().setItemBase(null);
+
+        assertTrue(service.parseSignals(event).isEmpty(),
+                "Unsupported signalType and Unit combination must map to Rule 109 / 460");
     }
 
     // --- helpers ---

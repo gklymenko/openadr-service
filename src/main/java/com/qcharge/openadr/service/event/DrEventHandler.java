@@ -230,10 +230,16 @@ public class DrEventHandler {
 
         DrEvent existingEvent = drEventRepository.findByEventId(eventId).orElse(null);
 
-        if (isOutOfSequence(existingEvent, modificationNumber)) {
+        boolean unknownCancellation = existingEvent == null && isCancelled(descriptor);
+        EventVersionState versionState = unknownCancellation
+                ? EventVersionState.NEW
+                : validateModificationSequence(existingEvent, modificationNumber);
+
+        if (versionState == EventVersionState.OUT_OF_SEQUENCE) {
             log.warn(
                     "Out-of-sequence OpenADR event. eventId={}, currentModificationNumber={}, receivedModificationNumber={}",
-                    eventId, existingEvent.getModificationNumber(),
+                    eventId,
+                    existingEvent != null ? existingEvent.getModificationNumber() : null,
                     modificationNumber
             );
 
@@ -246,19 +252,35 @@ public class DrEventHandler {
         eventValidationService.validateTargetAndMarketContext(oadrEvent, venId);
 
         if (isCancelled(descriptor)) {
-            saveCancelledEvent(oadrEvent);
+            if (unknownCancellation) {
+                log.info("Ignoring cancellation for unknown OpenADR event. eventId={}", eventId);
+                return new EventProcessingResult(
+                        eventId,
+                        modificationNumber,
+                        ApplicationLayerErrorCodes.OK,
+                        OptTypeType.OPT_IN
+                );
+            }
+            if (versionState == EventVersionState.DUPLICATE) {
+                return successfulDuplicate(existingEvent, eventId, modificationNumber);
+            }
+            saveCancelledEvent(oadrEvent, existingEvent);
             ocppIntegrationService.clearEvent(eventId);
 
             return new EventProcessingResult(
                     eventId,
                     modificationNumber,
                     ApplicationLayerErrorCodes.OK,
-                    OptTypeType.OPT_OUT
+                    OptTypeType.OPT_IN
             );
         }
 
         if (isCompleted(descriptor)) {
-            saveCompletedEvent(oadrEvent);
+            if (versionState == EventVersionState.DUPLICATE
+                    && existingEvent.getStatus() == DrEvent.EventStatus.COMPLETED) {
+                return successfulDuplicate(existingEvent, eventId, modificationNumber);
+            }
+            saveCompletedEvent(oadrEvent, existingEvent);
             ocppIntegrationService.clearEvent(eventId);
 
             return new EventProcessingResult(
@@ -287,7 +309,11 @@ public class DrEventHandler {
         ParsedSignal signal = parsedSignal.get();
         OptTypeType optType = eventOptDecisionService.determineOptType(oadrEvent, signal);
 
-        saveOrUpdateEvent(oadrEvent, optType, signal, parsedSignals);
+        if (versionState == EventVersionState.DUPLICATE) {
+            return successfulDuplicate(existingEvent, eventId, modificationNumber);
+        }
+
+        saveOrUpdateEvent(oadrEvent, existingEvent, optType, parsedSignals);
 
         if (optType == OptTypeType.OPT_IN) {
             ocppIntegrationService.applySignal(eventId, signal);
@@ -303,23 +329,57 @@ public class DrEventHandler {
         );
     }
 
-    private boolean isOutOfSequence(DrEvent existingEvent, long receivedModificationNumber) {
-        return existingEvent != null
-                && existingEvent.getModificationNumber() != null
-                && receivedModificationNumber < existingEvent.getModificationNumber();
+    private EventVersionState validateModificationSequence(
+            DrEvent existingEvent,
+            long receivedModificationNumber
+    ) {
+        if (existingEvent == null) {
+            return receivedModificationNumber == 0
+                    ? EventVersionState.NEW
+                    : EventVersionState.OUT_OF_SEQUENCE;
+        }
+
+        int storedModificationNumber = existingEvent.getModificationNumber();
+        if (receivedModificationNumber == storedModificationNumber) {
+            return EventVersionState.DUPLICATE;
+        }
+        if (receivedModificationNumber > storedModificationNumber) {
+            return EventVersionState.MODIFIED;
+        }
+        return EventVersionState.OUT_OF_SEQUENCE;
+    }
+
+    private EventProcessingResult successfulDuplicate(
+            DrEvent existingEvent,
+            String eventId,
+            long modificationNumber
+    ) {
+        OptTypeType optType = existingEvent.getOptType() == DrEvent.OptType.OPT_OUT
+                ? OptTypeType.OPT_OUT
+                : OptTypeType.OPT_IN;
+        log.info(
+                "Duplicate OpenADR event version processed idempotently. eventId={}, modificationNumber={}",
+                eventId,
+                modificationNumber
+        );
+        return new EventProcessingResult(
+                eventId,
+                modificationNumber,
+                ApplicationLayerErrorCodes.OK,
+                optType
+        );
     }
 
     private void saveOrUpdateEvent(
             OadrEvent oadrEvent,
+            DrEvent existingEvent,
             OptTypeType optType,
-            ParsedSignal selectedSignal,
             List<ParsedSignal> parsedSignals
     ) {
         EventDescriptorType descriptor = requireDescriptor(oadrEvent);
         String eventId = requireEventId(descriptor);
 
-        DrEvent drEvent = drEventRepository.findByEventId(eventId)
-                .orElseGet(DrEvent::new);
+        DrEvent drEvent = existingEvent != null ? existingEvent : new DrEvent();
 
         drEvent.setEventId(eventId);
         drEvent.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
@@ -334,17 +394,16 @@ public class DrEventHandler {
         drEventRepository.save(drEvent);
     }
 
-    private void saveCancelledEvent(OadrEvent oadrEvent) {
+    private void saveCancelledEvent(OadrEvent oadrEvent, DrEvent existingEvent) {
         EventDescriptorType descriptor = requireDescriptor(oadrEvent);
         String eventId = requireEventId(descriptor);
 
-        DrEvent drEvent = drEventRepository.findByEventId(eventId)
-                .orElseGet(DrEvent::new);
+        DrEvent drEvent = existingEvent != null ? existingEvent : new DrEvent();
 
         drEvent.setEventId(eventId);
         drEvent.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
         drEvent.setStatus(DrEvent.EventStatus.CANCELLED);
-        drEvent.setOptType(DrEvent.OptType.OPT_OUT);
+        drEvent.setOptType(DrEvent.OptType.OPT_IN);
         drEvent.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
         drEvent.setStartTime(extractStartTime(oadrEvent));
         drEvent.setDurationSeconds(extractDurationSeconds(oadrEvent));
@@ -356,12 +415,11 @@ public class DrEventHandler {
         log.info("Saved cancelled OpenADR event. eventId={}", eventId);
     }
 
-    private void saveCompletedEvent(OadrEvent oadrEvent) {
+    private void saveCompletedEvent(OadrEvent oadrEvent, DrEvent existingEvent) {
         EventDescriptorType descriptor = requireDescriptor(oadrEvent);
         String eventId = requireEventId(descriptor);
 
-        DrEvent drEvent = drEventRepository.findByEventId(eventId)
-                .orElseGet(DrEvent::new);
+        DrEvent drEvent = existingEvent != null ? existingEvent : new DrEvent();
 
         drEvent.setEventId(eventId);
         drEvent.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
@@ -535,5 +593,12 @@ public class DrEventHandler {
             int responseCode,
             OptTypeType optType
     ) {
+    }
+
+    private enum EventVersionState {
+        NEW,
+        MODIFIED,
+        DUPLICATE,
+        OUT_OF_SEQUENCE
     }
 }

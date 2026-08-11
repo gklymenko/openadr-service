@@ -8,7 +8,10 @@ import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
 import com.qcharge.openadr.model.oadr20b.ei.IntervalType;
 import com.qcharge.openadr.model.oadr20b.ei.PayloadFloatType;
 import com.qcharge.openadr.model.oadr20b.ei.SignalPayloadType;
+import com.qcharge.openadr.model.oadr20b.emix.ItemBaseType;
+import com.qcharge.openadr.model.oadr20b.oadr.CurrencyType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
+import com.qcharge.openadr.model.oadr20b.power.PowerRealType;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import jakarta.xml.bind.JAXBElement;
 import lombok.RequiredArgsConstructor;
@@ -104,7 +107,7 @@ public class EventValidationService {
                 .toList();
 
         boolean hasUnsupportedSignal = parsedSignals.stream()
-                .anyMatch(signal -> !isSupportedCombination(signal.signalName(), signal.signalType()));
+                .anyMatch(signal -> !isSupportedCombination(signal));
 
         if (hasUnsupportedSignal) {
             log.warn("Unsupported event signal found. signals={}", parsedSignals);
@@ -113,6 +116,7 @@ public class EventValidationService {
 
         validateUniqueSignalIds(parsedSignals);
         validateIntervalDurations(oadrEvent, parsedSignals);
+        validateSignalValues(oadrEvent, parsedSignals);
         return List.copyOf(parsedSignals);
     }
 
@@ -297,17 +301,70 @@ public class EventValidationService {
                 .anyMatch(value -> value.equalsIgnoreCase(expected));
     }
 
-    private boolean isSupportedCombination(String signalName, String signalType) {
+    private boolean isSupportedCombination(ParsedSignal signal) {
+        String signalName = signal.signalName();
+        String signalType = signal.signalType();
         if (signalName == null) {
             return false;
         }
 
         return switch (signalName.toUpperCase()) {
-            case SIGNAL_SIMPLE -> "level".equalsIgnoreCase(signalType);
-            case SIGNAL_ELECTRICITY_PRICE -> "price".equalsIgnoreCase(signalType);
-            case SIGNAL_LOAD_DISPATCH -> "setpoint".equalsIgnoreCase(signalType);
+            case SIGNAL_SIMPLE -> "level".equalsIgnoreCase(signalType)
+                    && signal.itemBaseElement() == null;
+            case SIGNAL_ELECTRICITY_PRICE -> "price".equalsIgnoreCase(signalType)
+                    && "currencyPerKWh".equalsIgnoreCase(signal.itemBaseElement())
+                    && hasUnitsAndScale(signal);
+            case SIGNAL_LOAD_DISPATCH -> "setpoint".equalsIgnoreCase(signalType)
+                    && "powerReal".equalsIgnoreCase(signal.itemBaseElement())
+                    && isRealPowerUnit(signal.itemUnits())
+                    && hasUnitsAndScale(signal);
             default -> false;
         };
+    }
+
+    private boolean hasUnitsAndScale(ParsedSignal signal) {
+        return signal.itemUnits() != null
+                && !signal.itemUnits().isBlank()
+                && signal.siScaleCode() != null
+                && !signal.siScaleCode().isBlank();
+    }
+
+    private boolean isRealPowerUnit(String itemUnits) {
+        return "W".equalsIgnoreCase(itemUnits) || "J/s".equalsIgnoreCase(itemUnits);
+    }
+
+    private void validateSignalValues(OadrEvent event, List<ParsedSignal> signals) {
+        for (ParsedSignal signal : signals) {
+            if (!SIGNAL_SIMPLE.equalsIgnoreCase(signal.signalName())) {
+                continue;
+            }
+
+            signal.intervals().forEach(interval -> validateSimpleLevel(
+                    interval.payloadValue(),
+                    "SIMPLE interval uid=" + interval.uid()
+            ));
+
+            if (signal.currentValue() != null) {
+                validateSimpleLevel(signal.currentValue(), "SIMPLE currentValue");
+
+                EventDescriptorType descriptor = event.getEiEvent().getEventDescriptor();
+                boolean active = descriptor != null
+                        && descriptor.getEventStatus() != null
+                        && "active".equalsIgnoreCase(descriptor.getEventStatus().value());
+                if (!active && signal.currentValue().compareTo(BigDecimal.ZERO) != 0) {
+                    throw invalidData("SIMPLE currentValue must be 0 while event is not active");
+                }
+            }
+        }
+    }
+
+    private void validateSimpleLevel(BigDecimal value, String subject) {
+        if (value == null
+                || value.stripTrailingZeros().scale() > 0
+                || value.compareTo(BigDecimal.ZERO) < 0
+                || value.compareTo(BigDecimal.valueOf(3)) > 0) {
+            throw invalidData(subject + " must be one of 0, 1, 2, 3");
+        }
     }
 
     private ParsedSignal toParsedSignal(EiEventSignalType signal) {
@@ -322,15 +379,13 @@ public class EventValidationService {
             value = decimal(signal.getCurrentValue().getPayloadFloat().getValue());
         }
 
-        String itemBaseElement = signal.getItemBase() != null
-                ? signal.getItemBase().getName().getLocalPart()
+        ItemBaseType itemBase = signal.getItemBase() != null
+                ? signal.getItemBase().getValue()
                 : null;
-        String itemBaseType = signal.getItemBase() != null && signal.getItemBase().getValue() != null
-                ? signal.getItemBase().getValue().getClass().getSimpleName()
-                : null;
-        Object itemBase = signal.getItemBase() != null ? signal.getItemBase().getValue() : null;
-        String itemUnits = generatedScalarProperty(itemBase, "getItemUnits");
-        String siScaleCode = generatedScalarProperty(itemBase, "getSiScaleCode");
+        String itemBaseElement = itemBaseElement(signal, itemBase);
+        String itemBaseType = itemBase != null ? itemBase.getClass().getSimpleName() : null;
+        String itemUnits = itemUnits(itemBase);
+        String siScaleCode = siScaleCode(itemBase);
 
         List<IntervalType> sourceIntervals = signal.getIntervals() != null
                 ? signal.getIntervals().getInterval()
@@ -425,32 +480,46 @@ public class EventValidationService {
         }
     }
 
-    private String generatedScalarProperty(Object source, String getterName) {
-        if (source == null) {
-            return null;
+    private String itemBaseElement(EiEventSignalType signal, ItemBaseType itemBase) {
+        if (itemBase instanceof PowerRealType) {
+            return "powerReal";
         }
-        try {
-            Object value = source.getClass().getMethod(getterName).invoke(source);
-            if (value == null) {
-                return null;
-            }
-            try {
-                Object lexicalValue = value.getClass().getMethod("value").invoke(value);
-                return lexicalValue != null ? lexicalValue.toString() : null;
-            } catch (ReflectiveOperationException ignored) {
-                return value.toString();
-            }
-        } catch (NoSuchMethodException ignored) {
-            return null;
-        } catch (ReflectiveOperationException exception) {
-            throw complianceError("Cannot read " + getterName + " from " + source.getClass().getSimpleName());
+        return signal.getItemBase() != null
+                ? signal.getItemBase().getName().getLocalPart()
+                : null;
+    }
+
+    private String itemUnits(ItemBaseType itemBase) {
+        if (itemBase instanceof PowerRealType powerReal) {
+            return powerReal.getItemUnits();
         }
+        if (itemBase instanceof CurrencyType currency && currency.getItemUnits() != null) {
+            return currency.getItemUnits().value();
+        }
+        return null;
+    }
+
+    private String siScaleCode(ItemBaseType itemBase) {
+        if (itemBase instanceof PowerRealType powerReal && powerReal.getSiScaleCode() != null) {
+            return powerReal.getSiScaleCode().value();
+        }
+        if (itemBase instanceof CurrencyType currency && currency.getSiScaleCode() != null) {
+            return currency.getSiScaleCode().value();
+        }
+        return null;
     }
 
     private EventValidationException complianceError(String message) {
         return new EventValidationException(
                 message,
                 com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER
+        );
+    }
+
+    private EventValidationException invalidData(String message) {
+        return new EventValidationException(
+                message,
+                com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.INVALID_DATA
         );
     }
 }
