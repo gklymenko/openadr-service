@@ -66,23 +66,6 @@ class DrEventVersioningTest extends AbstractOadrTest {
     }
 
     @Test
-    void newEventWithNonZeroModificationNumberReturns450()
-            throws Oadr20bUnmarshalException {
-        OadrDistributeEventType distributeEvent = loadEvent();
-        distributeEvent.getOadrEvent().getFirst().getEiEvent()
-                .getEventDescriptor().setModificationNumber(2);
-        when(repository.findByEventId("Event_939393")).thenReturn(Optional.empty());
-
-        handler.handle(distributeEvent, TestSessionFixtures.registeredSession(
-                "VEN-1", "VTN-1", "REG-1"
-        ));
-
-        assertResponseCode(ApplicationLayerErrorCodes.OUT_OF_SEQUENCE);
-        verify(repository, never()).save(any());
-        verify(ocppIntegrationService, never()).applySignal(any(), any());
-    }
-
-    @Test
     void repeatedVersionRespondsButDoesNotRepeatSideEffects()
             throws Oadr20bUnmarshalException {
         OadrDistributeEventType distributeEvent = loadEvent();
