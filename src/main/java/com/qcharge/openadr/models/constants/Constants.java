@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Constants {
     public static final String AUTHORIZATION_HEADER = "authorization";
+    public static final String KEY_HEADER = "key";
     public static final String DEFAULT = "default";
     public static final String UNDEFINED = "undefined";
     public static final String DOT = ".";
