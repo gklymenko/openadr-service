@@ -4,7 +4,6 @@ import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
-import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
 import com.qcharge.openadr.model.oadr20b.ei.EventStatusEnumeratedType;
@@ -13,13 +12,12 @@ import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
-import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +37,7 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static com.qcharge.openadr.support.EventProtocolTestComponents.protocolAdapter;
 
 @ExtendWith(MockitoExtension.class)
 class DrEventVersioningTest extends AbstractOadrTest {
@@ -48,12 +47,8 @@ class DrEventVersioningTest extends AbstractOadrTest {
     @Mock
     private VtnTransportService transportService;
     @Mock
-    private OcppIntegrationService ocppIntegrationService;
-    @Mock
-    private OpenAdrSessionProvider sessionProvider;
-    @Mock
     private EventResourceResolver eventResourceResolver;
-    private DrEventHandler handler;
+    private EventProtocolAdapter adapter;
 
     @BeforeEach
     void setUp() {
@@ -71,15 +66,12 @@ class DrEventVersioningTest extends AbstractOadrTest {
                         "SIG_01", java.util.List.of(resource),
                         "SIG_02", java.util.List.of(resource)
                 ));
-        handler = new DrEventHandler(
-                properties,
+        adapter = protocolAdapter(
                 repository,
                 transportService,
                 new EventOptDecisionService(),
                 new EventValidationService(properties),
-                eventResourceResolver,
-                ocppIntegrationService,
-                sessionProvider
+                eventResourceResolver
         );
     }
 
@@ -90,13 +82,12 @@ class DrEventVersioningTest extends AbstractOadrTest {
         DrEvent existing = existingEvent(0);
         when(repository.findByEventId("Event_939393")).thenReturn(Optional.of(existing));
 
-        handler.handle(distributeEvent, TestSessionFixtures.registeredSession(
+        adapter.receive(distributeEvent, TestSessionFixtures.registeredSession(
                 "VEN-1", "VTN-1", "REG-1"
         ));
 
         assertResponseCode(ApplicationLayerErrorCodes.OK);
         verify(repository, never()).save(any());
-        verify(ocppIntegrationService, never()).applySignal(any(), any());
     }
 
     @Test
@@ -108,13 +99,12 @@ class DrEventVersioningTest extends AbstractOadrTest {
         when(repository.findByEventId("Event_939393"))
                 .thenReturn(Optional.of(existingEvent(0)));
 
-        handler.handle(distributeEvent, TestSessionFixtures.registeredSession(
+        adapter.receive(distributeEvent, TestSessionFixtures.registeredSession(
                 "VEN-1", "VTN-1", "REG-1"
         ));
 
         assertResponseCode(ApplicationLayerErrorCodes.OK);
         verify(repository).save(any());
-        verify(ocppIntegrationService, never()).applySignal(any(), any());
     }
 
     @Test
@@ -130,7 +120,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
         existing.setStartTime(existing.getRequestedStartTime().plusSeconds(73L));
         when(repository.findByEventId("Event_939393")).thenReturn(Optional.of(existing));
 
-        handler.handle(distributeEvent, TestSessionFixtures.registeredSession(
+        adapter.receive(distributeEvent, TestSessionFixtures.registeredSession(
                 "VEN-1", "VTN-1", "REG-1"
         ));
 
@@ -142,7 +132,6 @@ class DrEventVersioningTest extends AbstractOadrTest {
                 saved.getRequestedStartTime().plusSeconds(73L),
                 saved.getStartTime()
         );
-        verify(ocppIntegrationService, never()).applySignal(any(), any());
     }
 
     @Test
@@ -152,13 +141,12 @@ class DrEventVersioningTest extends AbstractOadrTest {
         when(repository.findByEventId("Event_939393"))
                 .thenReturn(Optional.of(existingEvent(1)));
 
-        handler.handle(distributeEvent, TestSessionFixtures.registeredSession(
+        adapter.receive(distributeEvent, TestSessionFixtures.registeredSession(
                 "VEN-1", "VTN-1", "REG-1"
         ));
 
         assertResponseCode(ApplicationLayerErrorCodes.OUT_OF_SEQUENCE);
         verify(repository, never()).save(any());
-        verify(ocppIntegrationService, never()).applySignal(any(), any());
     }
 
     @Test
@@ -170,7 +158,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
         descriptor.setEventStatus(EventStatusEnumeratedType.CANCELLED);
         when(repository.findByEventId("Event_939393")).thenReturn(Optional.empty());
 
-        handler.handle(distributeEvent, TestSessionFixtures.registeredSession(
+        adapter.receive(distributeEvent, TestSessionFixtures.registeredSession(
                 "VEN-1", "VTN-1", "REG-1"
         ));
 
@@ -178,7 +166,6 @@ class DrEventVersioningTest extends AbstractOadrTest {
         assertEquals(String.valueOf(ApplicationLayerErrorCodes.OK), response.getResponseCode());
         assertEquals(OptTypeType.OPT_IN, response.getOptType());
         verify(repository, never()).save(any());
-        verify(ocppIntegrationService, never()).clearEvent(any(), any());
     }
 
     private OadrDistributeEventType loadEvent() throws Oadr20bUnmarshalException {

@@ -3,18 +3,16 @@ package com.qcharge.openadr.eievent;
 import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
-import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -29,8 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static com.qcharge.openadr.support.EventProtocolTestComponents.protocolAdapter;
 
-class DrEventHandlerPersistenceTest extends AbstractOadrTest {
+class EventProtocolAdapterPersistenceTest extends AbstractOadrTest {
 
     @Test
     void handle_persistsCompleteSignalAndIntervalPlan() throws Oadr20bUnmarshalException {
@@ -55,15 +54,12 @@ class DrEventHandlerPersistenceTest extends AbstractOadrTest {
                 "SIG_02", java.util.List.of(resolved)
         ));
 
-        DrEventHandler handler = new DrEventHandler(
-                properties,
+        EventProtocolAdapter adapter = protocolAdapter(
                 repository,
                 mock(VtnTransportService.class),
                 new EventOptDecisionService(),
                 new EventValidationService(properties),
-                resolver,
-                mock(OcppIntegrationService.class),
-                mock(OpenAdrSessionProvider.class)
+                resolver
         );
 
         OadrDistributeEventType distributeEvent = jaxbContext.unmarshal(
@@ -73,7 +69,7 @@ class DrEventHandlerPersistenceTest extends AbstractOadrTest {
         distributeEvent.getOadrEvent().getFirst().getEiEvent()
                 .getEventDescriptor().setTestEvent("certification-test");
 
-        handler.handle(
+        adapter.receive(
                 distributeEvent,
                 TestSessionFixtures.registeredSession("VEN-1", "VTN-1", "REG-1")
         );

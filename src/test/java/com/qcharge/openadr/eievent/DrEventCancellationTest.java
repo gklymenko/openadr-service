@@ -3,18 +3,16 @@ package com.qcharge.openadr.eievent;
 import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.ei.EventStatusEnumeratedType;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
-import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static com.qcharge.openadr.support.EventProtocolTestComponents.protocolAdapter;
 
 @ExtendWith(MockitoExtension.class)
 class DrEventCancellationTest extends AbstractOadrTest {
@@ -46,12 +45,8 @@ class DrEventCancellationTest extends AbstractOadrTest {
     @Mock
     private VtnTransportService transportService;
     @Mock
-    private OcppIntegrationService ocppIntegrationService;
-    @Mock
-    private OpenAdrSessionProvider sessionProvider;
-    @Mock
     private EventResourceResolver eventResourceResolver;
-    private DrEventHandler handler;
+    private EventProtocolAdapter adapter;
 
     @BeforeEach
     void setUp() {
@@ -59,15 +54,12 @@ class DrEventCancellationTest extends AbstractOadrTest {
         properties.getReport().setResourceId("RES_123");
         org.mockito.Mockito.lenient().when(eventResourceResolver.resolveEventTarget(any(), any()))
                 .thenReturn(new ResolvedEventTarget(List.of()));
-        handler = new DrEventHandler(
-                properties,
+        adapter = protocolAdapter(
                 repository,
                 transportService,
                 new EventOptDecisionService(),
                 new EventValidationService(properties),
-                eventResourceResolver,
-                ocppIntegrationService,
-                sessionProvider
+                eventResourceResolver
         );
     }
 
@@ -76,7 +68,7 @@ class DrEventCancellationTest extends AbstractOadrTest {
         DrEvent event = knownEvent(DrEvent.ExecutionStatus.SCHEDULED);
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        handler.handle(emptySnapshot(), session());
+        adapter.receive(emptySnapshot(), session());
 
         ArgumentCaptor<DrEvent> captor = ArgumentCaptor.forClass(DrEvent.class);
         verify(repository).save(captor.capture());
@@ -86,7 +78,6 @@ class DrEventCancellationTest extends AbstractOadrTest {
         assertEquals(DrEvent.ExecutionStatus.CANCELLED, cancelled.getExecutionStatus());
         assertEquals(cancelled.getCancellationRequestedAt(), cancelled.getCancellationEffectiveAt());
         verify(transportService, never()).send(any(), any(), any());
-        verify(ocppIntegrationService, never()).clearEvent(any(), any());
     }
 
     @Test
@@ -97,7 +88,7 @@ class DrEventCancellationTest extends AbstractOadrTest {
         Instant before = Instant.now();
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        handler.handle(emptySnapshot(), session());
+        adapter.receive(emptySnapshot(), session());
 
         assertEquals(DrEvent.CancellationType.IMPLICIT, event.getCancellationType());
         assertEquals(DrEvent.ExecutionStatus.CANCEL_PENDING, event.getExecutionStatus());
@@ -109,7 +100,6 @@ class DrEventCancellationTest extends AbstractOadrTest {
                 event.getCancellationEffectiveAt()
         ).getSeconds();
         assertTrue(terminationOffset >= 0L && terminationOffset <= 120L);
-        verify(ocppIntegrationService, never()).clearEvent(any(), any());
     }
 
     @Test
@@ -129,12 +119,11 @@ class DrEventCancellationTest extends AbstractOadrTest {
         when(repository.findByEventId("Event_939393")).thenReturn(Optional.of(event));
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of());
 
-        handler.handle(snapshot, session());
+        adapter.receive(snapshot, session());
 
         assertEquals(DrEvent.CancellationType.EXPLICIT, event.getCancellationType());
         assertEquals(DrEvent.ExecutionStatus.CANCEL_PENDING, event.getExecutionStatus());
         verify(transportService).send(any(), any(), any());
-        verify(ocppIntegrationService, never()).clearEvent(any(), any());
     }
 
     private OadrDistributeEventType emptySnapshot() {

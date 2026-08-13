@@ -1,11 +1,11 @@
-package com.qcharge.openadr.service.event;
+package com.qcharge.openadr.service.event.execution;
 
-import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
-import com.qcharge.openadr.integration.ocpp.OcppIntegrationService.ClearReason;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.entity.DrEventInterval;
 import com.qcharge.openadr.model.entity.DrEventSignal;
 import com.qcharge.openadr.repository.DrEventRepository;
+import com.qcharge.openadr.service.event.execution.EventExecutionPort.ClearReason;
+import com.qcharge.openadr.service.event.store.JpaEventStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,9 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,22 +24,22 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class EventLifecycleSchedulerTest {
+class EventExecutionCoordinatorTest {
 
     private static final Instant START = Instant.parse("2026-08-11T12:00:00Z");
 
     @Mock
     private DrEventRepository repository;
     @Mock
-    private OcppIntegrationService ocppIntegrationService;
-    private EventLifecycleScheduler scheduler;
+    private EventExecutionPort executionPort;
+    private EventExecutionCoordinator coordinator;
 
     @BeforeEach
     void setUp() {
-        scheduler = new EventLifecycleScheduler(
-                repository,
-                ocppIntegrationService,
-                Clock.fixed(START, ZoneOffset.UTC)
+        coordinator = new EventExecutionCoordinator(
+                new JpaEventStore(repository),
+                executionPort,
+                new EventTimelineCalculator()
         );
     }
 
@@ -51,11 +49,11 @@ class EventLifecycleSchedulerTest {
         event.setRampUpSeconds(300L);
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        scheduler.processAt(START.minusSeconds(301));
+        coordinator.processAt(START.minusSeconds(301));
 
         assertEquals(DrEvent.EventStatus.FAR, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.SCHEDULED, event.getExecutionStatus());
-        verify(ocppIntegrationService, never()).applySignalInterval(
+        verify(executionPort, never()).applyInterval(
                 any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
                 any(Integer.class), any());
     }
@@ -66,21 +64,21 @@ class EventLifecycleSchedulerTest {
         event.setRampUpSeconds(300L);
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        scheduler.processAt(START.minusSeconds(60));
+        coordinator.processAt(START.minusSeconds(60));
         assertEquals(DrEvent.EventStatus.NEAR, event.getStatus());
 
-        scheduler.processAt(START);
+        coordinator.processAt(START);
         assertEquals(DrEvent.EventStatus.ACTIVE, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.APPLIED, event.getExecutionStatus());
         assertEquals(0, event.getLastAppliedInterval());
-        verify(ocppIntegrationService).applySignalInterval(
+        verify(executionPort).applyInterval(
                 eq("event-1"), eq(0), eq("signal-1"), eq("0"), eq("SIMPLE"), eq("level"),
                 eq(BigDecimal.ONE), eq(null), eq(null), eq(0), eq(START));
 
-        scheduler.processAt(START.plusSeconds(100));
-        scheduler.processAt(START.plusSeconds(900));
+        coordinator.processAt(START.plusSeconds(100));
+        coordinator.processAt(START.plusSeconds(900));
         assertEquals(1, event.getLastAppliedInterval());
-        verify(ocppIntegrationService).applySignalInterval(
+        verify(executionPort).applyInterval(
                 eq("event-1"), eq(0), eq("signal-1"), eq("1"), eq("SIMPLE"), eq("level"),
                 eq(BigDecimal.valueOf(2)), eq(null), eq(null), eq(1), eq(START.plusSeconds(900)));
     }
@@ -92,12 +90,12 @@ class EventLifecycleSchedulerTest {
         event.setLastAppliedInterval(1);
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        scheduler.processAt(START.plusSeconds(1800));
+        coordinator.processAt(START.plusSeconds(1800));
 
         assertEquals(DrEvent.EventStatus.COMPLETED, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.COMPLETED, event.getExecutionStatus());
         assertEquals(START.plusSeconds(1800), event.getCompletedAt());
-        verify(ocppIntegrationService).clearEvent("event-1", ClearReason.COMPLETED);
+        verify(executionPort).clearEvent("event-1", ClearReason.COMPLETED);
     }
 
     @Test
@@ -105,11 +103,11 @@ class EventLifecycleSchedulerTest {
         DrEvent event = event(0L);
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        scheduler.processAt(START.plusSeconds(3600));
+        coordinator.processAt(START.plusSeconds(3600));
 
         assertEquals(DrEvent.EventStatus.ACTIVE, event.getStatus());
         assertEquals(1, event.getLastAppliedInterval());
-        verify(ocppIntegrationService, never()).clearEvent(any(), any());
+        verify(executionPort, never()).clearEvent(any(), any());
     }
 
     @Test
@@ -118,16 +116,16 @@ class EventLifecycleSchedulerTest {
         event.setTestEvent(true);
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        scheduler.processAt(START);
-        scheduler.processAt(START.plusSeconds(1800));
+        coordinator.processAt(START);
+        coordinator.processAt(START.plusSeconds(1800));
 
         assertEquals(DrEvent.EventStatus.COMPLETED, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.COMPLETED, event.getExecutionStatus());
         assertEquals(0, event.getLastAppliedInterval());
-        verify(ocppIntegrationService, never()).applySignalInterval(
+        verify(executionPort, never()).applyInterval(
                 any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
                 any(Integer.class), any());
-        verify(ocppIntegrationService, never()).clearEvent(any(), any());
+        verify(executionPort, never()).clearEvent(any(), any());
     }
 
     @Test
@@ -142,12 +140,12 @@ class EventLifecycleSchedulerTest {
         event.setCancellationEffectiveAt(START.plusSeconds(160L));
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        scheduler.processAt(START.plusSeconds(159L));
+        coordinator.processAt(START.plusSeconds(159L));
 
         assertEquals(DrEvent.EventStatus.ACTIVE, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.CANCEL_PENDING, event.getExecutionStatus());
-        verify(ocppIntegrationService, never()).clearEvent(any(), any());
-        verify(ocppIntegrationService, never()).applySignalInterval(
+        verify(executionPort, never()).clearEvent(any(), any());
+        verify(executionPort, never()).applyInterval(
                 any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
                 any(Integer.class), any());
     }
@@ -164,12 +162,12 @@ class EventLifecycleSchedulerTest {
         event.setCancellationEffectiveAt(START.plusSeconds(160L));
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
-        scheduler.processAt(START.plusSeconds(160L));
+        coordinator.processAt(START.plusSeconds(160L));
 
         assertEquals(DrEvent.EventStatus.CANCELLED, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.CANCELLED, event.getExecutionStatus());
         assertEquals(START.plusSeconds(160L), event.getCompletedAt());
-        verify(ocppIntegrationService).clearEvent(
+        verify(executionPort).clearEvent(
                 "event-1", ClearReason.CANCELLED);
     }
 

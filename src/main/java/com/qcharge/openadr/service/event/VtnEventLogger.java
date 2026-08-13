@@ -19,9 +19,9 @@ import java.util.List;
 
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-final class VtnEventLogger {
+public final class VtnEventLogger {
 
-    static void logReceivedEvents(OadrDistributeEventType distributeEvent) {
+    public static void logReceivedEvents(OadrDistributeEventType distributeEvent) {
         if (distributeEvent == null) {
             log.warn("Received null oadrDistributeEvent");
             return;

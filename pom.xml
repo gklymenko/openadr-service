@@ -23,6 +23,9 @@
         <start-class>com.qcharge.openadr.OpenAdrServiceApplication</start-class>
         <java.version>21</java.version>
         <mapstruct.version>1.6.3</mapstruct.version>
+        <lombok.version>1.18.36</lombok.version>
+        <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
+
         <spring-cloud.version>2024.0.1</spring-cloud.version>
     </properties>
 
@@ -70,10 +73,16 @@
             <artifactId>flyway-mysql</artifactId>
         </dependency>
 
-        <!-- OpenADR is XML-heavy, use Jakarta JAXB with Spring Boot 3.x -->
+        <!-- JAXB API -->
         <dependency>
             <groupId>jakarta.xml.bind</groupId>
             <artifactId>jakarta.xml.bind-api</artifactId>
+        </dependency>
+
+        <!-- JAXB runtime -->
+        <dependency>
+            <groupId>org.glassfish.jaxb</groupId>
+            <artifactId>jaxb-runtime</artifactId>
         </dependency>
 
         <!-- XML Security for RSA signature OpenADR payloads -->
@@ -83,40 +92,18 @@
             <version>3.0.3</version>
         </dependency>
 
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.glassfish.jaxb</groupId>
-            <artifactId>jaxb-runtime</artifactId>
-        </dependency>
-
-        <!-- Lombok -->
+        <!-- Lombok API -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
             <optional>true</optional>
         </dependency>
 
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok-mapstruct-binding</artifactId>
-            <version>0.2.0</version>
-        </dependency>
-
-        <!-- MapStruct -->
+        <!-- MapStruct API -->
         <dependency>
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct</artifactId>
-            <version>${mapstruct.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct-processor</artifactId>
             <version>${mapstruct.version}</version>
         </dependency>
 
@@ -139,6 +126,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <dependencyManagement>
@@ -155,11 +149,16 @@
 
     <build>
         <plugins>
+
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+
                 <configuration>
-                    <mainClass>com.qcharge.openadr.OpenAdrServiceApplication</mainClass>
+                    <mainClass>
+                        com.qcharge.openadr.OpenAdrServiceApplication
+                    </mainClass>
+
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
@@ -173,77 +172,104 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
+
                 <configuration>
-                    <release>21</release>
+
+                    <release>${java.version}</release>
+
                     <annotationProcessorPaths>
+
+                        <!-- Lombok processor -->
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
-                            <version>1.18.36</version>
+                            <version>${lombok.version}</version>
                         </path>
+
+                        <!-- Makes Lombok-generated members visible to MapStruct -->
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok-mapstruct-binding</artifactId>
-                            <version>0.2.0</version>
+                            <version>${lombok-mapstruct-binding.version}</version>
                         </path>
+
+                        <!-- MapStruct processor -->
                         <path>
                             <groupId>org.mapstruct</groupId>
                             <artifactId>mapstruct-processor</artifactId>
                             <version>${mapstruct.version}</version>
                         </path>
+
                     </annotationProcessorPaths>
+
                 </configuration>
             </plugin>
 
-<!--            <plugin>-->
-<!--                <groupId>org.jvnet.jaxb</groupId>-->
-<!--                <artifactId>jaxb-maven-plugin</artifactId>-->
-<!--                <version>4.0.8</version>-->
-<!--                <executions>-->
-<!--                    <execution>-->
-<!--                        <id>generate-openadr-sources</id>-->
-<!--                        <goals>-->
-<!--                            <goal>generate</goal>-->
-<!--                        </goals>-->
-<!--                        <configuration>-->
-<!--                            <schemaDirectory>-->
-<!--                                ${project.basedir}/src/main/resources/xsd-->
-<!--                            </schemaDirectory>-->
-<!--                            <generateDirectory>-->
-<!--                                ${project.build.directory}/generated-sources/jaxb-->
-<!--                            </generateDirectory>-->
-<!--                            <generatePackage>-->
-<!--                                com.qcharge.openadr.model.oadr20b-->
-<!--                            </generatePackage>-->
-<!--                            <strict>false</strict>-->
-<!--                            <extension>true</extension>-->
-<!--                            <args>-->
-<!--                                <arg>-nv</arg>-->
-<!--                                <arg>-XautoNameResolution</arg>-->
-<!--                            </args>-->
-<!--                        </configuration>-->
-<!--                    </execution>-->
-<!--                </executions>-->
-<!--            </plugin>-->
+            <!--
+                        <plugin>
+                            <groupId>org.jvnet.jaxb</groupId>
+                            <artifactId>jaxb-maven-plugin</artifactId>
+                            <version>4.0.8</version>
+
+                            <executions>
+                                <execution>
+                                    <id>generate-openadr-sources</id>
+
+                                    <goals>
+                                        <goal>generate</goal>
+                                    </goals>
+
+                                    <configuration>
+                                        <schemaDirectory>
+                                            ${project.basedir}/src/main/resources/xsd
+                                        </schemaDirectory>
+
+                                        <generateDirectory>
+                                            ${project.build.directory}/generated-sources/jaxb
+                                        </generateDirectory>
+
+                                        <generatePackage>
+                                            com.qcharge.openadr.model.oadr20b
+                                        </generatePackage>
+
+                                        <strict>false</strict>
+                                        <extension>true</extension>
+
+                                        <args>
+                                            <arg>-nv</arg>
+                                            <arg>-XautoNameResolution</arg>
+                                        </args>
+                                    </configuration>
+
+                                </execution>
+                            </executions>
+                        </plugin>
+            -->
 
         </plugins>
     </build>
 
     <profiles>
+
         <profile>
             <id>local</id>
+
             <properties>
                 <envName>local</envName>
                 <skipTests>true</skipTests>
                 <finalversion>1.0.0-local</finalversion>
-                <maven-properties.file>src/main/resources/application-local.properties</maven-properties.file>
+                <maven-properties.file>
+                    src/main/resources/application-local.properties
+                </maven-properties.file>
                 <spring.profiles.active>local</spring.profiles.active>
             </properties>
+
             <build>
                 <plugins>
                     <plugin>
                         <groupId>org.springframework.boot</groupId>
                         <artifactId>spring-boot-maven-plugin</artifactId>
+
                         <configuration>
                             <profiles>
                                 <profile>local</profile>
@@ -256,33 +282,43 @@
 
         <profile>
             <id>test</id>
+
             <properties>
                 <envName>test</envName>
                 <skipTests>true</skipTests>
                 <finalversion>1.0.0-test</finalversion>
-                <maven-properties.file>src/main/resources/application-test.properties</maven-properties.file>
+                <maven-properties.file>
+                    src/main/resources/application-test.properties
+                </maven-properties.file>
             </properties>
         </profile>
 
         <profile>
             <id>dev</id>
+
             <properties>
                 <envName>dev</envName>
                 <skipTests>true</skipTests>
                 <finalversion>1.0.0-dev</finalversion>
-                <maven-properties.file>src/main/resources/application-dev.properties</maven-properties.file>
+                <maven-properties.file>
+                    src/main/resources/application-dev.properties
+                </maven-properties.file>
             </properties>
         </profile>
 
         <profile>
             <id>prod</id>
+
             <properties>
                 <envName>prod</envName>
                 <skipTests>true</skipTests>
                 <finalversion>1.0.0-prod</finalversion>
-                <maven-properties.file>src/main/resources/application-prod.properties</maven-properties.file>
+                <maven-properties.file>
+                    src/main/resources/application-prod.properties
+                </maven-properties.file>
             </properties>
         </profile>
+
     </profiles>
 
 </project>
