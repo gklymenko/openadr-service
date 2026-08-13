@@ -3,13 +3,13 @@ package com.qcharge.openadr.service.event.processing;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.model.entity.DrEvent;
-import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
-import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.EventValidationService;
-import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
+import com.qcharge.openadr.service.event.command.EventOptType;
+import com.qcharge.openadr.service.event.command.EventSignalCommand;
+import com.qcharge.openadr.service.event.command.EventStatus;
+import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
 import com.qcharge.openadr.service.event.mapping.EventPayloadMapper;
 import com.qcharge.openadr.service.event.store.EventStore;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
@@ -23,9 +23,8 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
-/** Application service that validates and persists one event independently of XML transport. */
+/** Processes one normalized event command without depending on OpenADR/JAXB types. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -40,9 +39,9 @@ public class EventProcessor {
     private final EventCancellationService cancellationService;
     private final Clock clock;
 
-    public EventProcessingResult processSafely(OadrEvent event, Set<String> eventIds, String venId) {
+    public EventProcessingResult processSafely(ReceiveEventCommand event, String venId) {
         try {
-            return process(event, eventIds, venId);
+            return process(event, venId);
         } catch (EventValidationException exception) {
             return failure(event, exception.getResponseCode(), exception, false);
         } catch (TargetMismatchException exception) {
@@ -54,120 +53,100 @@ public class EventProcessor {
         }
     }
 
-    private EventProcessingResult process(OadrEvent event, Set<String> eventIds, String venId) {
-        EventDescriptorType descriptor = requireDescriptor(event);
-        String eventId = requireEventId(descriptor);
-        long modificationNumber = descriptor.getModificationNumber();
-
-        if (!eventIds.add(eventId)) {
-            throw new EventValidationException(
-                    "eventID must be unique within oadrDistributeEvent: " + eventId,
-                    ApplicationLayerErrorCodes.INVALID_ID);
-        }
-
+    private EventProcessingResult process(ReceiveEventCommand event, String venId) {
+        String eventId = event.eventId();
+        long modificationNumber = event.modificationNumber();
         DrEvent existing = eventStore.findByEventId(eventId).orElse(null);
-        boolean unknownCancellation = existing == null && isStatus(descriptor, DrEvent.EventStatus.CANCELLED);
+        boolean unknownCancellation = existing == null && event.status() == EventStatus.CANCELLED;
         EventVersionPolicy.State version = unknownCancellation
                 ? EventVersionPolicy.State.NEW
                 : versionPolicy.evaluate(existing, modificationNumber);
 
         if (version == EventVersionPolicy.State.OUT_OF_SEQUENCE) {
             log.warn("Out-of-sequence OpenADR event. eventId={}, stored={}, received={}",
-                    eventId, existing != null ? existing.getModificationNumber() : null, modificationNumber);
+                    eventId, existing != null ? existing.getModificationNumber() : null,
+                    modificationNumber);
             return result(eventId, modificationNumber,
-                    ApplicationLayerErrorCodes.OUT_OF_SEQUENCE, OptTypeType.OPT_OUT);
+                    ApplicationLayerErrorCodes.OUT_OF_SEQUENCE, EventOptType.OPT_OUT);
         }
         if (version == EventVersionPolicy.State.DUPLICATE) {
-            return processDuplicate(existing, descriptor, eventId, modificationNumber);
+            return processDuplicate(existing, event);
         }
 
         ResolvedEventTarget eventTarget = validateAndResolveTarget(event, venId);
-        if (isStatus(descriptor, DrEvent.EventStatus.CANCELLED)) {
+        if (event.status() == EventStatus.CANCELLED) {
             if (unknownCancellation) {
                 log.info("Ignoring cancellation for unknown OpenADR event. eventId={}", eventId);
-                return result(eventId, modificationNumber, ApplicationLayerErrorCodes.OK, OptTypeType.OPT_IN);
+                return result(eventId, modificationNumber,
+                        ApplicationLayerErrorCodes.OK, EventOptType.OPT_IN);
             }
             applyCancellation(event, existing);
-            return result(eventId, modificationNumber, ApplicationLayerErrorCodes.OK, OptTypeType.OPT_IN);
+            return result(eventId, modificationNumber,
+                    ApplicationLayerErrorCodes.OK, EventOptType.OPT_IN);
         }
-        if (isStatus(descriptor, DrEvent.EventStatus.COMPLETED)) {
+        if (event.status() == EventStatus.COMPLETED) {
             applyCompletion(event, existing);
-            OptTypeType optType = existing != null && existing.getOptType() == DrEvent.OptType.OPT_IN
-                    ? OptTypeType.OPT_IN : OptTypeType.OPT_OUT;
+            EventOptType optType = existing != null && existing.getOptType() == DrEvent.OptType.OPT_IN
+                    ? EventOptType.OPT_IN : EventOptType.OPT_OUT;
             return result(eventId, modificationNumber, ApplicationLayerErrorCodes.OK, optType);
         }
 
-        List<ParsedSignal> signals = validationService.parseSignals(event);
-        Optional<ParsedSignal> selected = validationService.selectPreferredSignal(signals);
+        List<EventSignalCommand> signals = validationService.validateSignals(event);
+        Optional<EventSignalCommand> selected = validationService.selectPreferredSignal(signals);
         if (selected.isEmpty()) {
             return result(eventId, modificationNumber,
-                    ApplicationLayerErrorCodes.SIGNAL_NOT_SUPPORTED, OptTypeType.OPT_OUT);
+                    ApplicationLayerErrorCodes.SIGNAL_NOT_SUPPORTED, EventOptType.OPT_OUT);
         }
 
         Map<String, List<ResolvedResource>> resourcesBySignal = resourceResolver == null
-                ? Map.of()
-                : resourceResolver.resolveSignalTargets(
-                        event, signals.stream().map(ParsedSignal::signalId).toList(), eventTarget);
-        ParsedSignal selectedSignal = selected.get();
-        OptTypeType optType = optDecisionService.determineOptType(event, selectedSignal);
+                ? Map.of() : resourceResolver.resolveSignalTargets(signals, eventTarget);
+        EventSignalCommand selectedSignal = selected.get();
+        EventOptType optType = optDecisionService.determineOptType(selectedSignal);
         DrEvent aggregate = existing != null ? existing : new DrEvent();
         payloadMapper.applyExecutableEvent(
-                aggregate,
-                event,
-                optType,
-                signals,
-                selectedSignal.signalId(),
+                aggregate, event, optType, signals, selectedSignal.signalId(),
                 resourcesBySignal.getOrDefault(selectedSignal.signalId(), List.of()));
         eventStore.save(aggregate);
 
-        log.info("OpenADR event persisted for lifecycle execution. eventId={}, optType={}", eventId, optType);
+        log.info("OpenADR event persisted for lifecycle execution. eventId={}, optType={}",
+                eventId, optType);
         return result(eventId, modificationNumber, ApplicationLayerErrorCodes.OK, optType);
     }
 
-    private ResolvedEventTarget validateAndResolveTarget(OadrEvent event, String venId) {
-        if (resourceResolver == null) {
-            validationService.validateTargetAndMarketContext(event, venId);
-            return null;
-        }
-        validationService.validateMarketContext(event);
-        return resourceResolver.resolveEventTarget(event, venId);
+    private ResolvedEventTarget validateAndResolveTarget(ReceiveEventCommand event, String venId) {
+        validationService.validateMarketContext(event.marketContext());
+        return resourceResolver == null
+                ? null : resourceResolver.resolveEventTarget(event.target(), venId);
     }
 
-    private EventProcessingResult processDuplicate(
-            DrEvent existing,
-            EventDescriptorType descriptor,
-            String eventId,
-            long modificationNumber
-    ) {
-        if (isStatus(descriptor, DrEvent.EventStatus.COMPLETED)
+    private EventProcessingResult processDuplicate(DrEvent existing, ReceiveEventCommand event) {
+        if (event.status() == EventStatus.COMPLETED
                 && existing.getVtnStatus() != DrEvent.EventStatus.COMPLETED) {
             existing.setVtnStatus(DrEvent.EventStatus.COMPLETED);
             eventStore.save(existing);
         }
-        OptTypeType optType = existing.getOptType() == DrEvent.OptType.OPT_OUT
-                ? OptTypeType.OPT_OUT : OptTypeType.OPT_IN;
-        return result(eventId, modificationNumber, ApplicationLayerErrorCodes.OK, optType);
+        EventOptType optType = existing.getOptType() == DrEvent.OptType.OPT_OUT
+                ? EventOptType.OPT_OUT : EventOptType.OPT_IN;
+        return result(event.eventId(), event.modificationNumber(),
+                ApplicationLayerErrorCodes.OK, optType);
     }
 
-    private void applyCancellation(OadrEvent event, DrEvent existing) {
-        EventDescriptorType descriptor = requireDescriptor(event);
-        existing.setEventId(descriptor.getEventID());
-        existing.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
+    private void applyCancellation(ReceiveEventCommand event, DrEvent existing) {
+        existing.setEventId(event.eventId());
+        existing.setModificationNumber(Math.toIntExact(event.modificationNumber()));
         existing.setVtnStatus(DrEvent.EventStatus.CANCELLED);
         existing.setOptType(DrEvent.OptType.OPT_IN);
-        existing.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
+        existing.setPriority(event.priority());
         cancellationService.request(existing, DrEvent.CancellationType.EXPLICIT);
     }
 
-    private void applyCompletion(OadrEvent event, DrEvent existing) {
-        EventDescriptorType descriptor = requireDescriptor(event);
+    private void applyCompletion(ReceiveEventCommand event, DrEvent existing) {
         DrEvent aggregate = existing != null ? existing : new DrEvent();
-        aggregate.setEventId(descriptor.getEventID());
-        aggregate.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
+        aggregate.setEventId(event.eventId());
+        aggregate.setModificationNumber(Math.toIntExact(event.modificationNumber()));
         aggregate.setVtnStatus(DrEvent.EventStatus.COMPLETED);
-        aggregate.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
-        aggregate.setTestEvent(existing != null
-                ? existing.isTestEvent() : payloadMapper.isTestEvent(descriptor));
+        aggregate.setPriority(event.priority());
+        aggregate.setTestEvent(existing != null ? existing.isTestEvent() : event.testEvent());
         if (existing == null) {
             aggregate.setStatus(DrEvent.EventStatus.COMPLETED);
             aggregate.setOptType(DrEvent.OptType.OPT_OUT);
@@ -178,49 +157,30 @@ public class EventProcessor {
         eventStore.save(aggregate);
     }
 
-    private EventProcessingResult failure(OadrEvent event, int responseCode, Exception exception, boolean unexpected) {
-        EventDescriptorType descriptor = descriptorOf(event);
-        String eventId = descriptor != null && descriptor.getEventID() != null
-                ? descriptor.getEventID() : "unknown";
-        long modificationNumber = descriptor != null ? descriptor.getModificationNumber() : 0L;
+    private EventProcessingResult failure(
+            ReceiveEventCommand event,
+            int responseCode,
+            Exception exception,
+            boolean unexpected
+    ) {
         if (unexpected) {
             log.error("Failed to process OpenADR event. eventId={}, modificationNumber={}",
-                    eventId, modificationNumber, exception);
+                    event.eventId(), event.modificationNumber(), exception);
         } else {
-            log.warn("OpenADR event rejected. eventId={}, modificationNumber={}, responseCode={}, reason={}",
-                    eventId, modificationNumber, responseCode, exception.getMessage());
+            log.warn("OpenADR event rejected. eventId={}, modificationNumber={}, "
+                            + "responseCode={}, reason={}",
+                    event.eventId(), event.modificationNumber(), responseCode, exception.getMessage());
         }
-        return result(eventId, modificationNumber, responseCode, OptTypeType.OPT_OUT);
+        return result(event.eventId(), event.modificationNumber(),
+                responseCode, EventOptType.OPT_OUT);
     }
 
-    private EventProcessingResult result(String id, long version, int code, OptTypeType optType) {
+    private EventProcessingResult result(
+            String id,
+            long version,
+            int code,
+            EventOptType optType
+    ) {
         return new EventProcessingResult(id, version, code, optType);
-    }
-
-    private boolean isStatus(EventDescriptorType descriptor, DrEvent.EventStatus status) {
-        return descriptor.getEventStatus() != null
-                && status.name().equalsIgnoreCase(descriptor.getEventStatus().value());
-    }
-
-    private EventDescriptorType requireDescriptor(OadrEvent event) {
-        EventDescriptorType descriptor = descriptorOf(event);
-        if (descriptor == null) {
-            throw new EventValidationException(
-                    "eventDescriptor is required", ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER);
-        }
-        return descriptor;
-    }
-
-    private EventDescriptorType descriptorOf(OadrEvent event) {
-        return event == null || event.getEiEvent() == null
-                ? null : event.getEiEvent().getEventDescriptor();
-    }
-
-    private String requireEventId(EventDescriptorType descriptor) {
-        if (descriptor.getEventID() == null || descriptor.getEventID().isBlank()) {
-            throw new EventValidationException(
-                    "eventID is required", ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER);
-        }
-        return descriptor.getEventID();
     }
 }

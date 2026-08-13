@@ -47,7 +47,6 @@ class EventProtocolAdapterPersistenceTest extends AbstractOadrTest {
                 org.mockito.ArgumentMatchers.anyString())).thenReturn(eventTarget);
         when(resolver.resolveSignalTargets(
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyCollection(),
                 org.mockito.ArgumentMatchers.eq(eventTarget)
         )).thenReturn(java.util.Map.of(
                 "SIG_01", java.util.List.of(resolved),

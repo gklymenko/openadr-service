@@ -4,10 +4,12 @@ import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
+import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
-import com.qcharge.openadr.service.event.VtnEventLogger;
+import com.qcharge.openadr.service.event.EventValidationException;
+import com.qcharge.openadr.service.event.command.EventOptType;
 import com.qcharge.openadr.service.event.processing.EventCancellationService;
 import com.qcharge.openadr.service.event.processing.EventProcessingResult;
 import com.qcharge.openadr.service.event.processing.EventProcessor;
@@ -33,6 +35,7 @@ public class EventProtocolAdapter {
     private final EventProcessor eventProcessor;
     private final EventCancellationService cancellationService;
     private final VtnTransportService transportService;
+    private final OpenAdrEventCommandMapper commandMapper;
 
     @Transactional
     public void receive(OadrDistributeEventType distributeEvent, OpenAdrSessionSnapshot session) {
@@ -48,18 +51,15 @@ public class EventProtocolAdapter {
 
         int responseCount = 0;
         Set<String> receivedEventIds = new HashSet<>();
-
         for (OadrEvent event : distributeEvent.getOadrEvent()) {
-            EventProcessingResult result = eventProcessor.processSafely(
-                    event, receivedEventIds, session.venId()
-            );
+            EventProcessingResult result = processEvent(event, receivedEventIds, session.venId());
             if (!requiresResponse(event)) {
                 continue;
             }
             EventResponse eventResponse = Oadr20bEiEventBuilders
                     .newOadr20bCreatedEventEventResponseBuilder(
                             result.eventId(), result.modificationNumber(), requestId,
-                            result.responseCode(), result.optType())
+                            result.responseCode(), protocolOptType(result.optType()))
                     .build();
             responseBuilder.addEventResponse(eventResponse);
             responseCount++;
@@ -81,5 +81,59 @@ public class EventProtocolAdapter {
                 && event.getOadrResponseRequired() != null
                 && RESPONSE_REQUIRED_ALWAYS.equalsIgnoreCase(
                         String.valueOf(event.getOadrResponseRequired()));
+    }
+
+    private EventProcessingResult processEvent(
+            OadrEvent source,
+            Set<String> receivedEventIds,
+            String venId
+    ) {
+        String eventId = commandMapper.eventIdOf(source);
+        long modificationNumber = commandMapper.modificationNumberOf(source);
+        if (eventId != null && !eventId.isBlank() && !receivedEventIds.add(eventId)) {
+            return new EventProcessingResult(
+                    eventId,
+                    modificationNumber,
+                    ApplicationLayerErrorCodes.INVALID_ID,
+                    EventOptType.OPT_OUT
+            );
+        }
+        try {
+            return eventProcessor.processSafely(commandMapper.map(source), venId);
+        } catch (EventValidationException exception) {
+            log.warn("OpenADR event mapping rejected. eventId={}, modificationNumber={}, "
+                            + "responseCode={}, reason={}",
+                    safeEventId(eventId), modificationNumber,
+                    exception.getResponseCode(), exception.getMessage());
+            return new EventProcessingResult(
+                    safeEventId(eventId), modificationNumber,
+                    exception.getResponseCode(), EventOptType.OPT_OUT);
+        } catch (IllegalArgumentException exception) {
+            return mappingFailure(eventId, modificationNumber, exception);
+        } catch (RuntimeException exception) {
+            log.error("Failed to map OpenADR event. eventId={}, modificationNumber={}",
+                    safeEventId(eventId), modificationNumber, exception);
+            return mappingFailure(eventId, modificationNumber, exception);
+        }
+    }
+
+    private EventProcessingResult mappingFailure(
+            String eventId,
+            long modificationNumber,
+            RuntimeException exception
+    ) {
+        log.warn("Invalid OpenADR event mapping. eventId={}, modificationNumber={}, reason={}",
+                safeEventId(eventId), modificationNumber, exception.getMessage());
+        return new EventProcessingResult(
+                safeEventId(eventId), modificationNumber,
+                ApplicationLayerErrorCodes.INVALID_DATA, EventOptType.OPT_OUT);
+    }
+
+    private String safeEventId(String eventId) {
+        return eventId != null && !eventId.isBlank() ? eventId : "unknown";
+    }
+
+    private OptTypeType protocolOptType(EventOptType optType) {
+        return optType == EventOptType.OPT_OUT ? OptTypeType.OPT_OUT : OptTypeType.OPT_IN;
     }
 }

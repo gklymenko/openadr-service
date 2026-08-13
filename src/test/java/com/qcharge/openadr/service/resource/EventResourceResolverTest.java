@@ -10,6 +10,8 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.model.oadr20b.power.EndDeviceAssetType;
 import com.qcharge.openadr.repository.OpenAdrResourceRepository;
 import com.qcharge.openadr.service.event.EventValidationException;
+import com.qcharge.openadr.service.event.command.EventSignalCommand;
+import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,11 +30,13 @@ class EventResourceResolverTest extends AbstractOadrTest {
 
     private OpenAdrResourceRepository repository;
     private EventResourceResolver resolver;
+    private OpenAdrEventCommandMapper mapper;
 
     @BeforeEach
     void setUp() {
         repository = mock(OpenAdrResourceRepository.class);
         resolver = new EventResourceResolver(repository, new OpenAdrProperties());
+        mapper = new OpenAdrEventCommandMapper();
     }
 
     @Test
@@ -43,7 +47,8 @@ class EventResourceResolverTest extends AbstractOadrTest {
         when(repository.findAllByResourceIdInAndEnabledTrue(anyCollection()))
                 .thenReturn(List.of(resource));
 
-        ResolvedEventTarget result = resolver.resolveEventTarget(event, "VEN-1");
+        ResolvedEventTarget result = resolver.resolveEventTarget(
+                mapper.map(event).target(), "VEN-1");
 
         assertEquals(List.of("RES_123"), result.resources().stream()
                 .map(ResolvedResource::resourceId)
@@ -61,8 +66,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
         ResolvedResource resource = resolvedResource("RES_123");
 
         List<ResolvedResource> result = resolver.resolveSignalTarget(
-                event,
-                "SIG_02",
+                signal(event, "SIG_02"),
                 new ResolvedEventTarget(List.of(resource))
         );
 
@@ -80,8 +84,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
         EventValidationException exception = assertThrows(
                 EventValidationException.class,
                 () -> resolver.resolveSignalTarget(
-                        event,
-                        "SIG_02",
+                        signal(event, "SIG_02"),
                         new ResolvedEventTarget(List.of(resolvedResource("RES_123")))
                 )
         );
@@ -99,8 +102,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
         EventValidationException exception = assertThrows(
                 EventValidationException.class,
                 () -> resolver.resolveSignalTarget(
-                        event,
-                        "SIG_02",
+                        signal(event, "SIG_02"),
                         new ResolvedEventTarget(List.of(resolvedResource("RES_123")))
                 )
         );
@@ -118,8 +120,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
         assertEquals(
                 List.of(resource),
                 resolver.resolveSignalTarget(
-                        event,
-                        "SIG_02",
+                        signal(event, "SIG_02"),
                         new ResolvedEventTarget(List.of(resource))
                 )
         );
@@ -146,6 +147,13 @@ class EventResourceResolverTest extends AbstractOadrTest {
         EndDeviceAssetType asset = new EndDeviceAssetType();
         asset.setMrid(mrid);
         return asset;
+    }
+
+    private EventSignalCommand signal(OadrEvent event, String signalId) {
+        return mapper.map(event).signals().stream()
+                .filter(signal -> signalId.equals(signal.signalId()))
+                .findFirst()
+                .orElseThrow();
     }
 
     private OpenAdrResource resource(Integer chargePointPk, String resourceId, boolean enabled) {

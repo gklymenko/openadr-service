@@ -1,5 +1,6 @@
 package com.qcharge.openadr.validation;
 
+import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.model.oadr20b.ei.EiEventType;
@@ -8,11 +9,12 @@ import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
+import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.EventValidationService;
-import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
+import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.io.File;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,7 +37,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static com.qcharge.openadr.support.EventProtocolTestComponents.protocolAdapter;
 
-class EventPerItemValidationTest {
+class EventPerItemValidationTest extends AbstractOadrTest {
 
     private final DrEventRepository repository = mock(DrEventRepository.class);
     private final VtnTransportService transportService = mock(VtnTransportService.class);
@@ -46,7 +49,7 @@ class EventPerItemValidationTest {
     @BeforeEach
     void setUp() {
         when(repository.findByEventId("EVENT-1")).thenReturn(Optional.empty());
-        when(validationService.parseSignals(org.mockito.ArgumentMatchers.any()))
+        when(validationService.validateSignals(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(List.of());
         when(validationService.selectPreferredSignal(org.mockito.ArgumentMatchers.anyList()))
                 .thenReturn(Optional.empty());
@@ -63,7 +66,8 @@ class EventPerItemValidationTest {
     }
 
     @Test
-    void duplicateEventIdProducesPerEvent452WithoutRejectingWholePayload() {
+    void duplicateEventIdProducesPerEvent452WithoutRejectingWholePayload()
+            throws Oadr20bUnmarshalException {
         OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
         distributeEvent.setRequestID("DIST-1");
         distributeEvent.setVtnID("VTN-1");
@@ -106,7 +110,8 @@ class EventPerItemValidationTest {
     }
 
     @Test
-    void createdEventCorrelatesThroughEventResponseRequestId() {
+    void createdEventCorrelatesThroughEventResponseRequestId()
+            throws Oadr20bUnmarshalException {
         OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
         distributeEvent.setRequestID("DIST-1");
         distributeEvent.setVtnID("VTN-1");
@@ -131,14 +136,15 @@ class EventPerItemValidationTest {
     }
 
     @Test
-    void unresolvedSelectedSignalReturns469AndOptOutWithoutPersistence() {
-        ParsedSignal selected = new ParsedSignal(
+    void unresolvedSelectedSignalReturns469AndOptOutWithoutPersistence()
+            throws Oadr20bUnmarshalException {
+        EventSignalCommand selected = new EventSignalCommand(
                 "SIG-1", "SIMPLE", "level", null,
-                null, null, null, null, List.of()
+                null, null, null, null, List.of(), null
         );
-        when(validationService.parseSignals(any())).thenReturn(List.of(selected));
+        when(validationService.validateSignals(any())).thenReturn(List.of(selected));
         when(validationService.selectPreferredSignal(any())).thenReturn(Optional.of(selected));
-        when(eventResourceResolver.resolveSignalTargets(any(), eq(List.of("SIG-1")), any()))
+        when(eventResourceResolver.resolveSignalTargets(any(), any()))
                 .thenThrow(new EventValidationException(
                         "Unable to resolve target resource",
                         ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER
@@ -181,17 +187,13 @@ class EventPerItemValidationTest {
         return captor.getValue();
     }
 
-    private OadrDistributeEventType.OadrEvent event(String eventId) {
-        EventDescriptorType descriptor = new EventDescriptorType();
-        descriptor.setEventID(eventId);
-
-        EiEventType eiEvent = new EiEventType();
-        eiEvent.setEventDescriptor(descriptor);
-
-        OadrDistributeEventType.OadrEvent event =
-                new OadrDistributeEventType.OadrEvent();
-        event.setEiEvent(eiEvent);
-        event.setOadrResponseRequired(ResponseRequiredType.ALWAYS);
+    private OadrDistributeEventType.OadrEvent event(String eventId)
+            throws Oadr20bUnmarshalException {
+        OadrDistributeEventType payload = jaxbContext.unmarshal(
+                new File(EIEVENT_PATH + "oadrDistributeEvent.xml"),
+                OadrDistributeEventType.class);
+        OadrDistributeEventType.OadrEvent event = payload.getOadrEvent().getFirst();
+        event.getEiEvent().getEventDescriptor().setEventID(eventId);
         return event;
     }
 }

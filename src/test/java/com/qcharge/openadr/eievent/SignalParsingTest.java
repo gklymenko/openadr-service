@@ -6,8 +6,10 @@ import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.service.event.EventValidationService;
-import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
 import com.qcharge.openadr.service.event.EventValidationException;
+import com.qcharge.openadr.service.event.command.EventIntervalCommand;
+import com.qcharge.openadr.service.event.command.EventSignalCommand;
+import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SignalParsingTest extends AbstractOadrTest {
 
     private EventValidationService service;
+    private OpenAdrEventCommandMapper mapper;
 
     @BeforeEach
     void setUp() {
@@ -28,16 +31,17 @@ class SignalParsingTest extends AbstractOadrTest {
         props.getVen().setId("test-ven");
         props.getReport().setResourceId("resource1");
         service = new EventValidationService(props);
+        mapper = new OpenAdrEventCommandMapper();
     }
 
     @Test
     void parseSignal_loadDispatch_parsedCorrectly() throws Oadr20bUnmarshalException {
         OadrEvent event = loadFirstEvent("oadrDistributeEvent_loadDispatch.xml");
 
-        Optional<ParsedSignal> result = service.parseSignal(event);
+        Optional<EventSignalCommand> result = parseSignal(event);
 
         assertTrue(result.isPresent());
-        ParsedSignal signal = result.get();
+        EventSignalCommand signal = result.get();
         assertEquals(EventValidationService.SIGNAL_LOAD_DISPATCH, signal.signalName());
         assertEquals("setpoint", signal.signalType());
         assertNotNull(signal.currentValue());
@@ -56,10 +60,10 @@ class SignalParsingTest extends AbstractOadrTest {
     void parseSignal_electricityPrice_parsedCorrectly() throws Oadr20bUnmarshalException {
         OadrEvent event = loadFirstEvent("oadrDistributeEvent_electricityPrice.xml");
 
-        Optional<ParsedSignal> result = service.parseSignal(event);
+        Optional<EventSignalCommand> result = parseSignal(event);
 
         assertTrue(result.isPresent());
-        ParsedSignal signal = result.get();
+        EventSignalCommand signal = result.get();
         assertEquals(EventValidationService.SIGNAL_ELECTRICITY_PRICE, signal.signalName());
         assertEquals("price", signal.signalType());
         assertNotNull(signal.currentValue());
@@ -71,7 +75,7 @@ class SignalParsingTest extends AbstractOadrTest {
         // existing fixture has a SIMPLE signal
         OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
 
-        Optional<ParsedSignal> result = service.parseSignal(event);
+        Optional<EventSignalCommand> result = parseSignal(event);
 
         assertTrue(result.isPresent());
         // existing fixture has both SIMPLE and ELECTRICITY_PRICE; LOAD_DISPATCH wins first but is absent,
@@ -93,7 +97,7 @@ class SignalParsingTest extends AbstractOadrTest {
                         )
                 );
 
-        Optional<ParsedSignal> result = service.parseSignal(event);
+        Optional<EventSignalCommand> result = parseSignal(event);
 
         assertTrue(result.isPresent());
         assertEquals(
@@ -107,7 +111,7 @@ class SignalParsingTest extends AbstractOadrTest {
     void parseSignal_unknownSignal_returnsEmpty() throws Oadr20bUnmarshalException {
         OadrEvent event = loadFirstEvent("oadrDistributeEvent_unknownSignal.xml");
 
-        Optional<ParsedSignal> result = service.parseSignal(event);
+        Optional<EventSignalCommand> result = parseSignal(event);
 
         assertTrue(result.isEmpty(), "Unknown signal should return empty (Rule 109)");
     }
@@ -118,7 +122,7 @@ class SignalParsingTest extends AbstractOadrTest {
         // The loadDispatch fixture has only LOAD_DISPATCH
         OadrEvent event = loadFirstEvent("oadrDistributeEvent_loadDispatch.xml");
 
-        Optional<ParsedSignal> result = service.parseSignal(event);
+        Optional<EventSignalCommand> result = parseSignal(event);
 
         assertTrue(result.isPresent());
         assertEquals(EventValidationService.SIGNAL_LOAD_DISPATCH, result.get().signalName(),
@@ -129,23 +133,23 @@ class SignalParsingTest extends AbstractOadrTest {
     void parseSignals_preservesEverySignalAndInterval() throws Oadr20bUnmarshalException {
         OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
 
-        List<ParsedSignal> signals = service.parseSignals(event);
+        List<EventSignalCommand> signals = parseSignals(event);
 
         assertEquals(2, signals.size());
-        ParsedSignal simple = signals.getFirst();
+        EventSignalCommand simple = signals.getFirst();
         assertEquals("SIG_01", simple.signalId());
         assertEquals(List.of("0", "1"), simple.intervals().stream()
-                .map(EventValidationService.ParsedInterval::uid)
+                .map(EventIntervalCommand::uid)
                 .toList());
         assertEquals(List.of(900L, 900L), simple.intervals().stream()
-                .map(EventValidationService.ParsedInterval::durationSeconds)
+                .map(EventIntervalCommand::durationSeconds)
                 .toList());
         assertEquals(List.of(new BigDecimal("3.0"), new BigDecimal("2.0")),
                 simple.intervals().stream()
-                        .map(EventValidationService.ParsedInterval::payloadValue)
+                        .map(EventIntervalCommand::payloadValue)
                         .toList());
 
-        ParsedSignal price = signals.get(1);
+        EventSignalCommand price = signals.get(1);
         assertEquals("SIG_02", price.signalId());
         assertEquals("currencyPerKWh", price.itemBaseElement());
         assertEquals("CurrencyType", price.itemBaseType());
@@ -162,7 +166,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
         EventValidationException exception = assertThrows(
                 EventValidationException.class,
-                () -> service.parseSignals(event)
+                () -> parseSignals(event)
         );
 
         assertEquals(459, exception.getResponseCode());
@@ -177,7 +181,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
         EventValidationException exception = assertThrows(
                 EventValidationException.class,
-                () -> service.parseSignals(event)
+                () -> parseSignals(event)
         );
 
         assertEquals(459, exception.getResponseCode());
@@ -196,7 +200,7 @@ class SignalParsingTest extends AbstractOadrTest {
                     .getDuration().setDuration("PT0S");
         });
 
-        List<ParsedSignal> signals = service.parseSignals(event);
+        List<EventSignalCommand> signals = parseSignals(event);
 
         assertEquals(2, signals.size());
         assertTrue(signals.stream().allMatch(signal ->
@@ -213,7 +217,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
         EventValidationException exception = assertThrows(
                 EventValidationException.class,
-                () -> service.parseSignals(event)
+                () -> parseSignals(event)
         );
 
         assertEquals(459, exception.getResponseCode());
@@ -233,7 +237,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
         EventValidationException exception = assertThrows(
                 EventValidationException.class,
-                () -> service.parseSignals(event)
+                () -> parseSignals(event)
         );
 
         assertEquals(454, exception.getResponseCode());
@@ -249,7 +253,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
         EventValidationException exception = assertThrows(
                 EventValidationException.class,
-                () -> service.parseSignals(event)
+                () -> parseSignals(event)
         );
 
         assertEquals(454, exception.getResponseCode());
@@ -262,11 +266,19 @@ class SignalParsingTest extends AbstractOadrTest {
         OadrEvent event = loadFirstEvent("oadrDistributeEvent_electricityPrice.xml");
         event.getEiEvent().getEiEventSignals().getEiEventSignal().getFirst().setItemBase(null);
 
-        assertTrue(service.parseSignals(event).isEmpty(),
+        assertTrue(parseSignals(event).isEmpty(),
                 "Unsupported signalType and Unit combination must map to Rule 109 / 460");
     }
 
     // --- helpers ---
+
+    private Optional<EventSignalCommand> parseSignal(OadrEvent event) {
+        return service.selectPreferredSignal(parseSignals(event));
+    }
+
+    private List<EventSignalCommand> parseSignals(OadrEvent event) {
+        return service.validateSignals(mapper.map(event));
+    }
 
     private OadrEvent loadFirstEvent(String filename) throws Oadr20bUnmarshalException {
         File file = new File(EIEVENT_PATH + filename);

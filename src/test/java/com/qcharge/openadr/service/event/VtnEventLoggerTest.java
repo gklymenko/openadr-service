@@ -2,6 +2,7 @@ package com.qcharge.openadr.service.event;
 
 import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
+import com.qcharge.openadr.service.event.protocol.VtnEventLogger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;

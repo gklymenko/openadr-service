@@ -61,7 +61,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
         org.mockito.Mockito.lenient()
                 .when(eventResourceResolver.resolveEventTarget(any(), any())).thenReturn(target);
         org.mockito.Mockito.lenient()
-                .when(eventResourceResolver.resolveSignalTargets(any(), any(), eq(target)))
+                .when(eventResourceResolver.resolveSignalTargets(any(), eq(target)))
                 .thenReturn(java.util.Map.of(
                         "SIG_01", java.util.List.of(resource),
                         "SIG_02", java.util.List.of(resource)

@@ -4,12 +4,11 @@ import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.model.entity.OpenAdrResource;
-import com.qcharge.openadr.model.oadr20b.ei.EiEventSignalType;
-import com.qcharge.openadr.model.oadr20b.ei.EiTargetType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
-import com.qcharge.openadr.model.oadr20b.power.EndDeviceAssetType;
 import com.qcharge.openadr.repository.OpenAdrResourceRepository;
 import com.qcharge.openadr.service.event.EventValidationException;
+import com.qcharge.openadr.service.event.command.EventSignalCommand;
+import com.qcharge.openadr.service.event.command.EventTargetCommand;
+import com.qcharge.openadr.service.event.command.SignalTargetCommand;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -59,21 +58,16 @@ public class EventResourceResolver {
     private final OpenAdrProperties properties;
 
     @Transactional(readOnly = true)
-    public ResolvedEventTarget resolveEventTarget(OadrEvent event, String venId) {
-        if (event == null || event.getEiEvent() == null) {
-            throw new IllegalArgumentException("eiEvent is required");
-        }
-
-        EiTargetType target = event.getEiEvent().getEiTarget();
-        if (target == null || !hasAnyTarget(target)) {
+    public ResolvedEventTarget resolveEventTarget(EventTargetCommand target, String venId) {
+        if (target == null || !target.present()) {
             if (!properties.getEvent().isAllowUntargetedEvents()) {
                 throw new TargetMismatchException("eiTarget is missing or empty");
             }
             return new ResolvedEventTarget(toResolved(repository.findAllByEnabledTrue()));
         }
 
-        boolean venMatches = containsIgnoreCase(target.getVenID(), venId);
-        List<String> requestedResourceIds = nonBlank(target.getResourceID());
+        boolean venMatches = containsIgnoreCase(target.venIds(), venId);
+        List<String> requestedResourceIds = nonBlank(target.resourceIds());
         List<OpenAdrResource> matchedByResourceId = requestedResourceIds.isEmpty()
                 ? List.of()
                 : repository.findAllByResourceIdInAndEnabledTrue(requestedResourceIds);
@@ -81,7 +75,7 @@ public class EventResourceResolver {
         if (!venMatches && matchedByResourceId.isEmpty()) {
             throw new TargetMismatchException(
                     "Event target mismatch. venIDs=%s, resourceIDs=%s"
-                            .formatted(target.getVenID(), target.getResourceID())
+                            .formatted(target.venIds(), target.resourceIds())
             );
         }
 
@@ -96,26 +90,23 @@ public class EventResourceResolver {
     }
 
     public List<ResolvedResource> resolveSignalTarget(
-            OadrEvent event,
-            String selectedSignalId,
+            EventSignalCommand signal,
             ResolvedEventTarget eventTarget
     ) {
-        EiEventSignalType signal = findSignal(event, selectedSignalId);
-        EiTargetType signalTarget = signal.getEiTarget();
+        SignalTargetCommand signalTarget = signal.target();
 
         if (signalTarget == null) {
-            return requireResources(eventTarget.resources(), selectedSignalId, List.of());
+            return requireResources(eventTarget.resources(), signal.signalId(), List.of());
         }
 
-        if (hasNonDeviceClassTarget(signalTarget)) {
+        if (signalTarget.hasNonDeviceClassTarget()) {
             throw new EventValidationException(
                     "Only endDeviceAsset is allowed in a signal-level eiTarget",
                     ApplicationLayerErrorCodes.INVALID_DATA
             );
         }
 
-        List<String> deviceClasses = signalTarget.getEndDeviceAsset().stream()
-                .map(EndDeviceAssetType::getMrid)
+        List<String> deviceClasses = signalTarget.endDeviceClasses().stream()
                 .map(this::requireValidDeviceClass)
                 .toList();
 
@@ -131,18 +122,17 @@ public class EventResourceResolver {
                 ? eventTarget.resources()
                 : List.of();
 
-        return requireResources(matches, selectedSignalId, deviceClasses);
+        return requireResources(matches, signal.signalId(), deviceClasses);
     }
 
     public Map<String, List<ResolvedResource>> resolveSignalTargets(
-            OadrEvent event,
-            Collection<String> signalIds,
+            Collection<EventSignalCommand> signals,
             ResolvedEventTarget eventTarget
     ) {
         Map<String, List<ResolvedResource>> resolved = new LinkedHashMap<>();
-        signalIds.forEach(signalId -> resolved.put(
-                signalId,
-                resolveSignalTarget(event, signalId, eventTarget)
+        signals.forEach(signal -> resolved.put(
+                signal.signalId(),
+                resolveSignalTarget(signal, eventTarget)
         ));
         return Map.copyOf(resolved);
     }
@@ -160,25 +150,6 @@ public class EventResourceResolver {
             );
         }
         return List.copyOf(resources);
-    }
-
-    private EiEventSignalType findSignal(OadrEvent event, String signalId) {
-        if (event == null
-                || event.getEiEvent() == null
-                || event.getEiEvent().getEiEventSignals() == null) {
-            throw new EventValidationException(
-                    "Unable to locate selected signal " + signalId,
-                    ApplicationLayerErrorCodes.INVALID_DATA
-            );
-        }
-
-        return event.getEiEvent().getEiEventSignals().getEiEventSignal().stream()
-                .filter(signal -> signalId != null && signalId.equals(signal.getSignalID()))
-                .findFirst()
-                .orElseThrow(() -> new EventValidationException(
-                        "Unable to locate selected signal " + signalId,
-                        ApplicationLayerErrorCodes.INVALID_DATA
-                ));
     }
 
     private String requireValidDeviceClass(String value) {
@@ -217,37 +188,6 @@ public class EventResourceResolver {
         return expected != null && !expected.isBlank() && values.stream()
                 .filter(value -> value != null && !value.isBlank())
                 .anyMatch(value -> value.equalsIgnoreCase(expected));
-    }
-
-    private boolean hasAnyTarget(EiTargetType target) {
-        return !target.getVenID().isEmpty()
-                || !target.getResourceID().isEmpty()
-                || !target.getGroupID().isEmpty()
-                || !target.getGroupName().isEmpty()
-                || !target.getPartyID().isEmpty()
-                || !target.getAggregatedPnode().isEmpty()
-                || !target.getEndDeviceAsset().isEmpty()
-                || !target.getMeterAsset().isEmpty()
-                || !target.getPnode().isEmpty()
-                || !target.getServiceArea().isEmpty()
-                || !target.getServiceDeliveryPoint().isEmpty()
-                || !target.getServiceLocation().isEmpty()
-                || !target.getTransportInterface().isEmpty();
-    }
-
-    private boolean hasNonDeviceClassTarget(EiTargetType target) {
-        return !target.getVenID().isEmpty()
-                || !target.getResourceID().isEmpty()
-                || !target.getGroupID().isEmpty()
-                || !target.getGroupName().isEmpty()
-                || !target.getPartyID().isEmpty()
-                || !target.getAggregatedPnode().isEmpty()
-                || !target.getMeterAsset().isEmpty()
-                || !target.getPnode().isEmpty()
-                || !target.getServiceArea().isEmpty()
-                || !target.getServiceDeliveryPoint().isEmpty()
-                || !target.getServiceLocation().isEmpty()
-                || !target.getTransportInterface().isEmpty();
     }
 
     public record ResolvedEventTarget(List<ResolvedResource> resources) {

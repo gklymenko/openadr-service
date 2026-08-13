@@ -1,4 +1,4 @@
-package com.qcharge.openadr.service.event;
+package com.qcharge.openadr.service.event.protocol;
 
 import com.qcharge.openadr.model.oadr20b.ei.EiEventSignalType;
 import com.qcharge.openadr.model.oadr20b.ei.EiTargetType;

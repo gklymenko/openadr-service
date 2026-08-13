@@ -3,17 +3,14 @@ package com.qcharge.openadr.service.event.mapping;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.entity.DrEventResource;
 import com.qcharge.openadr.model.entity.DrEventSignal;
-import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
-import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
-import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
+import com.qcharge.openadr.service.event.command.EventOptType;
+import com.qcharge.openadr.service.event.command.EventSignalCommand;
+import com.qcharge.openadr.service.event.command.EventStatus;
+import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
-import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import javax.xml.datatype.XMLGregorianCalendar;
-import java.time.Duration;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -31,26 +28,25 @@ public class EventPayloadMapper {
 
     public void applyExecutableEvent(
             DrEvent target,
-            OadrEvent source,
-            OptTypeType optType,
-            List<ParsedSignal> signals,
+            ReceiveEventCommand source,
+            EventOptType optType,
+            List<EventSignalCommand> signals,
             String selectedSignalId,
             List<ResolvedResource> resources
     ) {
-        EventDescriptorType descriptor = source.getEiEvent().getEventDescriptor();
         EventTiming timing = timing(source, target);
 
-        target.setEventId(descriptor.getEventID());
-        target.setModificationNumber(Math.toIntExact(descriptor.getModificationNumber()));
-        DrEvent.EventStatus status = status(descriptor);
+        target.setEventId(source.eventId());
+        target.setModificationNumber(Math.toIntExact(source.modificationNumber()));
+        DrEvent.EventStatus status = status(source.status());
         target.setStatus(status);
         target.setVtnStatus(status);
         target.setOptType(optType(optType));
-        target.setPriority(descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null);
-        target.setTestEvent(isTestEvent(descriptor));
+        target.setPriority(source.priority());
+        target.setTestEvent(source.testEvent());
         applyTiming(target, timing);
-        target.setDurationSeconds(duration(source));
-        target.setExecutionStatus(optType == OptTypeType.OPT_IN
+        target.setDurationSeconds(source.timing().durationSeconds());
+        target.setExecutionStatus(optType == EventOptType.OPT_IN
                 ? DrEvent.ExecutionStatus.SCHEDULED
                 : DrEvent.ExecutionStatus.RECEIVED);
         target.setLastAppliedInterval(-1);
@@ -64,24 +60,16 @@ public class EventPayloadMapper {
         target.setUpdatedAt(clock.instant());
     }
 
-    public void initializeTerminalEvent(DrEvent target, OadrEvent source) {
+    public void initializeTerminalEvent(DrEvent target, ReceiveEventCommand source) {
         EventTiming timing = timing(source, null);
         applyTiming(target, timing);
-        target.setDurationSeconds(duration(source));
+        target.setDurationSeconds(source.timing().durationSeconds());
     }
 
-    public EventTiming timing(OadrEvent event, DrEvent existingEvent) {
-        var properties = event.getEiEvent().getEiActivePeriod().getProperties();
-        XMLGregorianCalendar dateTime = properties.getDtstart().getDateTime();
-        Instant requestedStart = OpenAdrTimeUtils.fromXmlDateTime(dateTime);
-        String startAfter = properties.getTolerance() != null
-                && properties.getTolerance().getTolerate() != null
-                ? properties.getTolerance().getTolerate().getStartafter()
-                : null;
-        long startAfterSeconds = durationSeconds(startAfter, 0L);
-        if (startAfterSeconds < 0) {
-            throw new IllegalArgumentException("startafter must not be negative");
-        }
+    public EventTiming timing(ReceiveEventCommand event, DrEvent existingEvent) {
+        var source = event.timing();
+        Instant requestedStart = source.requestedStartTime();
+        long startAfterSeconds = source.startAfterSeconds();
 
         long offset = existingEvent != null
                 && Objects.equals(existingEvent.getStartAfterSeconds(), startAfterSeconds)
@@ -93,36 +81,18 @@ public class EventPayloadMapper {
                 startAfterSeconds,
                 offset,
                 requestedStart.plusSeconds(offset),
-                durationSeconds(properties.getXEiRampUp() != null
-                        ? properties.getXEiRampUp().getDuration() : null, null),
-                durationSeconds(properties.getXEiRecovery() != null
-                        ? properties.getXEiRecovery().getDuration() : null, null)
+                source.rampUpSeconds(),
+                source.recoverySeconds()
         );
     }
 
-    public DrEvent.EventStatus status(EventDescriptorType descriptor) {
-        if (descriptor.getEventStatus() == null || descriptor.getEventStatus().value() == null) {
-            throw new IllegalArgumentException("eventStatus is required");
-        }
-        return switch (descriptor.getEventStatus().value().toUpperCase()) {
-            case "FAR" -> DrEvent.EventStatus.FAR;
-            case "NEAR" -> DrEvent.EventStatus.NEAR;
-            case "ACTIVE" -> DrEvent.EventStatus.ACTIVE;
-            case "COMPLETED" -> DrEvent.EventStatus.COMPLETED;
-            case "CANCELLED" -> DrEvent.EventStatus.CANCELLED;
-            default -> throw new IllegalArgumentException(
-                    "Unsupported eventStatus: " + descriptor.getEventStatus().value());
-        };
+    public DrEvent.EventStatus status(EventStatus status) {
+        return DrEvent.EventStatus.valueOf(status.name());
     }
 
-    public boolean isTestEvent(EventDescriptorType descriptor) {
-        String value = descriptor.getTestEvent();
-        return value != null && !"false".equals(value);
-    }
-
-    private List<DrEventSignal> toSignals(List<ParsedSignal> sources, String selectedSignalId) {
+    private List<DrEventSignal> toSignals(List<EventSignalCommand> sources, String selectedSignalId) {
         return IntStream.range(0, sources.size()).mapToObj(sequence -> {
-            ParsedSignal source = sources.get(sequence);
+            EventSignalCommand source = sources.get(sequence);
             DrEventSignal signal = entityMapper.toSignal(source);
             signal.setSequenceNumber(sequence);
             signal.setSelectedForExecution(Objects.equals(source.signalId(), selectedSignalId));
@@ -148,19 +118,8 @@ public class EventPayloadMapper {
         target.setRecoverySeconds(timing.recoverySeconds());
     }
 
-    private DrEvent.OptType optType(OptTypeType value) {
-        return value == OptTypeType.OPT_OUT ? DrEvent.OptType.OPT_OUT : DrEvent.OptType.OPT_IN;
-    }
-
-    private Long duration(OadrEvent event) {
-        var value = event.getEiEvent().getEiActivePeriod().getProperties().getDuration();
-        return value == null ? null : durationSeconds(value.getDuration(), null);
-    }
-
-    private Long durationSeconds(String value, Long defaultValue) {
-        return OpenAdrTimeUtils.parseOpenAdrDuration(value)
-                .map(Duration::getSeconds)
-                .orElse(defaultValue);
+    private DrEvent.OptType optType(EventOptType value) {
+        return value == EventOptType.OPT_OUT ? DrEvent.OptType.OPT_OUT : DrEvent.OptType.OPT_IN;
     }
 
     private long randomOffset(long windowSeconds) {

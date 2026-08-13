@@ -1,11 +1,11 @@
 package com.qcharge.openadr.service.event.processing;
 
-import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
+import com.qcharge.openadr.service.event.command.EventOptType;
 
 public record EventProcessingResult(
         String eventId,
         long modificationNumber,
         int responseCode,
-        OptTypeType optType
+        EventOptType optType
 ) {
 }

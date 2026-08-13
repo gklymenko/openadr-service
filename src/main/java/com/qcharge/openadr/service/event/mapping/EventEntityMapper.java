@@ -3,8 +3,8 @@ package com.qcharge.openadr.service.event.mapping;
 import com.qcharge.openadr.model.entity.DrEventInterval;
 import com.qcharge.openadr.model.entity.DrEventResource;
 import com.qcharge.openadr.model.entity.DrEventSignal;
-import com.qcharge.openadr.service.event.EventValidationService.ParsedInterval;
-import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
+import com.qcharge.openadr.service.event.command.EventIntervalCommand;
+import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -19,12 +19,12 @@ public interface EventEntityMapper {
     @Mapping(target = "sequenceNumber", ignore = true)
     @Mapping(target = "selectedForExecution", ignore = true)
     @Mapping(target = "intervals", ignore = true)
-    DrEventSignal toSignal(ParsedSignal source);
+    DrEventSignal toSignal(EventSignalCommand source);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "signal", ignore = true)
     @Mapping(target = "intervalUid", source = "uid")
-    DrEventInterval toInterval(ParsedInterval source);
+    DrEventInterval toInterval(EventIntervalCommand source);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "event", ignore = true)

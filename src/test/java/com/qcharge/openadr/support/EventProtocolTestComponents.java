@@ -9,6 +9,7 @@ import com.qcharge.openadr.service.event.processing.EventCancellationService;
 import com.qcharge.openadr.service.event.processing.EventProcessor;
 import com.qcharge.openadr.service.event.processing.EventVersionPolicy;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
+import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
 import com.qcharge.openadr.service.event.store.EventStore;
 import com.qcharge.openadr.service.event.store.JpaEventStore;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
@@ -36,7 +37,8 @@ public final class EventProtocolTestComponents {
                 optDecisionService,
                 validationService,
                 resourceResolver,
-                Clock.systemUTC()
+                Clock.systemUTC(),
+                new OpenAdrEventCommandMapper()
         );
     }
 
@@ -47,6 +49,21 @@ public final class EventProtocolTestComponents {
             EventValidationService validationService,
             EventResourceResolver resourceResolver,
             Clock clock
+    ) {
+        return protocolAdapter(
+                repository, transportService, optDecisionService,
+                validationService, resourceResolver, clock,
+                new OpenAdrEventCommandMapper());
+    }
+
+    public static EventProtocolAdapter protocolAdapter(
+            DrEventRepository repository,
+            VtnTransportService transportService,
+            EventOptDecisionService optDecisionService,
+            EventValidationService validationService,
+            EventResourceResolver resourceResolver,
+            Clock clock,
+            OpenAdrEventCommandMapper commandMapper
     ) {
         EventStore eventStore = new JpaEventStore(repository);
         EventCancellationService cancellationService =
@@ -65,6 +82,11 @@ public final class EventProtocolTestComponents {
                 cancellationService,
                 clock
         );
-        return new EventProtocolAdapter(processor, cancellationService, transportService);
+        return new EventProtocolAdapter(
+                processor,
+                cancellationService,
+                transportService,
+                commandMapper
+        );
     }
 }
