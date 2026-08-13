@@ -3,7 +3,6 @@ package com.qcharge.openadr.service.event;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.model.oadr20b.ei.EiEventSignalType;
-import com.qcharge.openadr.model.oadr20b.ei.EiTargetType;
 import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
 import com.qcharge.openadr.model.oadr20b.ei.IntervalType;
 import com.qcharge.openadr.model.oadr20b.ei.PayloadFloatType;
@@ -66,20 +65,54 @@ public class EventValidationService {
         }
     }
 
-    public void validateTargetAndMarketContext(OadrEvent oadrEvent) {
-        validateTargetAndMarketContext(oadrEvent, properties.getVen().getId());
-    }
-
-    public void validateTargetAndMarketContext(
-            OadrEvent oadrEvent,
-            String venId
-    ) {
+    public void validateMarketContext(OadrEvent oadrEvent) {
         if (oadrEvent == null || oadrEvent.getEiEvent() == null) {
             throw new IllegalArgumentException("eiEvent is required");
         }
+        String marketContext = marketContextOf(oadrEvent);
 
-        validateTarget(oadrEvent, venId);
+        List<String> allowedMarketContexts = properties.getEvent().getAllowedMarketContexts();
+
+        if (allowedMarketContexts == null || allowedMarketContexts.isEmpty()) {
+            return;
+        }
+
+        if (!containsIgnoreCase(allowedMarketContexts, marketContext)) {
+            throw new TargetMismatchException(
+                    "Unsupported marketContext: " + marketContext
+            );
+        }
+    }
+
+    /**
+     * @deprecated Event targeting is registry-backed and is validated by
+     * {@link com.qcharge.openadr.service.resource.EventResourceResolver}.
+     */
+    @Deprecated(forRemoval = false)
+    public void validateTargetAndMarketContext(OadrEvent oadrEvent) {
         validateMarketContext(oadrEvent);
+    }
+
+    /**
+     * @deprecated Event targeting is registry-backed and is validated by
+     * {@link com.qcharge.openadr.service.resource.EventResourceResolver}.
+     */
+    @Deprecated(forRemoval = false)
+    public void validateTargetAndMarketContext(OadrEvent oadrEvent, String venId) {
+        validateMarketContext(oadrEvent);
+    }
+
+    private String marketContextOf(OadrEvent oadrEvent) {
+        EventDescriptorType descriptor = oadrEvent.getEiEvent().getEventDescriptor();
+
+        if (descriptor == null
+                || descriptor.getEiMarketContext() == null
+                || descriptor.getEiMarketContext().getMarketContext() == null
+                || descriptor.getEiMarketContext().getMarketContext().isBlank()) {
+            throw new IllegalArgumentException("marketContext is required");
+        }
+
+        return descriptor.getEiMarketContext().getMarketContext();
     }
 
     public Optional<ParsedSignal> parseSignal(OadrEvent oadrEvent) {
@@ -173,7 +206,7 @@ public class EventValidationService {
         }
     }
 
-    private Long eventDurationSeconds(OadrEvent event) {
+    private long eventDurationSeconds(OadrEvent event) {
         try {
             String value = event.getEiEvent()
                     .getEiActivePeriod()
@@ -184,113 +217,6 @@ public class EventValidationService {
         } catch (NullPointerException exception) {
             throw complianceError("Event duration is required");
         }
-    }
-
-    private void validateTarget(OadrEvent oadrEvent, String venId) {
-        EiTargetType target = oadrEvent.getEiEvent().getEiTarget();
-
-        if (target == null) {
-            throw new TargetMismatchException("eiTarget is missing");
-        }
-
-        boolean hasAnyTarget = hasAnyTarget(target);
-
-        if (!hasAnyTarget) {
-            if (properties.getEvent().isAllowUntargetedEvents()) {
-                log.debug("Event has empty eiTarget. Treating as broadcast to this VEN.");
-                return;
-            }
-
-            throw new TargetMismatchException("eiTarget is empty");
-        }
-
-        boolean hasVenTarget = !target.getVenID().isEmpty();
-        boolean hasResourceTarget = !target.getResourceID().isEmpty();
-
-        boolean venMatches = hasVenTarget && containsIgnoreCase(
-                target.getVenID(),
-                venId
-        );
-
-        boolean resourceMatches = hasResourceTarget && containsIgnoreCase(
-                target.getResourceID(),
-                properties.getReport().getResourceId()
-        );
-
-        if (venMatches || resourceMatches) {
-            if (hasUnsupportedTargetDimensions(target)) {
-                log.debug(
-                        "Event target matched supported dimension, unsupported target dimensions will be ignored. venIDs={}, resourceIDs={}",
-                        target.getVenID(),
-                        target.getResourceID()
-                );
-            }
-            return;
-        }
-
-        throw new TargetMismatchException(
-                "Event target mismatch. venIDs=%s, resourceIDs=%s"
-                        .formatted(target.getVenID(), target.getResourceID())
-        );
-    }
-
-    private void validateMarketContext(OadrEvent oadrEvent) {
-        String marketContext = marketContextOf(oadrEvent);
-
-        List<String> allowedMarketContexts = properties.getEvent().getAllowedMarketContexts();
-
-        if (allowedMarketContexts == null || allowedMarketContexts.isEmpty()) {
-            return;
-        }
-
-        if (!containsIgnoreCase(allowedMarketContexts, marketContext)) {
-            throw new TargetMismatchException(
-                    "Unsupported marketContext: " + marketContext
-            );
-        }
-    }
-
-    private String marketContextOf(OadrEvent oadrEvent) {
-        EventDescriptorType descriptor = oadrEvent.getEiEvent().getEventDescriptor();
-
-        if (descriptor == null
-                || descriptor.getEiMarketContext() == null
-                || descriptor.getEiMarketContext().getMarketContext() == null
-                || descriptor.getEiMarketContext().getMarketContext().isBlank()) {
-            throw new IllegalArgumentException("marketContext is required");
-        }
-
-        return descriptor.getEiMarketContext().getMarketContext();
-    }
-
-    private boolean hasAnyTarget(EiTargetType target) {
-        return !target.getVenID().isEmpty()
-                || !target.getResourceID().isEmpty()
-                || !target.getGroupID().isEmpty()
-                || !target.getGroupName().isEmpty()
-                || !target.getPartyID().isEmpty()
-                || !target.getAggregatedPnode().isEmpty()
-                || !target.getEndDeviceAsset().isEmpty()
-                || !target.getMeterAsset().isEmpty()
-                || !target.getPnode().isEmpty()
-                || !target.getServiceArea().isEmpty()
-                || !target.getServiceDeliveryPoint().isEmpty()
-                || !target.getServiceLocation().isEmpty()
-                || !target.getTransportInterface().isEmpty();
-    }
-
-    private boolean hasUnsupportedTargetDimensions(EiTargetType target) {
-        return !target.getGroupID().isEmpty()
-                || !target.getGroupName().isEmpty()
-                || !target.getPartyID().isEmpty()
-                || !target.getAggregatedPnode().isEmpty()
-                || !target.getEndDeviceAsset().isEmpty()
-                || !target.getMeterAsset().isEmpty()
-                || !target.getPnode().isEmpty()
-                || !target.getServiceArea().isEmpty()
-                || !target.getServiceDeliveryPoint().isEmpty()
-                || !target.getServiceLocation().isEmpty()
-                || !target.getTransportInterface().isEmpty();
     }
 
     private boolean containsIgnoreCase(List<String> values, String expected) {

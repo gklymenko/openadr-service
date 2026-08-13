@@ -12,7 +12,11 @@ import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
+import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
+import com.qcharge.openadr.service.resource.EventResourceResolver;
+import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -28,6 +32,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class EventPerItemValidationTest {
@@ -36,6 +41,7 @@ class EventPerItemValidationTest {
     private final VtnTransportService transportService = mock(VtnTransportService.class);
     private final EventValidationService validationService = mock(EventValidationService.class);
     private final OpenAdrSessionProvider sessionProvider = mock(OpenAdrSessionProvider.class);
+    private final EventResourceResolver eventResourceResolver = mock(EventResourceResolver.class);
 
     private DrEventHandler handler;
 
@@ -50,6 +56,8 @@ class EventPerItemValidationTest {
                 .thenReturn(List.of());
         when(validationService.selectPreferredSignal(org.mockito.ArgumentMatchers.anyList()))
                 .thenReturn(Optional.empty());
+        org.mockito.Mockito.lenient().when(eventResourceResolver.resolveEventTarget(any(), any()))
+                .thenReturn(new ResolvedEventTarget(List.of()));
 
         handler = new DrEventHandler(
                 new OpenAdrProperties(),
@@ -57,6 +65,7 @@ class EventPerItemValidationTest {
                 transportService,
                 mock(EventOptDecisionService.class),
                 validationService,
+                eventResourceResolver,
                 mock(OcppIntegrationService.class),
                 sessionProvider
         );
@@ -128,6 +137,35 @@ class EventPerItemValidationTest {
                         .getFirst()
                         .getRequestID()
         );
+    }
+
+    @Test
+    void unresolvedSelectedSignalReturns469AndOptOutWithoutPersistence() {
+        ParsedSignal selected = new ParsedSignal(
+                "SIG-1", "SIMPLE", "level", null,
+                null, null, null, null, List.of()
+        );
+        when(validationService.parseSignals(any())).thenReturn(List.of(selected));
+        when(validationService.selectPreferredSignal(any())).thenReturn(Optional.of(selected));
+        when(eventResourceResolver.resolveSignalTargets(any(), eq(List.of("SIG-1")), any()))
+                .thenThrow(new EventValidationException(
+                        "Unable to resolve target resource",
+                        ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER
+                ));
+
+        OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
+        distributeEvent.setRequestID("DIST-1");
+        distributeEvent.setVtnID("VTN-1");
+        distributeEvent.getOadrEvent().add(event("EVENT-1"));
+
+        handler.handle(distributeEvent);
+
+        EventResponse response = capturedResponses().getFirst();
+        assertEquals(String.valueOf(ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER),
+                response.getResponseCode());
+        assertEquals(com.qcharge.openadr.model.oadr20b.ei.OptTypeType.OPT_OUT,
+                response.getOptType());
+        verify(repository, never()).save(any());
     }
 
     private List<EventResponse> capturedResponses() {

@@ -15,6 +15,8 @@ public interface OpenAdrResourceRepository extends JpaRepository<OpenAdrResource
 
     List<OpenAdrResource> findAllByEnabledTrue();
 
+    List<OpenAdrResource> findAllByResourceIdInAndEnabledTrue(Collection<String> resourceIds);
+
     boolean existsByChargePointIdentityAndChargePointPkNot(
             String chargePointIdentity,
             Integer chargePointPk

@@ -6,6 +6,7 @@ import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.integration.ocpp.OcppIntegrationService;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.entity.DrEventInterval;
+import com.qcharge.openadr.model.entity.DrEventResource;
 import com.qcharge.openadr.model.entity.DrEventSignal;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
@@ -18,6 +19,9 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.EventValidationService.ParsedSignal;
+import com.qcharge.openadr.service.resource.EventResourceResolver;
+import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
+import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
@@ -34,6 +38,7 @@ import java.time.Instant;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -57,6 +62,7 @@ public class DrEventHandler {
     private final VtnTransportService transportService;
     private final EventOptDecisionService eventOptDecisionService;
     private final EventValidationService eventValidationService;
+    private final EventResourceResolver eventResourceResolver;
     private final OcppIntegrationService ocppIntegrationService;
     private final OpenAdrSessionProvider sessionProvider;
 
@@ -260,7 +266,22 @@ public class DrEventHandler {
             );
         }
 
-        eventValidationService.validateTargetAndMarketContext(oadrEvent, venId);
+        if (versionState == EventVersionState.DUPLICATE) {
+            if (isCompleted(descriptor)
+                    && existingEvent.getVtnStatus() != DrEvent.EventStatus.COMPLETED) {
+                existingEvent.setVtnStatus(DrEvent.EventStatus.COMPLETED);
+                drEventRepository.save(existingEvent);
+            }
+            return successfulDuplicate(existingEvent, eventId, modificationNumber);
+        }
+
+        ResolvedEventTarget eventTarget = null;
+        if (eventResourceResolver == null) {
+            eventValidationService.validateTargetAndMarketContext(oadrEvent, venId);
+        } else {
+            eventValidationService.validateMarketContext(oadrEvent);
+            eventTarget = eventResourceResolver.resolveEventTarget(oadrEvent, venId);
+        }
 
         if (isCancelled(descriptor)) {
             if (unknownCancellation) {
@@ -271,9 +292,6 @@ public class DrEventHandler {
                         ApplicationLayerErrorCodes.OK,
                         OptTypeType.OPT_IN
                 );
-            }
-            if (versionState == EventVersionState.DUPLICATE) {
-                return successfulDuplicate(existingEvent, eventId, modificationNumber);
             }
             saveCancelledEvent(oadrEvent, existingEvent);
 
@@ -286,13 +304,6 @@ public class DrEventHandler {
         }
 
         if (isCompleted(descriptor)) {
-            if (versionState == EventVersionState.DUPLICATE) {
-                if (existingEvent.getVtnStatus() != DrEvent.EventStatus.COMPLETED) {
-                    existingEvent.setVtnStatus(DrEvent.EventStatus.COMPLETED);
-                    drEventRepository.save(existingEvent);
-                }
-                return successfulDuplicate(existingEvent, eventId, modificationNumber);
-            }
             saveCompletedEvent(oadrEvent, existingEvent);
 
             return new EventProcessingResult(
@@ -321,13 +332,27 @@ public class DrEventHandler {
         }
 
         ParsedSignal signal = parsedSignal.get();
+        Map<String, List<ResolvedResource>> resourcesBySignal = eventResourceResolver == null
+                ? Map.of()
+                : eventResourceResolver.resolveSignalTargets(
+                oadrEvent,
+                parsedSignals.stream().map(ParsedSignal::signalId).toList(),
+                eventTarget
+        );
+        List<ResolvedResource> resolvedResources = resourcesBySignal.getOrDefault(
+                signal.signalId(),
+                List.of()
+        );
         OptTypeType optType = eventOptDecisionService.determineOptType(oadrEvent, signal);
 
-        if (versionState == EventVersionState.DUPLICATE) {
-            return successfulDuplicate(existingEvent, eventId, modificationNumber);
-        }
-
-        saveOrUpdateEvent(oadrEvent, existingEvent, optType, parsedSignals, signal.signalId());
+        saveOrUpdateEvent(
+                oadrEvent,
+                existingEvent,
+                optType,
+                parsedSignals,
+                signal.signalId(),
+                resolvedResources
+        );
 
         log.info(
                 "OpenADR event persisted for lifecycle execution. eventId={}, optType={}",
@@ -386,7 +411,8 @@ public class DrEventHandler {
             DrEvent existingEvent,
             OptTypeType optType,
             List<ParsedSignal> parsedSignals,
-            String selectedSignalId
+            String selectedSignalId,
+            List<ResolvedResource> resolvedResources
     ) {
         EventDescriptorType descriptor = requireDescriptor(oadrEvent);
         String eventId = requireEventId(descriptor);
@@ -420,6 +446,7 @@ public class DrEventHandler {
         drEvent.setCancellationRequestedAt(null);
         drEvent.setCancellationEffectiveAt(null);
         drEvent.replaceSignals(toSignalEntities(parsedSignals, selectedSignalId));
+        drEvent.replaceResources(toResourceEntities(resolvedResources));
         drEvent.setUpdatedAt(Instant.now());
 
         drEventRepository.save(drEvent);
@@ -572,6 +599,18 @@ public class DrEventHandler {
                 .toList();
     }
 
+    private List<DrEventResource> toResourceEntities(List<ResolvedResource> resources) {
+        return java.util.stream.IntStream.range(0, resources.size())
+                .mapToObj(sequence -> {
+                    ResolvedResource resolved = resources.get(sequence);
+                    DrEventResource entity = new DrEventResource();
+                    entity.setSequenceNumber(sequence);
+                    entity.setResourceId(resolved.resourceId());
+                    return entity;
+                })
+                .toList();
+    }
+
     private DrEventSignal toSignalEntity(
             ParsedSignal parsed,
             int sequence,
@@ -622,7 +661,9 @@ public class DrEventHandler {
                 .equalsIgnoreCase(descriptor.getEventStatus().value());
     }
 
-    /** Rule 6: only the exact value "false" denotes a non-test event. */
+    /**
+     * Rule 6: only the exact value "false" denotes a non-test event.
+     */
     private boolean isTestEvent(EventDescriptorType descriptor) {
         String value = descriptor.getTestEvent();
         return value != null && !"false".equals(value);

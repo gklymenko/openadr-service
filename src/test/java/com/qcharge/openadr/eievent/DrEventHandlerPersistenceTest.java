@@ -11,6 +11,9 @@ import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.resource.EventResourceResolver;
+import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
+import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import org.junit.jupiter.api.Test;
@@ -36,6 +39,21 @@ class DrEventHandlerPersistenceTest extends AbstractOadrTest {
 
         DrEventRepository repository = mock(DrEventRepository.class);
         when(repository.findByEventId("Event_939393")).thenReturn(Optional.empty());
+        EventResourceResolver resolver = mock(EventResourceResolver.class);
+        ResolvedResource resolved = new ResolvedResource(
+                10, "CP-1", "uuid-1", "RES_123", 22_000L
+        );
+        ResolvedEventTarget eventTarget = new ResolvedEventTarget(java.util.List.of(resolved));
+        when(resolver.resolveEventTarget(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString())).thenReturn(eventTarget);
+        when(resolver.resolveSignalTargets(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyCollection(),
+                org.mockito.ArgumentMatchers.eq(eventTarget)
+        )).thenReturn(java.util.Map.of(
+                "SIG_01", java.util.List.of(resolved),
+                "SIG_02", java.util.List.of(resolved)
+        ));
 
         DrEventHandler handler = new DrEventHandler(
                 properties,
@@ -43,6 +61,7 @@ class DrEventHandlerPersistenceTest extends AbstractOadrTest {
                 mock(VtnTransportService.class),
                 new EventOptDecisionService(),
                 new EventValidationService(properties),
+                resolver,
                 mock(OcppIntegrationService.class),
                 mock(OpenAdrSessionProvider.class)
         );
@@ -64,6 +83,9 @@ class DrEventHandlerPersistenceTest extends AbstractOadrTest {
         DrEvent saved = captor.getValue();
 
         assertEquals(2, saved.getSignals().size());
+        assertEquals(1, saved.getResources().size());
+        assertEquals("RES_123", saved.getResources().getFirst().getResourceId());
+        assertSame(saved, saved.getResources().getFirst().getEvent());
         assertTrue(saved.isTestEvent());
         assertEquals(DrEvent.ExecutionStatus.SCHEDULED, saved.getExecutionStatus());
         assertEquals(Instant.parse("2001-12-17T09:40:47Z"), saved.getRequestedStartTime());

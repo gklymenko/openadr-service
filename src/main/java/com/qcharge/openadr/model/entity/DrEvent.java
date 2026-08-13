@@ -116,6 +116,10 @@ public class DrEvent {
     @OrderBy("sequenceNumber ASC")
     private List<DrEventSignal> signals = new ArrayList<>();
 
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sequenceNumber ASC")
+    private List<DrEventResource> resources = new ArrayList<>();
+
     @Column(name = "raw_payload", columnDefinition = "TEXT")
     private String rawPayload;
 
@@ -142,6 +146,14 @@ public class DrEvent {
         replacements.forEach(signal -> {
             signal.setEvent(this);
             signals.add(signal);
+        });
+    }
+
+    public void replaceResources(List<DrEventResource> replacements) {
+        resources.clear();
+        replacements.forEach(resource -> {
+            resource.setEvent(this);
+            resources.add(resource);
         });
     }
 

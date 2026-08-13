@@ -12,6 +12,8 @@ import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.resource.EventResourceResolver;
+import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,18 +49,23 @@ class DrEventCancellationTest extends AbstractOadrTest {
     private OcppIntegrationService ocppIntegrationService;
     @Mock
     private OpenAdrSessionProvider sessionProvider;
+    @Mock
+    private EventResourceResolver eventResourceResolver;
     private DrEventHandler handler;
 
     @BeforeEach
     void setUp() {
         OpenAdrProperties properties = new OpenAdrProperties();
         properties.getReport().setResourceId("RES_123");
+        org.mockito.Mockito.lenient().when(eventResourceResolver.resolveEventTarget(any(), any()))
+                .thenReturn(new ResolvedEventTarget(List.of()));
         handler = new DrEventHandler(
                 properties,
                 repository,
                 transportService,
                 new EventOptDecisionService(),
                 new EventValidationService(properties),
+                eventResourceResolver,
                 ocppIntegrationService,
                 sessionProvider
         );

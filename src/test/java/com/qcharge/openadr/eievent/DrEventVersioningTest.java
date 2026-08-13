@@ -16,6 +16,9 @@ import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.resource.EventResourceResolver;
+import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
+import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -48,18 +51,33 @@ class DrEventVersioningTest extends AbstractOadrTest {
     private OcppIntegrationService ocppIntegrationService;
     @Mock
     private OpenAdrSessionProvider sessionProvider;
+    @Mock
+    private EventResourceResolver eventResourceResolver;
     private DrEventHandler handler;
 
     @BeforeEach
     void setUp() {
         OpenAdrProperties properties = new OpenAdrProperties();
         properties.getReport().setResourceId("RES_123");
+        ResolvedResource resource = new ResolvedResource(
+                10, "CP-1", "uuid-1", "RES_123", 22_000L
+        );
+        ResolvedEventTarget target = new ResolvedEventTarget(java.util.List.of(resource));
+        org.mockito.Mockito.lenient()
+                .when(eventResourceResolver.resolveEventTarget(any(), any())).thenReturn(target);
+        org.mockito.Mockito.lenient()
+                .when(eventResourceResolver.resolveSignalTargets(any(), any(), eq(target)))
+                .thenReturn(java.util.Map.of(
+                        "SIG_01", java.util.List.of(resource),
+                        "SIG_02", java.util.List.of(resource)
+                ));
         handler = new DrEventHandler(
                 properties,
                 repository,
                 transportService,
                 new EventOptDecisionService(),
                 new EventValidationService(properties),
+                eventResourceResolver,
                 ocppIntegrationService,
                 sessionProvider
         );
