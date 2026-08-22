@@ -42,6 +42,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static com.qcharge.openadr.LogMessage.COMPLETED_OADR_QUERY_REGISTRATION;
+import static com.qcharge.openadr.LogMessage.FORCE_NEW_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.SEND_CANCEL_PARTY_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.SEND_CREATE_PARTY_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.SEND_OADR_QUERY_REGISTRATION;
@@ -79,11 +80,11 @@ public class RegistrationService {
 
         log.info(SEND_OADR_QUERY_REGISTRATION, requestId);
 
-        OadrCreatedPartyRegistrationType response = transportService.send(
+        transportService.send(
                 OpenAdrOperations.QUERY_REGISTRATION, payload, session
         );
 
-        log.info(COMPLETED_OADR_QUERY_REGISTRATION, responseCode(response), response.getVtnID());
+        log.info(COMPLETED_OADR_QUERY_REGISTRATION);
     }
 
     public OpenAdrSessionSnapshot performRegistration() {
@@ -114,7 +115,6 @@ public class RegistrationService {
      * Re-registers using the VEN ID and registration ID stored in the database.
      */
     private RegistrationResult reregister(VenRegistration existing) {
-        requireValidPersistedRegistration(existing);
         OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(existing);
 
         String previousRegistrationId = existing.getRegistrationId();
@@ -128,6 +128,18 @@ public class RegistrationService {
         VenRegistration registration = saveRegistration(response, existing);
 
         return new RegistrationResult(registration, newRegistrationInstance);
+    }
+
+    public OpenAdrSessionSnapshot performForcedNewRegistration() {
+        log.warn(FORCE_NEW_REGISTRATION);
+
+        Optional<VenRegistration> previousActive = findActiveRegistration();
+
+        RegistrationResult newRegistration = registerNew();
+
+        previousActive.ifPresent(this::markCancelled);
+
+        return completeRegistration(newRegistration);
     }
 
     private OadrCreatedPartyRegistrationType sendCreatePartyRegistration(OpenAdrSessionSnapshot session) {
@@ -190,22 +202,8 @@ public class RegistrationService {
         return registeredSession;
     }
 
-    public OpenAdrSessionSnapshot performForcedNewRegistration() {
-        log.warn("Forcing a new registration without registrationID");
-
-        Optional<VenRegistration> previousActive = findActiveRegistration();
-
-        RegistrationResult newRegistration = registerNew();
-
-        previousActive.ifPresent(this::markCancelled);
-
-        return completeRegistration(newRegistration);
-    }
-
     public void performCancelRegistration(OpenAdrSessionSnapshot session) {
         VenRegistration registration = requireRegistration(session);
-
-        requireValidPersistedRegistration(registration);
 
         String requestId = RequestUtils.newRequestId();
 
@@ -220,21 +218,9 @@ public class RegistrationService {
 
         log.info(SEND_CANCEL_PARTY_REGISTRATION, registration.getVenId(), registration.getRegistrationId());
 
-        OadrCanceledPartyRegistrationType canceled = transportService.send(
+        transportService.send(
                 OpenAdrOperations.CANCEL_PARTY_REGISTRATION, payload, session
         );
-
-        String responseCode = canceled.getEiResponse() == null
-                ? null
-                : canceled.getEiResponse().getResponseCode();
-
-        if (!OpenADRResponseCode.matches(OK, responseCode)) {
-            throw new IllegalStateException(
-                    ApiMessage.FAILED_CANCEL_VEN_REGISTRATION.format(
-                            responseCode, canceled.getEiResponse().getResponseDescription()
-                    )
-            );
-        }
 
         markCancelled(registration);
 
@@ -481,29 +467,11 @@ public class RegistrationService {
                 ));
     }
 
-    private void requireValidPersistedRegistration(VenRegistration registration) {
-        if (!StringUtils.hasText(registration.getVenId())) {
-            throw new IllegalStateException("Persisted VEN registration does not contain venID");
-        }
-
-        if (!StringUtils.hasText(registration.getRegistrationId())) {
-            throw new IllegalStateException("Persisted VEN registration does not contain registrationID");
-        }
-    }
-
     private void markCancelled(VenRegistration registration) {
         registration.setStatus(VenRegistrationStatus.CANCELLED);
         registration.setUpdatedAt(nowUtc());
 
         registrationRepository.save(registration);
-    }
-
-    private String responseCode(
-            OadrCreatedPartyRegistrationType response
-    ) {
-        return response.getEiResponse() == null
-                ? null
-                : response.getEiResponse().getResponseCode();
     }
 
     private String responseType(Object response) {

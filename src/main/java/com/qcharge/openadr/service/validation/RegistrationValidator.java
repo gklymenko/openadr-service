@@ -160,8 +160,7 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
     }
 
     private void validateCancel(
-            OadrCancelPartyRegistrationType request,
-            OadrCanceledPartyRegistrationType response
+            OadrCancelPartyRegistrationType request, OadrCanceledPartyRegistrationType response
     ) {
         EiResponseType eiResponse = requireEiResponse(
                 response.getEiResponse(),

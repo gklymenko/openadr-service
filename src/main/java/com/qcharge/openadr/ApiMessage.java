@@ -12,7 +12,9 @@ public enum ApiMessage {
     BLANK_VENID_ERROR("venId must not be blank"),
 
     UNEXPECTED_VTN_PAYLOAD_TYPE("Unexpected OpenADR response type for operation=%s. Expected one of=%s, actual=%s"),
-    UNEXPECTED_VTN_PAYLOAD_TYPE_DESCR("Payload not of expected type for operation=%s");
+    UNEXPECTED_VTN_PAYLOAD_TYPE_DESCR("Payload not of expected type for operation=%s"),
+
+    VTN_REJECT_OPERATION("VTN rejected OpenADR operation=%s with responseCode=%d");
 
     private final String message;
 

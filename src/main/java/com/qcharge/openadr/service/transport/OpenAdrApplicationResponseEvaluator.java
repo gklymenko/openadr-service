@@ -17,6 +17,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import static com.qcharge.openadr.ApiMessage.VTN_REJECT_OPERATION;
+
 /**
  * Evaluates the envelope-level {@code eiResponse} returned by a VTN.
  *
@@ -41,33 +43,25 @@ public class OpenAdrApplicationResponseEvaluator {
             return;
         }
 
-        ApplicationErrorAction action =
-                errorPolicy.classify(operation, responseCode);
+        ApplicationErrorAction action = errorPolicy.classify(operation, responseCode);
 
         log.warn(
                 "VTN returned OpenADR application error. operation={}, "
                         + "responseCode={}, requestId={}, action={}, description={}",
                 operation.name(),
-                responseCode,
-                eiResponse.getRequestID(),
-                action,
-                eiResponse.getResponseDescription()
+                responseCode, eiResponse.getRequestID(),
+                action, eiResponse.getResponseDescription()
         );
 
         throw new OpenAdrApplicationException(
-                "VTN rejected OpenADR operation=%s with responseCode=%d"
-                        .formatted(operation.name(), responseCode),
-                responseCode,
-                eiResponse.getResponseDescription(),
-                eiResponse.getRequestID(),
-                operation.name(),
-                action
+                VTN_REJECT_OPERATION.format(operation.name(), responseCode),
+                responseCode, eiResponse.getResponseDescription(),
+                eiResponse.getRequestID(), operation.name(), action
         );
     }
 
     private int parseResponseCode(
-            OpenAdrOperation<?, ?> operation,
-            EiResponseType eiResponse
+            OpenAdrOperation<?, ?> operation, EiResponseType eiResponse
     ) {
         String value = eiResponse.getResponseCode();
 
