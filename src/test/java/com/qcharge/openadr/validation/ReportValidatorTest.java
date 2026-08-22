@@ -1,6 +1,6 @@
 package com.qcharge.openadr.validation;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.ei.ReportSpecifierType;
 import com.qcharge.openadr.model.oadr20b.ei.SpecifierPayloadType;
@@ -44,7 +44,7 @@ class ReportValidatorTest {
                 ))
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     @Test
@@ -62,7 +62,7 @@ class ReportValidatorTest {
                 ))
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     @Test
@@ -95,7 +95,7 @@ class ReportValidatorTest {
         );
 
         assertEquals(
-                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                 exception.getResponseCode()
         );
     }
@@ -118,7 +118,7 @@ class ReportValidatorTest {
                 ))
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     private OadrRegisterReportType request() {

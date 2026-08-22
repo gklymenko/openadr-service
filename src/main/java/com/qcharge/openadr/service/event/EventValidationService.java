@@ -1,7 +1,7 @@
 package com.qcharge.openadr.service.event;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.service.event.command.EventIntervalCommand;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
@@ -174,10 +174,10 @@ public class EventValidationService {
 
     private EventValidationException complianceError(String message) {
         return new EventValidationException(
-                message, ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER);
+                message, OpenADRResponseCode.COMPLIANCE_ERROR_OTHER);
     }
 
     private EventValidationException invalidData(String message) {
-        return new EventValidationException(message, ApplicationLayerErrorCodes.INVALID_DATA);
+        return new EventValidationException(message, OpenADRResponseCode.INVALID_DATA);
     }
 }

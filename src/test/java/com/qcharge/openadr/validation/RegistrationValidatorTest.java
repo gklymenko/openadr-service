@@ -1,6 +1,6 @@
 package com.qcharge.openadr.validation;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatePartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
@@ -44,7 +44,7 @@ class RegistrationValidatorTest {
                 ))
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     @Test
@@ -78,7 +78,7 @@ class RegistrationValidatorTest {
         );
 
         assertEquals(
-                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                 exception.getResponseCode()
         );
     }
@@ -100,7 +100,7 @@ class RegistrationValidatorTest {
                 ))
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     private OadrCreatePartyRegistrationType createRegistrationRequest() {

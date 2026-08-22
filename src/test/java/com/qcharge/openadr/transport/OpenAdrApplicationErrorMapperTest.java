@@ -6,10 +6,10 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateReportType;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import org.junit.jupiter.api.Test;
 
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER;
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.INVALID_DATA;
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.INVALID_ID;
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.TARGET_MISMATCH;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.COMPLIANCE_ERROR_OTHER;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.INVALID_DATA;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.INVALID_ID;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.TARGET_MISMATCH;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 

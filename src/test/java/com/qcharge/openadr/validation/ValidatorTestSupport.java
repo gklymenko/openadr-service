@@ -1,6 +1,6 @@
 package com.qcharge.openadr.validation;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrProfiles;
@@ -16,7 +16,7 @@ final class ValidatorTestSupport {
     static EiResponseType eiResponse(String requestId) {
         EiResponseType response = new EiResponseType();
         response.setRequestID(requestId);
-        response.setResponseCode(String.valueOf(ApplicationLayerErrorCodes.OK));
+        response.setResponseCode(String.valueOf(OpenADRResponseCode.OK));
         return response;
     }
 

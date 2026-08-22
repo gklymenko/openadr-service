@@ -1,7 +1,7 @@
 package com.qcharge.openadr.validation;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EiEventType;
@@ -42,7 +42,7 @@ class EventValidatorTest {
                 () -> validator.validate(context(response))
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     @Test
@@ -88,7 +88,7 @@ class EventValidatorTest {
         );
 
         assertEquals(
-                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                 exception.getResponseCode()
         );
     }
@@ -104,7 +104,7 @@ class EventValidatorTest {
         );
 
         assertEquals(
-                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                 exception.getResponseCode()
         );
         assertEquals("REQUEST-1", exception.getRequestId());

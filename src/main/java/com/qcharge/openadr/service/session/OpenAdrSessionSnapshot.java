@@ -1,7 +1,11 @@
 package com.qcharge.openadr.service.session;
 
+import org.apache.logging.log4j.util.Strings;
+
 import java.time.Duration;
 import java.util.Objects;
+
+import static com.qcharge.openadr.ApiMessage.BLANK_VENID_ERROR;
 
 /**
  * Immutable identity and polling state captured for one OpenADR exchange.
@@ -22,8 +26,8 @@ public record OpenAdrSessionSnapshot(
         if (generation < 0) {
             throw new IllegalArgumentException("generation must not be negative");
         }
-        if (venId == null || venId.isBlank()) {
-            throw new IllegalArgumentException("venId must not be blank");
+        if (Strings.isBlank(venId)) {
+            throw new IllegalArgumentException(BLANK_VENID_ERROR.getMessage());
         }
         Objects.requireNonNull(pollFrequency, "pollFrequency");
         if (pollFrequency.isZero() || pollFrequency.isNegative()) {
@@ -32,8 +36,6 @@ public record OpenAdrSessionSnapshot(
     }
 
     public boolean registered() {
-        return registrationEntityId != null
-                && registrationId != null
-                && !registrationId.isBlank();
+        return registrationEntityId != null && Strings.isNotBlank(registrationId);
     }
 }

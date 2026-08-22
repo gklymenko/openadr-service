@@ -1,8 +1,7 @@
 package com.qcharge.openadr.eievent;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
-import com.qcharge.openadr.service.event.DrEventHandler;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
 import org.junit.jupiter.api.Test;
 
@@ -76,18 +75,18 @@ class ErrorHandlingTest {
 
     @Test
     void applicationLayerErrorCodes_haveCorrectValues() {
-        assertEquals(200, ApplicationLayerErrorCodes.OK);
-        assertEquals(450, ApplicationLayerErrorCodes.OUT_OF_SEQUENCE);
-        assertEquals(451, ApplicationLayerErrorCodes.NOT_ALLOWED);
-        assertEquals(452, ApplicationLayerErrorCodes.INVALID_ID);
-        assertEquals(453, ApplicationLayerErrorCodes.NOT_RECOGNIZED);
-        assertEquals(454, ApplicationLayerErrorCodes.INVALID_DATA);
-        assertEquals(459, ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER);
-        assertEquals(460, ApplicationLayerErrorCodes.SIGNAL_NOT_SUPPORTED);
-        assertEquals(461, ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED);
-        assertEquals(462, ApplicationLayerErrorCodes.TARGET_MISMATCH);
-        assertEquals(463, ApplicationLayerErrorCodes.NOT_REGISTERED);
-        assertEquals(469, ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER);
+        assertEquals(200, OpenADRResponseCode.OK);
+        assertEquals(450, OpenADRResponseCode.OUT_OF_SEQUENCE);
+        assertEquals(451, OpenADRResponseCode.NOT_ALLOWED);
+        assertEquals(452, OpenADRResponseCode.INVALID_ID);
+        assertEquals(453, OpenADRResponseCode.NOT_RECOGNIZED);
+        assertEquals(454, OpenADRResponseCode.INVALID_DATA);
+        assertEquals(459, OpenADRResponseCode.COMPLIANCE_ERROR_OTHER);
+        assertEquals(460, OpenADRResponseCode.SIGNAL_NOT_SUPPORTED);
+        assertEquals(461, OpenADRResponseCode.REPORT_NOT_SUPPORTED);
+        assertEquals(462, OpenADRResponseCode.TARGET_MISMATCH);
+        assertEquals(463, OpenADRResponseCode.NOT_REGISTERED);
+        assertEquals(469, OpenADRResponseCode.DEPLOYMENT_ERROR_OTHER);
     }
 
     // --- Application exception ---
@@ -96,7 +95,7 @@ class ErrorHandlingTest {
     void openAdrApplicationException_463_hasCorrectProtocolContext() {
         var ex = new OpenAdrApplicationException(
                 "VTN rejected request: 463 Not Registered/Authorized",
-                ApplicationLayerErrorCodes.NOT_REGISTERED,
+                OpenADRResponseCode.NOT_REGISTERED,
                 "Not Registered/Authorized",
                 "request-123"
         );

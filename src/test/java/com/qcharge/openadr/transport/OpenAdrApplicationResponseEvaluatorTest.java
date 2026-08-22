@@ -1,6 +1,6 @@
 package com.qcharge.openadr.transport;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
@@ -65,7 +65,7 @@ class OpenAdrApplicationResponseEvaluatorTest {
         assertEquals("request-123", exception.getRequestId());
         assertEquals("poll", exception.getOperationName());
         assertEquals(
-                responseCode == ApplicationLayerErrorCodes.NOT_REGISTERED
+                responseCode == OpenADRResponseCode.NOT_REGISTERED
                         ? ApplicationErrorAction.REQUIRE_REREGISTRATION
                         : ApplicationErrorAction.FAIL_OPERATION,
                 exception.getAction()
@@ -87,7 +87,7 @@ class OpenAdrApplicationResponseEvaluatorTest {
                 )
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     @Test
@@ -97,7 +97,7 @@ class OpenAdrApplicationResponseEvaluatorTest {
                         "event-1",
                         0,
                         "request-123",
-                        ApplicationLayerErrorCodes.SIGNAL_NOT_SUPPORTED,
+                        OpenADRResponseCode.SIGNAL_NOT_SUPPORTED,
                         OptTypeType.OPT_OUT
                 )
                 .build();
@@ -127,7 +127,7 @@ class OpenAdrApplicationResponseEvaluatorTest {
         );
 
         assertEquals(
-                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                 exception.getResponseCode()
         );
         assertEquals(ApplicationErrorAction.FAIL_OPERATION, exception.getAction());

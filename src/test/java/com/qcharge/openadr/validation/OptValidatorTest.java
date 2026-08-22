@@ -1,6 +1,6 @@
 package com.qcharge.openadr.validation;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateOptType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedOptType;
@@ -33,7 +33,7 @@ class OptValidatorTest {
                 ))
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     @Test
@@ -52,7 +52,7 @@ class OptValidatorTest {
                 ))
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
     }
 
     private OadrCreateOptType request() {

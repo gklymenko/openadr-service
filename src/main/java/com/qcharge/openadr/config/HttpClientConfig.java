@@ -26,6 +26,7 @@ public class HttpClientConfig {
 
     private final OpenAdrProperties properties;
     private final ResourceLoader resourceLoader;
+    private final int connectTimeout = properties.getTransport().getConnectTimeoutSeconds();
 
     private static final String[] OPENADR_TLS_CIPHER_SUITES = {
             "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256"
@@ -51,8 +52,7 @@ public class HttpClientConfig {
         HttpClient httpClient = HttpClient.newBuilder()
                 .sslContext(sslContext)
                 .sslParameters(sslParams)
-                .connectTimeout(Duration.ofSeconds(
-                        properties.getTransport().getConnectTimeoutSeconds()))
+                .connectTimeout(Duration.ofSeconds(connectTimeout))
                 .build();
 
         log.info("TLS configured: protocol=TLSv1.2, cipher=TLS_RSA_WITH_AES_128_CBC_SHA256 (OpenADR rule 67)");

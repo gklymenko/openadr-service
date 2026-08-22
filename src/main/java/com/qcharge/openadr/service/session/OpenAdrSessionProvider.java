@@ -20,8 +20,7 @@ public class OpenAdrSessionProvider {
 
     private final OpenAdrProperties properties;
     private final VenRegistrationRepository registrationRepository;
-    private final AtomicReference<VersionedSession> versionedSession =
-            new AtomicReference<>();
+    private final AtomicReference<VersionedSession> versionedSession = new AtomicReference<>();
 
     public OpenAdrSessionSnapshot current() {
         return registrationRepository
@@ -64,12 +63,9 @@ public class OpenAdrSessionProvider {
     }
 
     private OpenAdrSessionSnapshot versionedSnapshot(
-            SessionKey key,
-            Long registrationEntityId,
-            String venId,
-            String vtnId,
-            String registrationId,
-            Duration pollFrequency
+            SessionKey key, Long registrationEntityId,
+            String venId, String vtnId,
+            String registrationId, Duration pollFrequency
     ) {
         while (true) {
             VersionedSession current = versionedSession.get();

@@ -12,6 +12,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestReregistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
+import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
@@ -41,7 +42,7 @@ public class EventPoller {
 
     private final OpenAdrProperties properties;
     private final VtnTransportService transportService;
-    private final DrEventHandler drEventHandler;
+    private final EventProtocolAdapter eventProtocolAdapter;
     private final ReportRequestHandler reportRequestHandler;
     private final TaskScheduler openAdrTaskScheduler;
     private final OpenAdrApplicationErrorMapper applicationErrorMapper;
@@ -273,7 +274,7 @@ public class EventPoller {
 
             case OadrDistributeEventType distributeEvent -> {
                 log.info("Received oadrDistributeEvent. events={}", distributeEvent.getOadrEvent().size());
-                drEventHandler.handle(distributeEvent, session);
+                eventProtocolAdapter.receive(distributeEvent, session);
                 yield PollResult.CONTINUE;
             }
 

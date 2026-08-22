@@ -1,7 +1,7 @@
 package com.qcharge.openadr.service.resource;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.model.entity.OpenAdrResource;
 import com.qcharge.openadr.repository.OpenAdrResourceRepository;
@@ -102,7 +102,7 @@ public class EventResourceResolver {
         if (signalTarget.hasNonDeviceClassTarget()) {
             throw new EventValidationException(
                     "Only endDeviceAsset is allowed in a signal-level eiTarget",
-                    ApplicationLayerErrorCodes.INVALID_DATA
+                    OpenADRResponseCode.INVALID_DATA
             );
         }
 
@@ -113,7 +113,7 @@ public class EventResourceResolver {
         if (deviceClasses.isEmpty()) {
             throw new EventValidationException(
                     "signal-level eiTarget must be omitted when endDeviceAsset is absent",
-                    ApplicationLayerErrorCodes.INVALID_DATA
+                    OpenADRResponseCode.INVALID_DATA
             );
         }
 
@@ -146,7 +146,7 @@ public class EventResourceResolver {
             throw new EventValidationException(
                     "Unable to resolve a target resource for signal %s and deviceClasses=%s"
                             .formatted(signalId, requestedDeviceClasses),
-                    ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER
+                    OpenADRResponseCode.DEPLOYMENT_ERROR_OTHER
             );
         }
         return List.copyOf(resources);
@@ -156,7 +156,7 @@ public class EventResourceResolver {
         if (value == null || value.isBlank()) {
             throw new EventValidationException(
                     "endDeviceAsset.mrid must not be blank",
-                    ApplicationLayerErrorCodes.INVALID_DATA
+                    OpenADRResponseCode.INVALID_DATA
             );
         }
 
@@ -165,7 +165,7 @@ public class EventResourceResolver {
         if (!STANDARD_DEVICE_CLASSES.contains(normalized) && !extension) {
             throw new EventValidationException(
                     "Unsupported endDeviceAsset.mrid: " + value,
-                    ApplicationLayerErrorCodes.INVALID_DATA
+                    OpenADRResponseCode.INVALID_DATA
             );
         }
         return value.trim();

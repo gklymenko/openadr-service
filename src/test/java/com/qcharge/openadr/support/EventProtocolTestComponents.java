@@ -1,7 +1,6 @@
 package com.qcharge.openadr.support;
 
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
 import com.qcharge.openadr.service.event.mapping.EventEntityMapper;
 import com.qcharge.openadr.service.event.mapping.EventPayloadMapper;
@@ -10,11 +9,9 @@ import com.qcharge.openadr.service.event.processing.EventProcessor;
 import com.qcharge.openadr.service.event.processing.EventVersionPolicy;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
-import com.qcharge.openadr.service.event.store.EventStore;
-import com.qcharge.openadr.service.event.store.JpaEventStore;
+import com.qcharge.openadr.service.event.store.EventService;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.transport.VtnTransportService;
-import org.mapstruct.factory.Mappers;
 
 import java.time.Clock;
 
@@ -27,14 +24,12 @@ public final class EventProtocolTestComponents {
     public static EventProtocolAdapter protocolAdapter(
             DrEventRepository repository,
             VtnTransportService transportService,
-            EventOptDecisionService optDecisionService,
             EventValidationService validationService,
             EventResourceResolver resourceResolver
     ) {
         return protocolAdapter(
                 repository,
                 transportService,
-                optDecisionService,
                 validationService,
                 resourceResolver,
                 Clock.systemUTC(),
@@ -45,13 +40,12 @@ public final class EventProtocolTestComponents {
     public static EventProtocolAdapter protocolAdapter(
             DrEventRepository repository,
             VtnTransportService transportService,
-            EventOptDecisionService optDecisionService,
             EventValidationService validationService,
             EventResourceResolver resourceResolver,
             Clock clock
     ) {
         return protocolAdapter(
-                repository, transportService, optDecisionService,
+                repository, transportService,
                 validationService, resourceResolver, clock,
                 new OpenAdrEventCommandMapper());
     }
@@ -59,25 +53,23 @@ public final class EventProtocolTestComponents {
     public static EventProtocolAdapter protocolAdapter(
             DrEventRepository repository,
             VtnTransportService transportService,
-            EventOptDecisionService optDecisionService,
             EventValidationService validationService,
             EventResourceResolver resourceResolver,
             Clock clock,
             OpenAdrEventCommandMapper commandMapper
     ) {
-        EventStore eventStore = new JpaEventStore(repository);
+        EventService eventService = new EventService(repository);
         EventCancellationService cancellationService =
-                new EventCancellationService(eventStore, clock);
+                new EventCancellationService(eventService, clock);
         EventPayloadMapper payloadMapper = new EventPayloadMapper(
-                Mappers.getMapper(EventEntityMapper.class),
+                new EventEntityMapper(),
                 clock
         );
         EventProcessor processor = new EventProcessor(
-                eventStore,
+                eventService,
                 new EventVersionPolicy(),
                 validationService,
                 resourceResolver,
-                optDecisionService,
                 payloadMapper,
                 cancellationService,
                 clock

@@ -4,7 +4,9 @@ import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.repository.OptScheduleRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.repository.VenReportRepository;
-import com.qcharge.openadr.service.event.DrEventHandler;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
+import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.report.ReportService;
@@ -12,15 +14,21 @@ import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,7 +40,7 @@ class RegistrationServiceCurrentVenIdTest {
     @Mock VtnTransportService transportService;
     @Mock ReportService reportService;
     @Mock ReportRequestHandler reportRequestHandler;
-    @Mock DrEventHandler drEventHandler;
+    @Mock EventProtocolAdapter eventProtocolAdapter;
     @Mock OpenAdrSessionProvider sessionProvider;
     @Mock OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
     @Mock OpenAdrProperties properties;
@@ -49,7 +57,7 @@ class RegistrationServiceCurrentVenIdTest {
                 transportService,
                 reportService,
                 reportRequestHandler,
-                drEventHandler,
+                eventProtocolAdapter,
                 sessionProvider,
                 lifecycleCoordinator
         );

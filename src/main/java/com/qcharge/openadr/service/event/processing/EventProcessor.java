@@ -1,9 +1,8 @@
 package com.qcharge.openadr.service.event.processing;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.model.entity.DrEvent;
-import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.EventValidationService;
 import com.qcharge.openadr.service.event.command.EventOptType;
@@ -11,7 +10,7 @@ import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.service.event.command.EventStatus;
 import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
 import com.qcharge.openadr.service.event.mapping.EventPayloadMapper;
-import com.qcharge.openadr.service.event.store.EventStore;
+import com.qcharge.openadr.service.event.store.EventService;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
@@ -30,11 +29,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class EventProcessor {
 
-    private final EventStore eventStore;
+    private final EventService eventService;
     private final EventVersionPolicy versionPolicy;
     private final EventValidationService validationService;
     private final EventResourceResolver resourceResolver;
-    private final EventOptDecisionService optDecisionService;
     private final EventPayloadMapper payloadMapper;
     private final EventCancellationService cancellationService;
     private final Clock clock;
@@ -45,18 +43,18 @@ public class EventProcessor {
         } catch (EventValidationException exception) {
             return failure(event, exception.getResponseCode(), exception, false);
         } catch (TargetMismatchException exception) {
-            return failure(event, ApplicationLayerErrorCodes.TARGET_MISMATCH, exception, false);
+            return failure(event, OpenADRResponseCode.TARGET_MISMATCH, exception, false);
         } catch (IllegalArgumentException exception) {
-            return failure(event, ApplicationLayerErrorCodes.INVALID_DATA, exception, false);
+            return failure(event, OpenADRResponseCode.INVALID_DATA, exception, false);
         } catch (Exception exception) {
-            return failure(event, ApplicationLayerErrorCodes.INVALID_DATA, exception, true);
+            return failure(event, OpenADRResponseCode.INVALID_DATA, exception, true);
         }
     }
 
     private EventProcessingResult process(ReceiveEventCommand event, String venId) {
         String eventId = event.eventId();
         long modificationNumber = event.modificationNumber();
-        DrEvent existing = eventStore.findByEventId(eventId).orElse(null);
+        DrEvent existing = eventService.findByEventId(eventId).orElse(null);
         boolean unknownCancellation = existing == null && event.status() == EventStatus.CANCELLED;
         EventVersionPolicy.State version = unknownCancellation
                 ? EventVersionPolicy.State.NEW
@@ -67,7 +65,7 @@ public class EventProcessor {
                     eventId, existing != null ? existing.getModificationNumber() : null,
                     modificationNumber);
             return result(eventId, modificationNumber,
-                    ApplicationLayerErrorCodes.OUT_OF_SEQUENCE, EventOptType.OPT_OUT);
+                    OpenADRResponseCode.OUT_OF_SEQUENCE, EventOptType.OPT_OUT);
         }
         if (version == EventVersionPolicy.State.DUPLICATE) {
             return processDuplicate(existing, event);
@@ -78,57 +76,56 @@ public class EventProcessor {
             if (unknownCancellation) {
                 log.info("Ignoring cancellation for unknown OpenADR event. eventId={}", eventId);
                 return result(eventId, modificationNumber,
-                        ApplicationLayerErrorCodes.OK, EventOptType.OPT_IN);
+                        OpenADRResponseCode.OK, EventOptType.OPT_IN);
             }
             applyCancellation(event, existing);
             return result(eventId, modificationNumber,
-                    ApplicationLayerErrorCodes.OK, EventOptType.OPT_IN);
+                    OpenADRResponseCode.OK, EventOptType.OPT_IN);
         }
         if (event.status() == EventStatus.COMPLETED) {
             applyCompletion(event, existing);
             EventOptType optType = existing != null && existing.getOptType() == DrEvent.OptType.OPT_IN
                     ? EventOptType.OPT_IN : EventOptType.OPT_OUT;
-            return result(eventId, modificationNumber, ApplicationLayerErrorCodes.OK, optType);
+            return result(eventId, modificationNumber, OpenADRResponseCode.OK, optType);
         }
 
         List<EventSignalCommand> signals = validationService.validateSignals(event);
         Optional<EventSignalCommand> selected = validationService.selectPreferredSignal(signals);
         if (selected.isEmpty()) {
             return result(eventId, modificationNumber,
-                    ApplicationLayerErrorCodes.SIGNAL_NOT_SUPPORTED, EventOptType.OPT_OUT);
+                    OpenADRResponseCode.SIGNAL_NOT_SUPPORTED, EventOptType.OPT_OUT);
         }
 
-        Map<String, List<ResolvedResource>> resourcesBySignal = resourceResolver == null
-                ? Map.of() : resourceResolver.resolveSignalTargets(signals, eventTarget);
+        Map<String, List<ResolvedResource>> resourcesBySignal =
+                resourceResolver.resolveSignalTargets(signals, eventTarget);
         EventSignalCommand selectedSignal = selected.get();
-        EventOptType optType = optDecisionService.determineOptType(selectedSignal);
+        EventOptType optType = EventOptType.OPT_IN;
         DrEvent aggregate = existing != null ? existing : new DrEvent();
         payloadMapper.applyExecutableEvent(
                 aggregate, event, optType, signals, selectedSignal.signalId(),
                 resourcesBySignal.getOrDefault(selectedSignal.signalId(), List.of()));
-        eventStore.save(aggregate);
+        eventService.save(aggregate);
 
         log.info("OpenADR event persisted for lifecycle execution. eventId={}, optType={}",
                 eventId, optType);
-        return result(eventId, modificationNumber, ApplicationLayerErrorCodes.OK, optType);
+        return result(eventId, modificationNumber, OpenADRResponseCode.OK, optType);
     }
 
     private ResolvedEventTarget validateAndResolveTarget(ReceiveEventCommand event, String venId) {
         validationService.validateMarketContext(event.marketContext());
-        return resourceResolver == null
-                ? null : resourceResolver.resolveEventTarget(event.target(), venId);
+        return resourceResolver.resolveEventTarget(event.target(), venId);
     }
 
     private EventProcessingResult processDuplicate(DrEvent existing, ReceiveEventCommand event) {
         if (event.status() == EventStatus.COMPLETED
                 && existing.getVtnStatus() != DrEvent.EventStatus.COMPLETED) {
             existing.setVtnStatus(DrEvent.EventStatus.COMPLETED);
-            eventStore.save(existing);
+            eventService.save(existing);
         }
         EventOptType optType = existing.getOptType() == DrEvent.OptType.OPT_OUT
                 ? EventOptType.OPT_OUT : EventOptType.OPT_IN;
         return result(event.eventId(), event.modificationNumber(),
-                ApplicationLayerErrorCodes.OK, optType);
+                OpenADRResponseCode.OK, optType);
     }
 
     private void applyCancellation(ReceiveEventCommand event, DrEvent existing) {
@@ -154,14 +151,11 @@ public class EventProcessor {
             payloadMapper.initializeTerminalEvent(aggregate, event);
         }
         aggregate.setUpdatedAt(clock.instant());
-        eventStore.save(aggregate);
+        eventService.save(aggregate);
     }
 
     private EventProcessingResult failure(
-            ReceiveEventCommand event,
-            int responseCode,
-            Exception exception,
-            boolean unexpected
+            ReceiveEventCommand event, int responseCode, Exception exception, boolean unexpected
     ) {
         if (unexpected) {
             log.error("Failed to process OpenADR event. eventId={}, modificationNumber={}",

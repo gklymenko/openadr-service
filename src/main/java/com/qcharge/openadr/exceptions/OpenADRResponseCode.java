@@ -3,9 +3,9 @@ package com.qcharge.openadr.exceptions;
 /**
  * OpenADR 2.0b application-layer response codes (spec section 10.6 / Rule 48).
  */
-public final class ApplicationLayerErrorCodes {
+public final class OpenADRResponseCode {
 
-    private ApplicationLayerErrorCodes() {}
+    private OpenADRResponseCode() {}
 
     // Success
     public static final int OK = 200;
@@ -24,4 +24,12 @@ public final class ApplicationLayerErrorCodes {
     public static final int TARGET_MISMATCH = 462;
     public static final int NOT_REGISTERED = 463;
     public static final int DEPLOYMENT_ERROR_OTHER = 469;
+
+    public String getCodeAsString(int code) {
+        return String.valueOf(code);
+    }
+
+    public static boolean matches(int intCode, String code) {
+        return String.valueOf(intCode).equals(code);
+    }
 }

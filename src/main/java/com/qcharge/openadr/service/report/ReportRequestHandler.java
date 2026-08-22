@@ -1,7 +1,7 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.entity.VenReport;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.SpecifierPayloadType;
@@ -42,7 +42,7 @@ import java.util.concurrent.ScheduledFuture;
 @RequiredArgsConstructor
 public class ReportRequestHandler {
 
-    private static final String RESPONSE_OK = String.valueOf(ApplicationLayerErrorCodes.OK);
+    private static final String RESPONSE_OK = String.valueOf(OpenADRResponseCode.OK);
     private static final String METADATA_REPORT_SPECIFIER_ID = "METADATA";
 
     private final OpenAdrProperties properties;
@@ -139,7 +139,7 @@ public class ReportRequestHandler {
         OadrRegisteredReportType response = Oadr20bEiReportBuilders
                 .newOadr20bRegisteredReportBuilder(
                         registerReport.getRequestID(),
-                        ApplicationLayerErrorCodes.OK,
+                        OpenADRResponseCode.OK,
                         session.venId()
                 )
                 .build();
@@ -200,7 +200,7 @@ public class ReportRequestHandler {
         OadrCanceledReportType response = Oadr20bEiReportBuilders
                 .newOadr20bCanceledReportBuilder(
                         cancelReport.getRequestID(),
-                        allCancelled ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED,
+                        allCancelled ? OpenADRResponseCode.OK : OpenADRResponseCode.REPORT_NOT_SUPPORTED,
                         session.venId()
                 )
                 .build();
@@ -232,7 +232,7 @@ public class ReportRequestHandler {
         OadrUpdatedReportType response = Oadr20bEiReportBuilders
                 .newOadr20bUpdatedReportBuilder(
                         updateReport.getRequestID(),
-                        ApplicationLayerErrorCodes.OK,
+                        OpenADRResponseCode.OK,
                         session.venId()
                 )
                 .build();
@@ -272,7 +272,7 @@ public class ReportRequestHandler {
 
         sendCreatedReport(
                 requestId, pendingRequestIds,
-                allSupported ? ApplicationLayerErrorCodes.OK : ApplicationLayerErrorCodes.REPORT_NOT_SUPPORTED,
+                allSupported ? OpenADRResponseCode.OK : OpenADRResponseCode.REPORT_NOT_SUPPORTED,
                 session
         );
 

@@ -3,7 +3,7 @@ package com.qcharge.openadr.eievent;
 import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
 import com.qcharge.openadr.model.oadr20b.ei.EventStatusEnumeratedType;
@@ -12,7 +12,6 @@ import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
@@ -69,7 +68,6 @@ class DrEventVersioningTest extends AbstractOadrTest {
         adapter = protocolAdapter(
                 repository,
                 transportService,
-                new EventOptDecisionService(),
                 new EventValidationService(properties),
                 eventResourceResolver
         );
@@ -86,7 +84,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
                 "VEN-1", "VTN-1", "REG-1"
         ));
 
-        assertResponseCode(ApplicationLayerErrorCodes.OK);
+        assertResponseCode(OpenADRResponseCode.OK);
         verify(repository, never()).save(any());
     }
 
@@ -103,7 +101,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
                 "VEN-1", "VTN-1", "REG-1"
         ));
 
-        assertResponseCode(ApplicationLayerErrorCodes.OK);
+        assertResponseCode(OpenADRResponseCode.OK);
         verify(repository).save(any());
     }
 
@@ -145,7 +143,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
                 "VEN-1", "VTN-1", "REG-1"
         ));
 
-        assertResponseCode(ApplicationLayerErrorCodes.OUT_OF_SEQUENCE);
+        assertResponseCode(OpenADRResponseCode.OUT_OF_SEQUENCE);
         verify(repository, never()).save(any());
     }
 
@@ -163,7 +161,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
         ));
 
         EventResponse response = capturedResponse();
-        assertEquals(String.valueOf(ApplicationLayerErrorCodes.OK), response.getResponseCode());
+        assertEquals(String.valueOf(OpenADRResponseCode.OK), response.getResponseCode());
         assertEquals(OptTypeType.OPT_IN, response.getOptType());
         verify(repository, never()).save(any());
     }

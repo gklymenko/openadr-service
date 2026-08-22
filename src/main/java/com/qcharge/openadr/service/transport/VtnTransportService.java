@@ -1,7 +1,7 @@
 package com.qcharge.openadr.service.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.exceptions.OpenAdrHttpException;
 import com.qcharge.openadr.exceptions.OpenAdrTransportException;
@@ -337,7 +337,7 @@ public class VtnTransportService {
                                             .toList(),
                                     response == null ? "null" : response.getClass().getName()
                             ),
-                    ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                    OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                     "Payload not of expected type for operation=" + operation.name(),
                     null
             );

@@ -1,6 +1,6 @@
 package com.qcharge.openadr.service.validation;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 
@@ -29,7 +29,7 @@ final class OpenAdrValidationSupport {
 
     static boolean isSuccess(EiResponseType eiResponse) {
         return eiResponse != null
-                && String.valueOf(ApplicationLayerErrorCodes.OK)
+                && String.valueOf(OpenADRResponseCode.OK)
                 .equals(eiResponse.getResponseCode());
     }
 
@@ -92,7 +92,7 @@ final class OpenAdrValidationSupport {
     static OpenAdrApplicationException missing(String field, String requestId) {
         return new OpenAdrApplicationException(
                 "Missing expected OpenADR information: " + field,
-                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                 "Missing expected information: " + field,
                 requestId
         );
@@ -107,7 +107,7 @@ final class OpenAdrValidationSupport {
         return new OpenAdrApplicationException(
                 "Unexpected OpenADR ID. field=%s, expected=%s, actual=%s"
                         .formatted(field, expected, actual),
-                ApplicationLayerErrorCodes.INVALID_ID,
+                OpenADRResponseCode.INVALID_ID,
                 "ID not as expected: " + field,
                 requestId
         );
@@ -119,7 +119,7 @@ final class OpenAdrValidationSupport {
     ) {
         return new OpenAdrApplicationException(
                 "Invalid OpenADR data: " + description,
-                ApplicationLayerErrorCodes.INVALID_DATA,
+                OpenADRResponseCode.INVALID_DATA,
                 description,
                 requestId
         );

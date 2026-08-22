@@ -1,6 +1,6 @@
 package com.qcharge.openadr.service.transport;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledOptType;
@@ -37,7 +37,7 @@ public class OpenAdrApplicationResponseEvaluator {
         }
 
         int responseCode = parseResponseCode(operation, eiResponse);
-        if (responseCode == ApplicationLayerErrorCodes.OK) {
+        if (responseCode == OpenADRResponseCode.OK) {
             return;
         }
 
@@ -77,7 +77,7 @@ public class OpenAdrApplicationResponseEvaluator {
             throw new OpenAdrApplicationException(
                     "VTN returned invalid OpenADR responseCode=%s for operation=%s"
                             .formatted(value, operation.name()),
-                    ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                    OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                     "Missing or non-numeric OpenADR responseCode",
                     eiResponse.getRequestID(),
                     operation.name(),

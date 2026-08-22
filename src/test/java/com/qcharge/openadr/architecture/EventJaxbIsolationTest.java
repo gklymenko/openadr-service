@@ -18,7 +18,6 @@ class EventJaxbIsolationTest {
             MAIN_SOURCE.resolve("service/event/mapping"),
             MAIN_SOURCE.resolve("service/event/processing"),
             MAIN_SOURCE.resolve("service/event/store"),
-            MAIN_SOURCE.resolve("service/event/EventOptDecisionService.java"),
             MAIN_SOURCE.resolve("service/event/EventValidationService.java"),
             MAIN_SOURCE.resolve("service/resource/EventResourceResolver.java")
     );

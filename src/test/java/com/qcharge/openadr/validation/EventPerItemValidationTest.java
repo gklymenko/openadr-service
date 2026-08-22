@@ -2,16 +2,13 @@ package com.qcharge.openadr.validation;
 
 import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
-import com.qcharge.openadr.model.oadr20b.ei.EiEventType;
-import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.EventValidationService;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
@@ -59,7 +56,6 @@ class EventPerItemValidationTest extends AbstractOadrTest {
         adapter = protocolAdapter(
                 repository,
                 transportService,
-                mock(EventOptDecisionService.class),
                 validationService,
                 eventResourceResolver
         );
@@ -79,11 +75,11 @@ class EventPerItemValidationTest extends AbstractOadrTest {
         List<EventResponse> responses = capturedResponses();
         assertEquals(2, responses.size());
         assertEquals(
-                String.valueOf(ApplicationLayerErrorCodes.SIGNAL_NOT_SUPPORTED),
+                String.valueOf(OpenADRResponseCode.SIGNAL_NOT_SUPPORTED),
                 responses.get(0).getResponseCode()
         );
         assertEquals(
-                String.valueOf(ApplicationLayerErrorCodes.INVALID_ID),
+                String.valueOf(OpenADRResponseCode.INVALID_ID),
                 responses.get(1).getResponseCode()
         );
     }
@@ -104,7 +100,7 @@ class EventPerItemValidationTest extends AbstractOadrTest {
         List<EventResponse> responses = capturedResponses();
         assertEquals(1, responses.size());
         assertEquals(
-                String.valueOf(ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER),
+                String.valueOf(OpenADRResponseCode.COMPLIANCE_ERROR_OTHER),
                 responses.getFirst().getResponseCode()
         );
     }
@@ -147,7 +143,7 @@ class EventPerItemValidationTest extends AbstractOadrTest {
         when(eventResourceResolver.resolveSignalTargets(any(), any()))
                 .thenThrow(new EventValidationException(
                         "Unable to resolve target resource",
-                        ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER
+                        OpenADRResponseCode.DEPLOYMENT_ERROR_OTHER
                 ));
 
         OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
@@ -158,7 +154,7 @@ class EventPerItemValidationTest extends AbstractOadrTest {
         adapter.receive(distributeEvent, session());
 
         EventResponse response = capturedResponses().getFirst();
-        assertEquals(String.valueOf(ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER),
+        assertEquals(String.valueOf(OpenADRResponseCode.DEPLOYMENT_ERROR_OTHER),
                 response.getResponseCode());
         assertEquals(com.qcharge.openadr.model.oadr20b.ei.OptTypeType.OPT_OUT,
                 response.getOptType());

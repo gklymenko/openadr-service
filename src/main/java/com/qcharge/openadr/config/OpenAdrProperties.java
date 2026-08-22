@@ -87,6 +87,7 @@ public class OpenAdrProperties {
         @Min(1)
         private int pollIntervalSeconds = 60;
 
+        //HTTP clients must use a request timeout of at least 5 seconds
         @Min(1)
         private int connectTimeoutSeconds = 5;
 

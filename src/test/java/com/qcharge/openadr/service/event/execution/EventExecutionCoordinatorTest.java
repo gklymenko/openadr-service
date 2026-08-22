@@ -5,7 +5,7 @@ import com.qcharge.openadr.model.entity.DrEventInterval;
 import com.qcharge.openadr.model.entity.DrEventSignal;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.execution.EventExecutionPort.ClearReason;
-import com.qcharge.openadr.service.event.store.JpaEventStore;
+import com.qcharge.openadr.service.event.store.EventService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,7 +18,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,7 +36,7 @@ class EventExecutionCoordinatorTest {
     @BeforeEach
     void setUp() {
         coordinator = new EventExecutionCoordinator(
-                new JpaEventStore(repository),
+                new EventService(repository),
                 executionPort,
                 new EventTimelineCalculator()
         );
@@ -53,9 +52,7 @@ class EventExecutionCoordinatorTest {
 
         assertEquals(DrEvent.EventStatus.FAR, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.SCHEDULED, event.getExecutionStatus());
-        verify(executionPort, never()).applyInterval(
-                any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
-                any(Integer.class), any());
+        verify(executionPort, never()).applyInterval(any());
     }
 
     @Test
@@ -71,16 +68,16 @@ class EventExecutionCoordinatorTest {
         assertEquals(DrEvent.EventStatus.ACTIVE, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.APPLIED, event.getExecutionStatus());
         assertEquals(0, event.getLastAppliedInterval());
-        verify(executionPort).applyInterval(
-                eq("event-1"), eq(0), eq("signal-1"), eq("0"), eq("SIMPLE"), eq("level"),
-                eq(BigDecimal.ONE), eq(null), eq(null), eq(0), eq(START));
+        verify(executionPort).applyInterval(new EventIntervalExecution(
+                "event-1", 0, "signal-1", "0", "SIMPLE", "level",
+                BigDecimal.ONE, null, null, 0, START));
 
         coordinator.processAt(START.plusSeconds(100));
         coordinator.processAt(START.plusSeconds(900));
         assertEquals(1, event.getLastAppliedInterval());
-        verify(executionPort).applyInterval(
-                eq("event-1"), eq(0), eq("signal-1"), eq("1"), eq("SIMPLE"), eq("level"),
-                eq(BigDecimal.valueOf(2)), eq(null), eq(null), eq(1), eq(START.plusSeconds(900)));
+        verify(executionPort).applyInterval(new EventIntervalExecution(
+                "event-1", 0, "signal-1", "1", "SIMPLE", "level",
+                BigDecimal.valueOf(2), null, null, 1, START.plusSeconds(900)));
     }
 
     @Test
@@ -122,9 +119,7 @@ class EventExecutionCoordinatorTest {
         assertEquals(DrEvent.EventStatus.COMPLETED, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.COMPLETED, event.getExecutionStatus());
         assertEquals(0, event.getLastAppliedInterval());
-        verify(executionPort, never()).applyInterval(
-                any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
-                any(Integer.class), any());
+        verify(executionPort, never()).applyInterval(any());
         verify(executionPort, never()).clearEvent(any(), any());
     }
 
@@ -145,9 +140,7 @@ class EventExecutionCoordinatorTest {
         assertEquals(DrEvent.EventStatus.ACTIVE, event.getStatus());
         assertEquals(DrEvent.ExecutionStatus.CANCEL_PENDING, event.getExecutionStatus());
         verify(executionPort, never()).clearEvent(any(), any());
-        verify(executionPort, never()).applyInterval(
-                any(), any(Integer.class), any(), any(), any(), any(), any(), any(), any(),
-                any(Integer.class), any());
+        verify(executionPort, never()).applyInterval(any());
     }
 
     @Test

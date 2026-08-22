@@ -1,9 +1,8 @@
 package com.qcharge.openadr.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
-import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiRegisterPartyBuilders;
@@ -11,7 +10,6 @@ import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
@@ -28,7 +26,6 @@ import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
-import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,8 +39,6 @@ import org.mockito.quality.Strictness;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.web.client.RestClient;
-
-import javax.xml.namespace.QName;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -102,7 +97,7 @@ class VtnTransportServiceValidateIdsTest {
     @Test
     void send_doesNotThrow_whenCreatedPartyRegistrationHasDifferentVenId() throws Exception {
         EiResponseType eiResponse = Oadr20bResponseBuilders
-                .newOadr20bEiResponseBuilder("req-001", ApplicationLayerErrorCodes.OK)
+                .newOadr20bEiResponseBuilder("req-001", OpenADRResponseCode.OK)
                 .build();
 
         OadrCreatedPartyRegistrationType created = Oadr20bEiRegisterPartyBuilders
@@ -124,7 +119,7 @@ class VtnTransportServiceValidateIdsTest {
         EiResponseType eiResponse = Oadr20bResponseBuilders
                 .newOadr20bEiResponseBuilder(
                         "req-463",
-                        ApplicationLayerErrorCodes.NOT_REGISTERED
+                        OpenADRResponseCode.NOT_REGISTERED
                 )
                 .withDescription("Not Registered/Authorized")
                 .build();
@@ -144,7 +139,7 @@ class VtnTransportServiceValidateIdsTest {
                 )
         );
 
-        assertEquals(ApplicationLayerErrorCodes.NOT_REGISTERED, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.NOT_REGISTERED, exception.getResponseCode());
         assertEquals("Not Registered/Authorized", exception.getResponseDescription());
         assertEquals("req-463", exception.getRequestId());
         assertEquals("queryRegistration", exception.getOperationName());
@@ -160,7 +155,7 @@ class VtnTransportServiceValidateIdsTest {
         OadrRegisteredReportType registeredReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisteredReportBuilder(
                         "req-001",
-                        ApplicationLayerErrorCodes.OK,
+                        OpenADRResponseCode.OK,
                         "TH_VEN"
                 )
                 .build();
@@ -180,7 +175,7 @@ class VtnTransportServiceValidateIdsTest {
         assertTrue(exception.getMessage().contains("OadrCreatedPartyRegistrationType"));
         assertTrue(exception.getMessage().contains("OadrRegisteredReportType"));
         assertEquals(
-                ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER,
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
                 exception.getResponseCode()
         );
     }
@@ -190,7 +185,7 @@ class VtnTransportServiceValidateIdsTest {
         OadrRegisteredReportType registeredReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisteredReportBuilder(
                         "req-452",
-                        ApplicationLayerErrorCodes.INVALID_ID,
+                        OpenADRResponseCode.INVALID_ID,
                         "TH_VEN"
                 )
                 .build();
@@ -206,7 +201,7 @@ class VtnTransportServiceValidateIdsTest {
                 )
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_ID, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_ID, exception.getResponseCode());
         assertEquals("req-452", exception.getRequestId());
         assertEquals("queryRegistration", exception.getOperationName());
     }
@@ -216,7 +211,7 @@ class VtnTransportServiceValidateIdsTest {
         OadrResponseType response = Oadr20bResponseBuilders
                 .newOadr20bResponseBuilder(
                         "request-event-001",
-                        ApplicationLayerErrorCodes.OK,
+                        OpenADRResponseCode.OK,
                         "TH_VEN"
                 )
                 .build();
@@ -235,7 +230,7 @@ class VtnTransportServiceValidateIdsTest {
     @Test
     void send_doesNotLogRawVtnEventResponse_forRegistration(CapturedOutput output) throws Exception {
         EiResponseType eiResponse = Oadr20bResponseBuilders
-                .newOadr20bEiResponseBuilder("req-001", ApplicationLayerErrorCodes.OK)
+                .newOadr20bEiResponseBuilder("req-001", OpenADRResponseCode.OK)
                 .build();
 
         OadrCreatedPartyRegistrationType created = Oadr20bEiRegisterPartyBuilders
@@ -262,7 +257,7 @@ class VtnTransportServiceValidateIdsTest {
         OadrRegisteredReportType registeredReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisteredReportBuilder(
                         "req-001",
-                        ApplicationLayerErrorCodes.OK,
+                        OpenADRResponseCode.OK,
                         "TH_VEN"
                 )
                 .build();

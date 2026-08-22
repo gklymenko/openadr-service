@@ -1,7 +1,7 @@
 package com.qcharge.openadr.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.exceptions.OpenAdrHttpException;
 import com.qcharge.openadr.service.transport.OpenAdrHttpStatusPolicy;
@@ -159,14 +159,14 @@ class RetryHandlerTest {
                     calls.incrementAndGet();
                     throw new OpenAdrApplicationException(
                             "VTN rejected request",
-                            ApplicationLayerErrorCodes.NOT_REGISTERED,
+                            OpenADRResponseCode.NOT_REGISTERED,
                             "Not Registered/Authorized",
                             "request-123"
                     );
                 })
         );
 
-        assertEquals(ApplicationLayerErrorCodes.NOT_REGISTERED, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.NOT_REGISTERED, exception.getResponseCode());
         assertEquals(1, calls.get(), "Application errors must not enter the HTTP retry loop");
     }
 

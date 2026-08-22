@@ -7,7 +7,6 @@ import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.EventOptDecisionService;
 import com.qcharge.openadr.service.event.EventValidationService;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
@@ -56,7 +55,6 @@ class EventProtocolAdapterPersistenceTest extends AbstractOadrTest {
         EventProtocolAdapter adapter = protocolAdapter(
                 repository,
                 mock(VtnTransportService.class),
-                new EventOptDecisionService(),
                 new EventValidationService(properties),
                 resolver
         );

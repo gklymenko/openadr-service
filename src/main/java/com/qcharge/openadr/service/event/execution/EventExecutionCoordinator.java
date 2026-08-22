@@ -3,7 +3,7 @@ package com.qcharge.openadr.service.event.execution;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.entity.DrEventInterval;
 import com.qcharge.openadr.model.entity.DrEventSignal;
-import com.qcharge.openadr.service.event.store.EventStore;
+import com.qcharge.openadr.service.event.store.EventService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,13 +25,13 @@ public class EventExecutionCoordinator {
             DrEvent.ExecutionStatus.CANCEL_PENDING
     );
 
-    private final EventStore eventStore;
+    private final EventService eventService;
     private final EventExecutionPort executionPort;
     private final EventTimelineCalculator timeline;
 
     @Transactional
     public void processAt(Instant now) {
-        List<DrEvent> events = eventStore.findByExecutionStatusIn(RECOVERABLE_STATUSES);
+        List<DrEvent> events = eventService.findByExecutionStatusIn(RECOVERABLE_STATUSES);
         events.forEach(event -> processSafely(event, now));
     }
 
@@ -45,7 +45,7 @@ public class EventExecutionCoordinator {
                 return;
             }
             event.setExecutionStatus(DrEvent.ExecutionStatus.FAILED);
-            eventStore.save(event);
+            eventService.save(event);
             log.error("OpenADR event lifecycle execution failed. eventId={}",
                     event.getEventId(), exception);
         }
@@ -71,7 +71,7 @@ public class EventExecutionCoordinator {
         }
         if (calculatedStatus != DrEvent.EventStatus.ACTIVE) {
             if (statusChanged) {
-                eventStore.save(event);
+                eventService.save(event);
             }
             return;
         }
@@ -90,18 +90,18 @@ public class EventExecutionCoordinator {
                             + "eventId={}, signalId={}, intervalUid={}",
                     event.getEventId(), signal.getSignalId(), interval.getIntervalUid());
         } else {
-            executionPort.applyInterval(
+            executionPort.applyInterval(new EventIntervalExecution(
                     event.getEventId(), event.getModificationNumber(), signal.getSignalId(),
                     interval.getIntervalUid(), signal.getSignalName(), signal.getSignalType(),
                     interval.getPayloadValue(), signal.getItemUnits(), signal.getSiScaleCode(),
-                    intervalIndex, timeline.intervalStart(event, signal, intervalIndex));
+                    intervalIndex, timeline.intervalStart(event, signal, intervalIndex)));
         }
 
         event.setExecutionStatus(cancellationPending
                 ? DrEvent.ExecutionStatus.CANCEL_PENDING : DrEvent.ExecutionStatus.APPLIED);
         event.setLastAppliedInterval(intervalIndex);
         event.setAppliedAt(now);
-        eventStore.save(event);
+        eventService.save(event);
     }
 
     private void terminateCancellation(DrEvent event, Instant now) {
@@ -116,7 +116,7 @@ public class EventExecutionCoordinator {
         event.setVtnStatus(DrEvent.EventStatus.CANCELLED);
         event.setExecutionStatus(DrEvent.ExecutionStatus.CANCELLED);
         event.setCompletedAt(now);
-        eventStore.save(event);
+        eventService.save(event);
     }
 
     private void complete(DrEvent event, Instant now) {
@@ -125,6 +125,6 @@ public class EventExecutionCoordinator {
         }
         event.setExecutionStatus(DrEvent.ExecutionStatus.COMPLETED);
         event.setCompletedAt(now);
-        eventStore.save(event);
+        eventService.save(event);
     }
 }

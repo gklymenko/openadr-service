@@ -1,6 +1,6 @@
 package com.qcharge.openadr.service.transport;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,7 +16,7 @@ public class OpenAdrApplicationErrorPolicy {
             OpenAdrOperation<?, ?> operation,
             int responseCode
     ) {
-        if (responseCode == ApplicationLayerErrorCodes.NOT_REGISTERED) {
+        if (responseCode == OpenADRResponseCode.NOT_REGISTERED) {
             return ApplicationErrorAction.REQUIRE_REREGISTRATION;
         }
 

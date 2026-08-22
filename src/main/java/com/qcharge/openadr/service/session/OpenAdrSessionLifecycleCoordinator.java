@@ -6,12 +6,17 @@ import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
+
+import static com.qcharge.openadr.LogMessage.DUPLICATE_REGISTRATION_REQUEST;
+import static com.qcharge.openadr.LogMessage.REREGISTRATION_FOR_STALE_REGISTRATION_SESSION;
+import static com.qcharge.openadr.LogMessage.SESSION_STATE_CHANGED_TO;
 
 @Slf4j
 @Component
@@ -35,8 +40,8 @@ public class OpenAdrSessionLifecycleCoordinator {
         this.eventPollerProvider = eventPollerProvider;
     }
 
-    public OpenAdrSessionSnapshot bootstrap() {
-        return executeRegistration(true, null, false);
+    public void bootstrap() {
+        executeRegistration(true, null, false);
     }
 
     public OpenAdrSessionSnapshot register() {
@@ -126,14 +131,8 @@ public class OpenAdrSessionLifecycleCoordinator {
         OpenAdrSessionSnapshot current = snapshot();
 
         return current.generation() == session.generation()
-                && Objects.equals(
-                        current.registrationEntityId(),
-                        session.registrationEntityId()
-                )
-                && Objects.equals(
-                        current.registrationId(),
-                        session.registrationId()
-                );
+                && Objects.equals(current.registrationEntityId(), session.registrationEntityId())
+                && Objects.equals(current.registrationId(), session.registrationId());
     }
 
     public boolean isActive(OpenAdrSessionSnapshot session) {
@@ -171,9 +170,7 @@ public class OpenAdrSessionLifecycleCoordinator {
     }
 
     private OpenAdrSessionSnapshot executeRegistration(
-            boolean startup,
-            OpenAdrSessionSnapshot requestedSession,
-            boolean forcedNewRegistration
+            boolean startup, @Nullable OpenAdrSessionSnapshot requestedSession, boolean forcedNewRegistration
     ) {
         long observedGeneration = requestedSession == null
                 ? snapshot().generation()
@@ -184,22 +181,12 @@ public class OpenAdrSessionLifecycleCoordinator {
             OpenAdrSessionSnapshot before = snapshot();
 
             if (before.generation() != observedGeneration) {
-                log.info(
-                        "Skipping duplicate OpenADR registration request. "
-                                + "requestedGeneration={}, currentGeneration={}",
-                        observedGeneration,
-                        before.generation()
-                );
+                log.info(DUPLICATE_REGISTRATION_REQUEST, observedGeneration, before.generation());
                 return before;
             }
 
             if (requestedSession != null && !isCurrent(requestedSession)) {
-                log.info(
-                        "Ignoring re-registration for stale OpenADR session. "
-                                + "requestedGeneration={}, currentGeneration={}",
-                        requestedSession.generation(),
-                        before.generation()
-                );
+                log.info(REREGISTRATION_FOR_STALE_REGISTRATION_SESSION, requestedSession.generation(), before.generation());
                 return before;
             }
 
@@ -211,8 +198,7 @@ public class OpenAdrSessionLifecycleCoordinator {
             eventPollerProvider.getObject().stop();
 
             try {
-                RegistrationService registrationService =
-                        registrationServiceProvider.getObject();
+                RegistrationService registrationService = registrationServiceProvider.getObject();
 
                 OpenAdrSessionSnapshot registered = forcedNewRegistration
                         ? registrationService.performForcedNewRegistration()
@@ -247,8 +233,7 @@ public class OpenAdrSessionLifecycleCoordinator {
 
         synchronized (this) {
             if (currentSession == null) {
-                OpenAdrSessionSnapshot initialized =
-                        sessionProvider.current();
+                OpenAdrSessionSnapshot initialized = sessionProvider.current();
                 state = initialized.registered()
                         ? OpenAdrSessionState.REGISTERED
                         : OpenAdrSessionState.UNREGISTERED;
@@ -273,10 +258,7 @@ public class OpenAdrSessionLifecycleCoordinator {
     private void transitionTo(OpenAdrSessionState nextState) {
         OpenAdrSessionState previous = state;
         state = nextState;
-        log.info(
-                "OpenADR session state changed. previous={}, current={}, generation={}",
-                previous,
-                nextState,
+        log.info(SESSION_STATE_CHANGED_TO, previous, nextState,
                 currentSession == null ? null : currentSession.generation()
         );
     }

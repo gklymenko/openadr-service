@@ -1,6 +1,6 @@
 package com.qcharge.openadr.service.event.protocol;
 
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
@@ -44,7 +44,7 @@ public class EventProtocolAdapter {
 
         // Rule 42: root requestID is empty when eventResponses are present.
         var eiResponse = Oadr20bResponseBuilders
-                .newOadr20bEiResponseBuilder("", ApplicationLayerErrorCodes.OK)
+                .newOadr20bEiResponseBuilder("", OpenADRResponseCode.OK)
                 .build();
         var responseBuilder = Oadr20bEiEventBuilders
                 .newCreatedEventBuilder(eiResponse, session.venId());
@@ -94,7 +94,7 @@ public class EventProtocolAdapter {
             return new EventProcessingResult(
                     eventId,
                     modificationNumber,
-                    ApplicationLayerErrorCodes.INVALID_ID,
+                    OpenADRResponseCode.INVALID_ID,
                     EventOptType.OPT_OUT
             );
         }
@@ -126,7 +126,7 @@ public class EventProtocolAdapter {
                 safeEventId(eventId), modificationNumber, exception.getMessage());
         return new EventProcessingResult(
                 safeEventId(eventId), modificationNumber,
-                ApplicationLayerErrorCodes.INVALID_DATA, EventOptType.OPT_OUT);
+                OpenADRResponseCode.INVALID_DATA, EventOptType.OPT_OUT);
     }
 
     private String safeEventId(String eventId) {

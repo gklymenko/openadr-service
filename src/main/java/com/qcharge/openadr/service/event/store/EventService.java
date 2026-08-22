@@ -9,24 +9,20 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-/** Spring Data adapter. Protocol and execution services do not depend on JPA directly. */
 @Component
 @RequiredArgsConstructor
-public class JpaEventStore implements EventStore {
+public class EventService {
 
     private final DrEventRepository repository;
 
-    @Override
     public Optional<DrEvent> findByEventId(String eventId) {
         return repository.findByEventId(eventId);
     }
 
-    @Override
     public List<DrEvent> findByExecutionStatusIn(Collection<DrEvent.ExecutionStatus> statuses) {
         return repository.findAllByExecutionStatusIn(statuses);
     }
 
-    @Override
     public DrEvent save(DrEvent event) {
         return repository.save(event);
     }

@@ -1,9 +1,10 @@
 package com.qcharge.openadr.service.event;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
@@ -29,7 +30,7 @@ class EventPollerApplicationErrorTest {
 
     @Mock OpenAdrProperties properties;
     @Mock VtnTransportService transportService;
-    @Mock DrEventHandler drEventHandler;
+    @Mock EventProtocolAdapter eventProtocolAdapter;
     @Mock ReportRequestHandler reportRequestHandler;
     @Mock TaskScheduler taskScheduler;
     @Mock OpenAdrApplicationErrorMapper applicationErrorMapper;
@@ -44,7 +45,7 @@ class EventPollerApplicationErrorTest {
         eventPoller = new EventPoller(
                 properties,
                 transportService,
-                drEventHandler,
+                eventProtocolAdapter,
                 reportRequestHandler,
                 taskScheduler,
                 applicationErrorMapper,
@@ -62,7 +63,7 @@ class EventPollerApplicationErrorTest {
 
         eventPoller.handlePollingApplicationError(
                 applicationError(
-                        ApplicationLayerErrorCodes.NOT_REGISTERED,
+                        OpenADRResponseCode.NOT_REGISTERED,
                         ApplicationErrorAction.REQUIRE_REREGISTRATION
                 )
         );
@@ -74,7 +75,7 @@ class EventPollerApplicationErrorTest {
     void ordinaryApplicationError_doesNotStartReregistration() {
         eventPoller.handlePollingApplicationError(
                 applicationError(
-                        ApplicationLayerErrorCodes.INVALID_ID,
+                        OpenADRResponseCode.INVALID_ID,
                         ApplicationErrorAction.FAIL_OPERATION
                 )
         );

@@ -6,28 +6,37 @@ import com.qcharge.openadr.model.entity.DrEventSignal;
 import com.qcharge.openadr.service.event.command.EventIntervalCommand;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.MappingConstants;
+import org.springframework.stereotype.Component;
 
 /** Mechanical DTO-to-entity mappings. Aggregate wiring stays in {@link EventPayloadMapper}. */
-@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
-public interface EventEntityMapper {
+@Component
+public class EventEntityMapper {
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "event", ignore = true)
-    @Mapping(target = "sequenceNumber", ignore = true)
-    @Mapping(target = "selectedForExecution", ignore = true)
-    @Mapping(target = "intervals", ignore = true)
-    DrEventSignal toSignal(EventSignalCommand source);
+    public DrEventSignal toSignal(EventSignalCommand source) {
+        DrEventSignal target = new DrEventSignal();
+        target.setSignalId(source.signalId());
+        target.setSignalName(source.signalName());
+        target.setSignalType(source.signalType());
+        target.setCurrentValue(source.currentValue());
+        target.setItemBaseElement(source.itemBaseElement());
+        target.setItemBaseType(source.itemBaseType());
+        target.setItemUnits(source.itemUnits());
+        target.setSiScaleCode(source.siScaleCode());
+        return target;
+    }
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "signal", ignore = true)
-    @Mapping(target = "intervalUid", source = "uid")
-    DrEventInterval toInterval(EventIntervalCommand source);
+    public DrEventInterval toInterval(EventIntervalCommand source) {
+        DrEventInterval target = new DrEventInterval();
+        target.setSequenceNumber(source.sequenceNumber());
+        target.setIntervalUid(source.uid());
+        target.setDurationSeconds(source.durationSeconds());
+        target.setPayloadValue(source.payloadValue());
+        return target;
+    }
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "event", ignore = true)
-    @Mapping(target = "sequenceNumber", ignore = true)
-    DrEventResource toResource(ResolvedResource source);
+    public DrEventResource toResource(ResolvedResource source) {
+        DrEventResource target = new DrEventResource();
+        target.setResourceId(source.resourceId());
+        return target;
+    }
 }

@@ -1,11 +1,11 @@
 package com.qcharge.openadr.integration.ocpp;
 
 import com.qcharge.openadr.service.event.execution.EventExecutionPort;
+import com.qcharge.openadr.service.event.execution.EventIntervalExecution;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 
 @Slf4j
 @Service
@@ -16,30 +16,22 @@ public class OcppIntegrationService implements EventExecutionPort {
      * qCharge-charging-profile-service contract.
      */
     @Override
-    public void applyInterval(
-            String eventId,
-            int modificationNumber,
-            String signalId,
-            String intervalUid,
-            String signalName,
-            String signalType,
-            BigDecimal value,
-            String units,
-            String siScaleCode,
-            int intervalIndex,
-            Instant effectiveFrom
-    ) {
-        switch (signalName) {
+    public void applyInterval(EventIntervalExecution execution) {
+        switch (execution.signalName()) {
             case "LOAD_DISPATCH" -> log.info(
                     "TODO charging-profile-service: apply interval. eventId={}, modificationNumber={}, signalId={}, intervalUid={}, intervalIndex={}, effectiveFrom={}, type={}, value={}, units={}, scale={}",
-                    eventId, modificationNumber, signalId, intervalUid, intervalIndex,
-                    effectiveFrom, signalType, value, units, siScaleCode);
-            case "SIMPLE" -> applySimple(eventId, value.intValueExact());
+                    execution.eventId(), execution.modificationNumber(), execution.signalId(),
+                    execution.intervalUid(), execution.intervalIndex(), execution.effectiveFrom(),
+                    execution.signalType(), execution.value(), execution.units(), execution.siScaleCode());
+            case "SIMPLE" -> applySimple(
+                    execution.eventId(), execution.value().intValueExact());
             case "ELECTRICITY_PRICE" -> log.info(
                     "TODO data-service policy: apply price interval. eventId={}, modificationNumber={}, signalId={}, intervalUid={}, intervalIndex={}, effectiveFrom={}, value={}, units={}, scale={}",
-                    eventId, modificationNumber, signalId, intervalUid, intervalIndex,
-                    effectiveFrom, value, units, siScaleCode);
-            default -> throw new IllegalArgumentException("Unsupported persisted signal: " + signalName);
+                    execution.eventId(), execution.modificationNumber(), execution.signalId(),
+                    execution.intervalUid(), execution.intervalIndex(), execution.effectiveFrom(),
+                    execution.value(), execution.units(), execution.siScaleCode());
+            default -> throw new IllegalArgumentException(
+                    "Unsupported persisted signal: " + execution.signalName());
         }
     }
 

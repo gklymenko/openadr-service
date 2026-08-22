@@ -1,7 +1,7 @@
 package com.qcharge.openadr.service.event.processing;
 
 import com.qcharge.openadr.model.entity.DrEvent;
-import com.qcharge.openadr.service.event.store.EventStore;
+import com.qcharge.openadr.service.event.store.EventService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,7 +26,7 @@ public class EventCancellationService {
             DrEvent.ExecutionStatus.FAILED
     );
 
-    private final EventStore eventStore;
+    private final EventService eventService;
     private final Clock clock;
 
     public void request(DrEvent event, DrEvent.CancellationType type) {
@@ -36,7 +36,7 @@ public class EventCancellationService {
             if (event.getCancellationType() == null) {
                 event.setCancellationType(type);
             }
-            eventStore.save(event);
+            eventService.save(event);
             return;
         }
 
@@ -59,12 +59,12 @@ public class EventCancellationService {
             event.setExecutionStatus(DrEvent.ExecutionStatus.CANCELLED);
             event.setCompletedAt(requestedAt);
         }
-        eventStore.save(event);
+        eventService.save(event);
     }
 
     /** Rule 61: reconcile the complete event snapshot delivered by the VTN. */
     public void reconcileSnapshot(Set<String> receivedEventIds) {
-        List<DrEvent> knownEvents = eventStore.findByExecutionStatusIn(RECONCILABLE_STATUSES);
+        List<DrEvent> knownEvents = eventService.findByExecutionStatusIn(RECONCILABLE_STATUSES);
         if (knownEvents == null) {
             return;
         }

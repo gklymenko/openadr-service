@@ -17,11 +17,11 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.service.event.EventValidationException;
 import org.springframework.stereotype.Component;
 
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.COMPLIANCE_ERROR_OTHER;
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.INVALID_DATA;
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.OUT_OF_SEQUENCE;
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.SIGNAL_NOT_SUPPORTED;
-import static com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes.TARGET_MISMATCH;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.COMPLIANCE_ERROR_OTHER;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.INVALID_DATA;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.OUT_OF_SEQUENCE;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.SIGNAL_NOT_SUPPORTED;
+import static com.qcharge.openadr.exceptions.OpenADRResponseCode.TARGET_MISMATCH;
 
 /**
  * Converts domain/validation failures into OpenADR application-layer errors.

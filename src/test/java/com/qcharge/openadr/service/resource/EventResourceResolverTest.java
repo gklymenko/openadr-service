@@ -2,7 +2,7 @@ package com.qcharge.openadr.service.resource;
 
 import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.ApplicationLayerErrorCodes;
+import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.entity.OpenAdrResource;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
@@ -89,7 +89,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
                 )
         );
 
-        assertEquals(ApplicationLayerErrorCodes.DEPLOYMENT_ERROR_OTHER,
+        assertEquals(OpenADRResponseCode.DEPLOYMENT_ERROR_OTHER,
                 exception.getResponseCode());
     }
 
@@ -107,7 +107,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
                 )
         );
 
-        assertEquals(ApplicationLayerErrorCodes.INVALID_DATA, exception.getResponseCode());
+        assertEquals(OpenADRResponseCode.INVALID_DATA, exception.getResponseCode());
     }
 
     @Test
