@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Test-only endpoints for manually triggering VEN-initiated OpenADR actions
  * during QualityLogic Test Harness certification testing.
- *
  * NEVER active outside local/test profiles.
  */
 @Slf4j
@@ -60,7 +59,9 @@ public class TestController {
     @PostMapping("/test/reregister")
     public ResponseEntity<String> reregister() {
         log.warn("TEST ENDPOINT: manually triggering re-registration (with existing registrationID)");
-        lifecycleCoordinator.register();
+        lifecycleCoordinator.reregister(
+                lifecycleCoordinator.requireRegisteredSession()
+        );
         return ResponseEntity.ok("Re-registration initiated");
     }
 

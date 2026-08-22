@@ -18,6 +18,7 @@ import static com.qcharge.openadr.LogMessage.START_VEN_BOOTSTRAP;
 public class VenBootstrap {
 
     private final OpenAdrProperties properties;
+    private final RegistrationService registrationService;
     private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -25,6 +26,10 @@ public class VenBootstrap {
         log.info(START_VEN_BOOTSTRAP, properties.getVen().getId());
 
         try {
+            if (properties.getVen().isQueryRegistrationOnStartup()) {
+                registrationService.queryRegistration();
+            }
+
             lifecycleCoordinator.bootstrap();
         } catch (Exception failure) {
             log.error(FAILED_VEN_BOOTSTRAP, failure);

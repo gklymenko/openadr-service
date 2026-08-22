@@ -40,7 +40,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 
 import static com.qcharge.openadr.exceptions.OpenADRResponseCode.INVALID_ID;
 import static com.qcharge.openadr.exceptions.OpenADRResponseCode.OK;
@@ -58,31 +57,6 @@ public class RegistrationService {
     private final EventProtocolAdapter eventProtocolAdapter;
     private final OpenAdrSessionProvider sessionProvider;
     private final ApplicationEventPublisher eventPublisher;
-
-    public OpenAdrSessionSnapshot performBootstrapRegistration() {
-        if (properties.getVen().isQueryRegistrationOnStartup()) {
-            queryRegistration();
-        }
-
-        Optional<VenRegistration> activeRegistration = findActiveRegistration();
-
-        if (activeRegistration.isEmpty()) {
-            log.info("No active VEN registration found. Performing new registration.");
-
-            RegistrationResult result = registerNew();
-            return completeRegistration(result, true);
-        }
-
-        VenRegistration existing = activeRegistration.get();
-
-        log.info(
-                "Active registration found. Performing re-registration. venId={}, registrationId={}",
-                existing.getVenId(), existing.getRegistrationId()
-        );
-
-        RegistrationResult result = reregister(existing);
-        return completeRegistration(result, false);
-    }
 
     /**
      * Optional discovery call. Its response must never be used as the source
@@ -123,22 +97,14 @@ public class RegistrationService {
     }
 
     public OpenAdrSessionSnapshot performRegistration() {
-        Optional<VenRegistration> active = findActiveRegistration();
-
-        if (active.isPresent()) {
-            RegistrationResult result = reregister(active.get());
-            return completeRegistration(result, false);
-        }
-
-        RegistrationResult result = registerNew();
-        return completeRegistration(result, true);
+        return completeRegistration(registerNew(), true);
     }
 
-    public OpenAdrSessionSnapshot performReregistration(
-            OpenAdrSessionSnapshot session
-    ) {
-        RegistrationResult result = reregister(requireRegistration(session));
-        return completeRegistration(result, false);
+    public OpenAdrSessionSnapshot performReregistration(OpenAdrSessionSnapshot session) {
+        return completeRegistration(
+                reregister(requireRegistration(session)),
+                false
+        );
     }
 
     /**
@@ -276,11 +242,11 @@ public class RegistrationService {
 
         Optional<VenRegistration> previousActive = findActiveRegistration();
 
-        RegistrationResult result = registerNew();
+        RegistrationResult newRegistration = registerNew();
 
         previousActive.ifPresent(this::markCancelled);
 
-        return completeRegistration(result, true);
+        return completeRegistration(newRegistration, true);
     }
 
     public void performCancelRegistration(OpenAdrSessionSnapshot session) {
@@ -593,8 +559,8 @@ public class RegistrationService {
 
     private Optional<VenRegistration> findActiveRegistration() {
         return registrationRepository.findFirstByStatusOrderByUpdatedAtDesc(
-                        VenRegistrationStatus.REGISTERED
-                );
+                VenRegistrationStatus.REGISTERED
+        );
     }
 
     private Optional<VenRegistration> registrationFor(

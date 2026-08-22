@@ -3,9 +3,9 @@ package com.qcharge.openadr.service.session;
 import com.qcharge.openadr.exceptions.OpenAdrSessionUnavailableException;
 import com.qcharge.openadr.exceptions.StaleOpenAdrSessionException;
 import com.qcharge.openadr.service.registration.RegistrationService;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -30,7 +30,7 @@ public class OpenAdrSessionLifecycleCoordinator {
     private volatile OpenAdrSessionState state;
     private volatile OpenAdrSessionSnapshot currentSession;
 
-    private enum RegistrationFlow { BOOTSTRAP, REGISTER_OR_REREGISTER, FORCED_NEW }
+    private enum RegistrationFlow { REGISTER, REREGISTER, FORCED_NEW }
 
     public OpenAdrSessionLifecycleCoordinator(
             OpenAdrSessionProvider sessionProvider,
@@ -43,27 +43,28 @@ public class OpenAdrSessionLifecycleCoordinator {
     }
 
     public void bootstrap() {
-        executeRegistration(RegistrationFlow.BOOTSTRAP, null);
+        OpenAdrSessionSnapshot session = snapshot();
+
+        RegistrationFlow flow = session.registered()
+                ? RegistrationFlow.REREGISTER
+                : RegistrationFlow.REGISTER;
+
+        executeRegistration(flow, session);
     }
 
     public OpenAdrSessionSnapshot register() {
-        return executeRegistration(RegistrationFlow.REGISTER_OR_REREGISTER, snapshot());
+        return executeRegistration(RegistrationFlow.REGISTER, snapshot());
     }
 
     public OpenAdrSessionSnapshot forceNewRegistration() {
-       return executeRegistration(RegistrationFlow.FORCED_NEW, snapshot());
+        return executeRegistration(RegistrationFlow.FORCED_NEW, snapshot());
     }
 
-    public OpenAdrSessionSnapshot reregister(
-            OpenAdrSessionSnapshot failedSession
-    ) {
-        Objects.requireNonNull(failedSession, "failedSession");
-        return executeRegistration(RegistrationFlow.REGISTER_OR_REREGISTER, failedSession);
+    public OpenAdrSessionSnapshot reregister(@NonNull OpenAdrSessionSnapshot failedSession) {
+        return executeRegistration(RegistrationFlow.REREGISTER, failedSession);
     }
 
-    public void cancel(OpenAdrSessionSnapshot session) {
-        Objects.requireNonNull(session, "session");
-
+    public void cancel(@NonNull OpenAdrSessionSnapshot session) {
         lifecycleLock.lock();
         try {
             requireCurrent(session);
@@ -168,11 +169,9 @@ public class OpenAdrSessionLifecycleCoordinator {
     }
 
     private OpenAdrSessionSnapshot executeRegistration(
-            RegistrationFlow flow, @Nullable OpenAdrSessionSnapshot requestedSession
+            RegistrationFlow flow, OpenAdrSessionSnapshot requestedSession
     ) {
-        long observedGeneration = requestedSession == null
-                ? snapshot().generation()
-                : requestedSession.generation();
+        long observedGeneration = requestedSession.generation();
 
         lifecycleLock.lock();
         try {
@@ -183,10 +182,12 @@ public class OpenAdrSessionLifecycleCoordinator {
                 return before;
             }
 
-            if (requestedSession != null && !isCurrent(requestedSession)) {
+            if (!isCurrent(requestedSession)) {
                 log.info(REREGISTRATION_FOR_STALE_REGISTRATION_SESSION, requestedSession.generation(), before.generation());
                 return before;
             }
+
+            requireValidFlow(flow, requestedSession);
 
             OpenAdrSessionState targetState = before.registered()
                     ? OpenAdrSessionState.REREGISTERING
@@ -197,15 +198,9 @@ public class OpenAdrSessionLifecycleCoordinator {
 
             try {
                 currentSession = switch (flow) {
-                    case BOOTSTRAP -> registrationService.performBootstrapRegistration();
+                    case REGISTER -> registrationService.performRegistration();
+                    case REREGISTER -> registrationService.performReregistration(requestedSession);
                     case FORCED_NEW -> registrationService.performForcedNewRegistration();
-                    case REGISTER_OR_REREGISTER -> {
-                        if (requestedSession != null && requestedSession.registered()) {
-                            yield registrationService.performReregistration(requestedSession);
-                        }
-
-                        yield registrationService.performRegistration();
-                    }
                 };
 
                 transitionTo(OpenAdrSessionState.REGISTERED);
@@ -218,6 +213,22 @@ public class OpenAdrSessionLifecycleCoordinator {
             }
         } finally {
             lifecycleLock.unlock();
+        }
+    }
+
+    private void requireValidFlow(
+            RegistrationFlow flow, OpenAdrSessionSnapshot session
+    ) {
+        if (flow == RegistrationFlow.REGISTER && session.registered()) {
+            throw new IllegalStateException(
+                    "REGISTER flow requires an unregistered session"
+            );
+        }
+
+        if (flow == RegistrationFlow.REREGISTER && !session.registered()) {
+            throw new IllegalStateException(
+                    "REREGISTER flow requires a registered session"
+            );
         }
     }
 
