@@ -1,5 +1,6 @@
 package com.qcharge.openadr.service.transport;
 
+import com.qcharge.openadr.ApiMessage;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
@@ -10,29 +11,11 @@ import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bMarshalException;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelOptType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledOptType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledPartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledReportType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateOptType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatePartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedOptType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPayload;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrPollType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrQueryRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
-import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
+import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
 import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
@@ -67,9 +50,7 @@ public class VtnTransportService {
     }
 
     public <Q, R> R send(
-            OpenAdrOperation<Q, R> operation,
-            Q payload,
-            OpenAdrSessionSnapshot session
+            OpenAdrOperation<Q, R> operation, Q payload, OpenAdrSessionSnapshot session
     ) {
         operation.requireValidRequest(payload);
 
@@ -192,56 +173,9 @@ public class VtnTransportService {
         }
     }
 
-    public Object queryRegistration(OadrQueryRegistrationType payload) {
-        return send(OpenAdrOperations.QUERY_REGISTRATION, payload);
-    }
-
-    public OadrCreatedPartyRegistrationType register(OadrCreatePartyRegistrationType payload) {
-        return send(OpenAdrOperations.CREATE_PARTY_REGISTRATION, payload);
-    }
 
     public Object poll(OadrPollType payload) {
         return send(OpenAdrOperations.POLL, payload);
-    }
-
-    public Object requestEvent(OadrRequestEventType payload) {
-        return send(OpenAdrOperations.REQUEST_EVENT, payload);
-    }
-
-    public OadrResponseType createdEvent(OadrCreatedEventType payload) {
-        return send(OpenAdrOperations.CREATED_EVENT, payload);
-    }
-
-    public OadrRegisteredReportType registerReport(OadrRegisterReportType payload) {
-        return send(OpenAdrOperations.REGISTER_REPORT, payload);
-    }
-
-    public OadrResponseType createdReport(OadrCreatedReportType payload) {
-        return send(OpenAdrOperations.CREATED_REPORT_RESPONSE, payload);
-    }
-
-    public OadrUpdatedReportType updateReport(OadrUpdateReportType payload) {
-        return send(OpenAdrOperations.UPDATE_REPORT, payload);
-    }
-
-    public OadrResponseType canceledReport(OadrCanceledReportType payload) {
-        return send(OpenAdrOperations.CANCELED_REPORT_RESPONSE, payload);
-    }
-
-    public OadrCreatedOptType createOpt(OadrCreateOptType payload) {
-        return send(OpenAdrOperations.CREATE_OPT, payload);
-    }
-
-    public OadrCanceledOptType cancelOpt(OadrCancelOptType payload) {
-        return send(OpenAdrOperations.CANCEL_OPT, payload);
-    }
-
-    public OadrCanceledPartyRegistrationType cancelPartyRegistration(OadrCancelPartyRegistrationType payload) {
-        return send(OpenAdrOperations.CANCEL_PARTY_REGISTRATION, payload);
-    }
-
-    public void sendReply(OpenAdrReply<?, ?> reply) {
-        sendCapturedReply(reply, sessionProvider.current());
     }
 
     public void sendReply(
@@ -324,25 +258,29 @@ public class VtnTransportService {
         return baseUrl + Oadr20bUrlPath.OADR_BASE_PATH + endpoint;
     }
 
-    @SuppressWarnings("unchecked")
     private <Q, R> R requireExpectedResponse(OpenAdrOperation<Q, R> operation, Object response) {
-        if (!operation.acceptsResponse(response)) {
-            throw new OpenAdrApplicationException(
-                    "Unexpected OpenADR response type for operation=%s. Expected one of=%s, actual=%s"
-                            .formatted(
-                                    operation.name(),
-                                    operation.responseTypes().stream()
-                                            .map(Class::getSimpleName)
-                                            .sorted()
-                                            .toList(),
-                                    response == null ? "null" : response.getClass().getName()
-                            ),
-                    OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
-                    "Payload not of expected type for operation=" + operation.name(),
-                    null
-            );
+        for (Class<? extends R> responseType : operation.responseTypes()) {
+            if (responseType.isInstance(response)) {
+                return responseType.cast(response);
+            }
         }
 
-        return (R) response;
+        throw unexpectedResponseType(operation, response);
+    }
+
+    private OpenAdrApplicationException unexpectedResponseType(OpenAdrOperation<?, ?> operation, Object response) {
+        String errorMsg = ApiMessage.UNEXPECTED_VTN_PAYLOAD_TYPE.format(operation.name(),
+                operation.responseTypes().stream()
+                        .map(Class::getSimpleName)
+                        .sorted()
+                        .toList(),
+                response == null ? "null" : response.getClass().getName());
+
+
+        String errorDescription = ApiMessage.UNEXPECTED_VTN_PAYLOAD_TYPE_DESCR.format(operation.name());
+
+        return new OpenAdrApplicationException(
+                errorMsg, OpenADRResponseCode.COMPLIANCE_ERROR_OTHER, errorDescription, null
+        );
     }
 }
