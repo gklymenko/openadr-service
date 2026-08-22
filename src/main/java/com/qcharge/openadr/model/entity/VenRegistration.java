@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -29,12 +30,14 @@ public class VenRegistration {
     private Long id;
 
     @Column(name = "ven_id", nullable = false)
+    @NotBlank
     private String venId;
 
     @Column(name = "vtn_id")
     private String vtnId;
 
-    @Column(name = "registration_id")
+    @Column(name = "registration_id", nullable = false)
+    @NotBlank
     private String registrationId;
 
     @Column(name = "status", nullable = false)

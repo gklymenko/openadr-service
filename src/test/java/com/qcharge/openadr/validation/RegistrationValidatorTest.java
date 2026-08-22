@@ -11,6 +11,9 @@ import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.validation.RegistrationValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -66,6 +69,56 @@ class RegistrationValidatorTest {
         OadrCreatedPartyRegistrationType response =
                 ValidatorTestSupport.registrationResponse("REQ-1");
         response.setOadrRequestedOadrPollFreq(null);
+
+        OpenAdrApplicationException exception = assertThrows(
+                OpenAdrApplicationException.class,
+                () -> validator.validate(new OpenAdrExchangeContext<>(
+                        OpenAdrOperations.CREATE_PARTY_REGISTRATION,
+                        bootstrapSession("VEN-1", "VTN-1"),
+                        request,
+                        response
+                ))
+        );
+
+        assertEquals(
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
+                exception.getResponseCode()
+        );
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t"})
+    void successfulRegistrationRequiresVenId(String invalidVenId) {
+        OadrCreatePartyRegistrationType request = createRegistrationRequest();
+        OadrCreatedPartyRegistrationType response =
+                ValidatorTestSupport.registrationResponse("REQ-1");
+        response.setVenID(invalidVenId);
+
+        OpenAdrApplicationException exception = assertThrows(
+                OpenAdrApplicationException.class,
+                () -> validator.validate(new OpenAdrExchangeContext<>(
+                        OpenAdrOperations.CREATE_PARTY_REGISTRATION,
+                        bootstrapSession("VEN-1", "VTN-1"),
+                        request,
+                        response
+                ))
+        );
+
+        assertEquals(
+                OpenADRResponseCode.COMPLIANCE_ERROR_OTHER,
+                exception.getResponseCode()
+        );
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t"})
+    void successfulRegistrationRequiresRegistrationId(String invalidRegistrationId) {
+        OadrCreatePartyRegistrationType request = createRegistrationRequest();
+        OadrCreatedPartyRegistrationType response =
+                ValidatorTestSupport.registrationResponse("REQ-1");
+        response.setRegistrationID(invalidRegistrationId);
 
         OpenAdrApplicationException exception = assertThrows(
                 OpenAdrApplicationException.class,

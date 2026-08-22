@@ -159,12 +159,9 @@ public class RegistrationService {
 
         log.info(SEND_CREATE_PARTY_REGISTRATION, venId, requestId, StringUtils.hasText(registrationId));
 
-        OadrCreatedPartyRegistrationType response = transportService.send(
+        return transportService.send(
                 OpenAdrOperations.CREATE_PARTY_REGISTRATION, payload, session
         );
-
-        validateCreatedPartyRegistration(response);
-        return response;
     }
 
     /**
@@ -343,17 +340,9 @@ public class RegistrationService {
                 existing != null
                         ? existing
                         : new VenRegistration();
-
-
-        String venId = org.apache.commons.lang3.StringUtils.firstNonBlank(
-                response.getVenID(),
-                existing == null ? null : existing.getVenId(),
-                properties.getVen().getId()
-        );
-
         String requestedPollFrequency = extractRequestedPollFrequency(response);
 
-        registration.setVenId(venId);
+        registration.setVenId(response.getVenID());
         registration.setVtnId(response.getVtnID());
         registration.setRegistrationId(response.getRegistrationID());
         registration.setStatus(VenRegistrationStatus.REGISTERED);
@@ -373,31 +362,6 @@ public class RegistrationService {
         registration.setUpdatedAt(nowUtc());
 
         return registrationRepository.save(registration);
-    }
-
-    private void validateCreatedPartyRegistration(OadrCreatedPartyRegistrationType response) {
-        if (response.getEiResponse() == null) {
-            throw new IllegalStateException("oadrCreatedPartyRegistration does not contain eiResponse");
-        }
-
-        String responseCode = response.getEiResponse().getResponseCode();
-
-        if (!OpenADRResponseCode.matches(OK, responseCode)) {
-            throw new IllegalStateException(
-                    "VEN registration failed. code=%s, description=%s"
-                            .formatted(responseCode, response.getEiResponse().getResponseDescription())
-            );
-        }
-
-        if (!StringUtils.hasText(response.getRegistrationID())) {
-            throw new IllegalStateException(
-                    "Successful oadrCreatedPartyRegistration does not contain registrationID"
-            );
-        }
-
-        if (!StringUtils.hasText(response.getVtnID())) {
-            log.warn("Successful oadrCreatedPartyRegistration does not contain vtnID");
-        }
     }
 
     /**

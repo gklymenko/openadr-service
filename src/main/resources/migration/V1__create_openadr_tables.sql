@@ -2,11 +2,15 @@ CREATE TABLE IF NOT EXISTS ven_registration (
                                                 id              BIGINT AUTO_INCREMENT PRIMARY KEY,
                                                 ven_id          VARCHAR(64)  NOT NULL,
     vtn_id          VARCHAR(64),
-    registration_id VARCHAR(64),
+    registration_id VARCHAR(64)  NOT NULL,
     status          VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
     requested_poll_frequency VARCHAR(64) NULL,
     registered_at DATETIME(3) NULL,
     updated_at DATETIME(3) NOT NULL,
+    CONSTRAINT chk_ven_registration_ven_id_not_blank
+        CHECK (CHAR_LENGTH(TRIM(ven_id)) > 0),
+    CONSTRAINT chk_ven_registration_registration_id_not_blank
+        CHECK (CHAR_LENGTH(TRIM(registration_id)) > 0),
     INDEX idx_ven_id (ven_id)
     );
 
