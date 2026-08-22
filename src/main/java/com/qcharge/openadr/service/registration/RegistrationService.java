@@ -27,6 +27,7 @@ import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
+import com.qcharge.openadr.utility.RequestUtils;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -89,7 +90,7 @@ public class RegistrationService {
      */
     public void queryRegistration() {
         OpenAdrSessionSnapshot session = sessionProvider.current();
-        String requestId = newRequestId();
+        String requestId = RequestUtils.newRequestId();
 
         OadrQueryRegistrationType payload = Oadr20bEiRegisterPartyBuilders
                 .newOadr20bQueryRegistrationBuilder(requestId)
@@ -187,7 +188,7 @@ public class RegistrationService {
     ) {
         String venId = session.venId();
         String registrationId = session.registrationId();
-        String requestId = newRequestId();
+        String requestId = RequestUtils.newRequestId();
 
         var builder = Oadr20bEiRegisterPartyBuilders
                 .newOadr20bCreatePartyRegistrationBuilder(
@@ -287,7 +288,7 @@ public class RegistrationService {
 
         requireValidPersistedRegistration(registration);
 
-        String requestId = newRequestId();
+        String requestId = RequestUtils.newRequestId();
 
         OadrCancelPartyRegistrationType payload =
                 Oadr20bEiRegisterPartyBuilders
@@ -543,10 +544,6 @@ public class RegistrationService {
         }
     }
 
-    void requestAllEvents(OpenAdrSessionSnapshot session) {
-        requestAllEvents(session, newRequestId());
-    }
-
     public void requestAllEvents(@NotNull OpenAdrSessionSnapshot session, @NotBlank String requestId) {
         String venId = session.venId();
 
@@ -649,10 +646,6 @@ public class RegistrationService {
         return response == null
                 ? "null"
                 : response.getClass().getName();
-    }
-
-    private String newRequestId() {
-        return UUID.randomUUID().toString();
     }
 
     private Instant nowUtc() {

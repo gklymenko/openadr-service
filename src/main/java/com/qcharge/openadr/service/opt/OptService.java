@@ -14,6 +14,7 @@ import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.utility.RequestUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,7 +47,7 @@ public class OptService {
         OpenAdrSessionSnapshot session =
                 lifecycleCoordinator.requireRegisteredSession();
         String venId = session.venId();
-        String requestId = UUID.randomUUID().toString();
+        String requestId = RequestUtils.newRequestId();
         String optId = UUID.randomUUID().toString();
 
         OadrCreateOptType createOpt = Oadr20bEiOptBuilders
@@ -77,7 +78,7 @@ public class OptService {
         OpenAdrSessionSnapshot session =
                 lifecycleCoordinator.requireRegisteredSession();
         String venId = session.venId();
-        String requestId = UUID.randomUUID().toString();
+        String requestId = RequestUtils.newRequestId();
 
         OadrCancelOptType cancelOpt = Oadr20bEiOptBuilders
                 .newOadr20bCancelOptBuilder(requestId, optId, venId)

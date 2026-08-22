@@ -3,6 +3,7 @@ package com.qcharge.openadr.service.event;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
+import com.qcharge.openadr.utility.RequestUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -26,7 +27,7 @@ public class ManualRequestEventService {
     public String requestEvents() {
         OpenAdrSessionSnapshot session =
                 lifecycleCoordinator.requireRegisteredSession();
-        String requestId = UUID.randomUUID().toString();
+        String requestId = RequestUtils.newRequestId();
 
         openAdrTaskScheduler.schedule(
                 () -> executeRequest(session, requestId),

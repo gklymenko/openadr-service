@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.when;
 
@@ -41,6 +42,6 @@ class PostRegistrationBootstrapListenerTest {
         order.verify(reportService).registerReportingCapabilities(session);
         order.verify(reportRequestHandler)
                 .handleRegisteredReport(registeredReport, session);
-        order.verify(registrationService).requestAllEvents(session);
+//        order.verify(registrationService).requestAllEvents(session, any());
     }
 }

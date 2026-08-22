@@ -21,6 +21,7 @@ import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
+import com.qcharge.openadr.utility.RequestUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.TaskScheduler;
@@ -416,7 +417,7 @@ public class ReportRequestHandler {
     ) {
         OadrUpdateReportType updateReport = Oadr20bEiReportBuilders
                 .newOadr20bUpdateReportBuilder(
-                        java.util.UUID.randomUUID().toString(),
+                        RequestUtils.newRequestId(),
                         session.venId()
                 )
                 .addReport(buildReportPayload(report))

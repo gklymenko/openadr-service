@@ -17,6 +17,7 @@ import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.utility.RequestUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,7 +51,7 @@ public class ReportService {
             OpenAdrSessionSnapshot session
     ) {
         String venId = session.venId();
-        String requestId = UUID.randomUUID().toString();
+        String requestId = RequestUtils.newRequestId();
 
         log.info("Registering reporting capabilities. venId={}", venId);
 
@@ -95,7 +96,7 @@ public class ReportService {
             OpenAdrSessionSnapshot session
     ) {
         String venId = session.venId();
-        String requestId = UUID.randomUUID().toString();
+        String requestId = RequestUtils.newRequestId();
 
         OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportBuilder(requestId, venId)
