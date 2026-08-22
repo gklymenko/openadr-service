@@ -1,7 +1,6 @@
 package com.qcharge.openadr.service.registration;
 
 import com.qcharge.openadr.ApiMessage;
-import com.qcharge.openadr.LogMessage;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.entity.VenRegistration;
@@ -182,8 +181,7 @@ public class RegistrationService {
     private RegistrationResult registerNew() {
         OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
 
-        OadrCreatedPartyRegistrationType response =
-                sendCreatePartyRegistration(session);
+        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(session);
 
         validateCreatedPartyRegistration(response);
 
@@ -306,14 +304,6 @@ public class RegistrationService {
         return registeredSession;
     }
 
-    /**
-     * Test-specific operation that deliberately sends a new registration
-     * without registrationID even if an active registration exists.
-     */
-    public void initiateForcedNewRegistration() {
-        lifecycleCoordinator.forceNewRegistration();
-    }
-
     public OpenAdrSessionSnapshot performForcedNewRegistration() {
         log.warn("Forcing a new registration without registrationID");
 
@@ -408,8 +398,7 @@ public class RegistrationService {
     }
 
     public void handleCancelPartyRegistration(
-            OadrCancelPartyRegistrationType request,
-            OpenAdrSessionSnapshot session
+            OadrCancelPartyRegistrationType request, OpenAdrSessionSnapshot session
     ) {
         Optional<VenRegistration> activeOptional = registrationFor(session);
 

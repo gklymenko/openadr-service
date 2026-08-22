@@ -90,6 +90,56 @@ class OpenAdrSessionLifecycleCoordinatorTest {
     }
 
     @Test
+    void bootstrapUsesBootstrapRegistrationFlow() {
+        OpenAdrSessionSnapshot initialSession = bootstrapSession(1);
+        OpenAdrSessionSnapshot registeredSession = registeredSession(2, "REG-2");
+        when(sessionProvider.current()).thenReturn(initialSession);
+        when(registrationService.performBootstrapRegistration()).thenReturn(registeredSession);
+
+        coordinator.bootstrap();
+
+        assertEquals(registeredSession, coordinator.currentSession());
+        verify(registrationService).performBootstrapRegistration();
+        verify(eventPoller).start(registeredSession.pollFrequency());
+    }
+
+    @Test
+    void registerUsesRegularRegistrationForUnregisteredSession() {
+        OpenAdrSessionSnapshot initialSession = bootstrapSession(1);
+        OpenAdrSessionSnapshot registeredSession = registeredSession(2, "REG-2");
+        when(sessionProvider.current()).thenReturn(initialSession);
+        when(registrationService.performRegistration()).thenReturn(registeredSession);
+
+        assertEquals(registeredSession, coordinator.register());
+
+        verify(registrationService).performRegistration();
+    }
+
+    @Test
+    void registerUsesReregistrationForRegisteredSession() {
+        OpenAdrSessionSnapshot currentSession = registeredSession(1, "REG-1");
+        OpenAdrSessionSnapshot registeredSession = registeredSession(2, "REG-2");
+        when(sessionProvider.current()).thenReturn(currentSession);
+        when(registrationService.performReregistration(currentSession)).thenReturn(registeredSession);
+
+        assertEquals(registeredSession, coordinator.register());
+
+        verify(registrationService).performReregistration(currentSession);
+    }
+
+    @Test
+    void forceNewRegistrationUsesForcedRegistrationFlow() {
+        OpenAdrSessionSnapshot currentSession = registeredSession(1, "REG-1");
+        OpenAdrSessionSnapshot registeredSession = registeredSession(2, "REG-2");
+        when(sessionProvider.current()).thenReturn(currentSession);
+        when(registrationService.performForcedNewRegistration()).thenReturn(registeredSession);
+
+        assertEquals(registeredSession, coordinator.forceNewRegistration());
+
+        verify(registrationService).performForcedNewRegistration();
+    }
+
+    @Test
     void pollingSessionIsUnavailableDuringReregistration() throws Exception {
         OpenAdrSessionSnapshot oldSession = registeredSession(7, "REG-7");
         OpenAdrSessionSnapshot newSession = registeredSession(8, "REG-8");

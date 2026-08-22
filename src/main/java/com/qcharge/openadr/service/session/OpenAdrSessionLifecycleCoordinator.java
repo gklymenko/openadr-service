@@ -30,6 +30,8 @@ public class OpenAdrSessionLifecycleCoordinator {
     private volatile OpenAdrSessionState state;
     private volatile OpenAdrSessionSnapshot currentSession;
 
+    private enum RegistrationFlow { BOOTSTRAP, REGISTER_OR_REREGISTER, FORCED_NEW }
+
     public OpenAdrSessionLifecycleCoordinator(
             OpenAdrSessionProvider sessionProvider,
             ObjectProvider<RegistrationService> registrationServiceProvider,
@@ -41,22 +43,22 @@ public class OpenAdrSessionLifecycleCoordinator {
     }
 
     public void bootstrap() {
-        executeRegistration(true, null, false);
+        executeRegistration(RegistrationFlow.BOOTSTRAP, null);
     }
 
     public OpenAdrSessionSnapshot register() {
-        return executeRegistration(false, snapshot(), false);
+        return executeRegistration(RegistrationFlow.REGISTER_OR_REREGISTER, snapshot());
     }
 
     public OpenAdrSessionSnapshot forceNewRegistration() {
-        return executeRegistration(false, snapshot(), true);
+       return executeRegistration(RegistrationFlow.FORCED_NEW, snapshot());
     }
 
     public OpenAdrSessionSnapshot reregister(
             OpenAdrSessionSnapshot failedSession
     ) {
         Objects.requireNonNull(failedSession, "failedSession");
-        return executeRegistration(false, failedSession, false);
+        return executeRegistration(RegistrationFlow.REGISTER_OR_REREGISTER, failedSession);
     }
 
     public void cancel(OpenAdrSessionSnapshot session) {
@@ -65,7 +67,7 @@ public class OpenAdrSessionLifecycleCoordinator {
         lifecycleLock.lock();
         try {
             requireCurrent(session);
-            requireState(OpenAdrSessionState.REGISTERED);
+            requireRegisteredState();
             transitionTo(OpenAdrSessionState.CANCELLING);
             eventPollerProvider.getObject().stop();
 
@@ -90,7 +92,7 @@ public class OpenAdrSessionLifecycleCoordinator {
         lifecycleLock.lock();
         try {
             requireCurrent(session);
-            requireState(OpenAdrSessionState.REGISTERED);
+            requireRegisteredState();
             transitionTo(OpenAdrSessionState.CANCELLING);
             eventPollerProvider.getObject().stop();
 
@@ -170,7 +172,7 @@ public class OpenAdrSessionLifecycleCoordinator {
     }
 
     private OpenAdrSessionSnapshot executeRegistration(
-            boolean startup, @Nullable OpenAdrSessionSnapshot requestedSession, boolean forcedNewRegistration
+            RegistrationFlow flow, @Nullable OpenAdrSessionSnapshot requestedSession
     ) {
         long observedGeneration = requestedSession == null
                 ? snapshot().generation()
@@ -200,20 +202,15 @@ public class OpenAdrSessionLifecycleCoordinator {
             try {
                 RegistrationService registrationService = registrationServiceProvider.getObject();
 
-                OpenAdrSessionSnapshot registered = forcedNewRegistration
-                        ? registrationService.performForcedNewRegistration()
-                        : startup
-                        ? registrationService.performBootstrapRegistration()
-                        : requestedSession != null && requestedSession.registered()
-                        ? registrationService.performReregistration(requestedSession)
-                        : registrationService.performRegistration();
+                currentSession = switch (flow) {
+                    case BOOTSTRAP -> registrationService.performBootstrapRegistration();
+                    case FORCED_NEW -> registrationService.performForcedNewRegistration();
+                    case REGISTER_OR_REREGISTER -> performSessionAwareRegistration(registrationService, requestedSession);
+                };
 
-                currentSession = registered;
                 transitionTo(OpenAdrSessionState.REGISTERED);
-                eventPollerProvider.getObject().start(
-                        registered.pollFrequency()
-                );
-                return registered;
+                eventPollerProvider.getObject().start(currentSession.pollFrequency());
+                return currentSession;
             } catch (RuntimeException failure) {
                 transitionTo(OpenAdrSessionState.FAILED);
                 eventPollerProvider.getObject().stop();
@@ -222,6 +219,17 @@ public class OpenAdrSessionLifecycleCoordinator {
         } finally {
             lifecycleLock.unlock();
         }
+    }
+
+    private OpenAdrSessionSnapshot performSessionAwareRegistration(
+            RegistrationService registrationService,
+            @Nullable OpenAdrSessionSnapshot requestedSession
+    ) {
+        if (requestedSession != null && requestedSession.registered()) {
+            return registrationService.performReregistration(requestedSession);
+        }
+
+        return registrationService.performRegistration();
     }
 
     private OpenAdrSessionSnapshot snapshot() {
@@ -249,8 +257,8 @@ public class OpenAdrSessionLifecycleCoordinator {
         }
     }
 
-    private void requireState(OpenAdrSessionState expected) {
-        if (state != expected) {
+    private void requireRegisteredState() {
+        if (state != OpenAdrSessionState.REGISTERED) {
             throw new OpenAdrSessionUnavailableException(state);
         }
     }
