@@ -2,8 +2,9 @@ package com.qcharge.openadr.session;
 
 import com.qcharge.openadr.exceptions.OpenAdrSessionUnavailableException;
 import com.qcharge.openadr.exceptions.StaleOpenAdrSessionException;
-import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.session.OpenAdrPollingStartedEvent;
+import com.qcharge.openadr.service.session.OpenAdrPollingStoppedEvent;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
@@ -13,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -33,23 +34,17 @@ import static org.mockito.Mockito.when;
 class OpenAdrSessionLifecycleCoordinatorTest {
 
     @Mock OpenAdrSessionProvider sessionProvider;
-    @Mock ObjectProvider<RegistrationService> registrationServiceProvider;
-    @Mock ObjectProvider<EventPoller> eventPollerProvider;
     @Mock RegistrationService registrationService;
-    @Mock EventPoller eventPoller;
+    @Mock ApplicationEventPublisher eventPublisher;
 
     private OpenAdrSessionLifecycleCoordinator coordinator;
 
     @BeforeEach
     void setUp() {
-        when(registrationServiceProvider.getObject())
-                .thenReturn(registrationService);
-        when(eventPollerProvider.getObject()).thenReturn(eventPoller);
-
         coordinator = new OpenAdrSessionLifecycleCoordinator(
                 sessionProvider,
-                registrationServiceProvider,
-                eventPollerProvider
+                registrationService,
+                eventPublisher
         );
     }
 
@@ -86,7 +81,9 @@ class OpenAdrSessionLifecycleCoordinatorTest {
         assertEquals(newSession, second.get(2, TimeUnit.SECONDS));
         verify(registrationService, times(1))
                 .performReregistration(oldSession);
-        verify(eventPoller, times(1)).start(newSession.pollFrequency());
+        verify(eventPublisher).publishEvent(
+                new OpenAdrPollingStartedEvent(newSession.pollFrequency())
+        );
     }
 
     @Test
@@ -100,7 +97,9 @@ class OpenAdrSessionLifecycleCoordinatorTest {
 
         assertEquals(registeredSession, coordinator.currentSession());
         verify(registrationService).performBootstrapRegistration();
-        verify(eventPoller).start(registeredSession.pollFrequency());
+        verify(eventPublisher).publishEvent(
+                new OpenAdrPollingStartedEvent(registeredSession.pollFrequency())
+        );
     }
 
     @Test
@@ -193,7 +192,9 @@ class OpenAdrSessionLifecycleCoordinatorTest {
                 OpenAdrSessionUnavailableException.class,
                 coordinator::requireRegisteredSession
         );
-        verify(eventPoller, times(2)).stop();
+        verify(eventPublisher, times(2)).publishEvent(
+                new OpenAdrPollingStoppedEvent()
+        );
     }
 
     @Test
@@ -236,7 +237,7 @@ class OpenAdrSessionLifecycleCoordinatorTest {
         assertEquals(OpenAdrSessionState.CANCELLED, coordinator.state());
         assertEquals(bootstrap, coordinator.currentSession());
         verify(registrationService).performCancelRegistration(session);
-        verify(eventPoller).stop();
+        verify(eventPublisher).publishEvent(new OpenAdrPollingStoppedEvent());
     }
 
     private OpenAdrSessionSnapshot registeredSession(

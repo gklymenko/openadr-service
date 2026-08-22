@@ -2,13 +2,13 @@ package com.qcharge.openadr.service.session;
 
 import com.qcharge.openadr.exceptions.OpenAdrSessionUnavailableException;
 import com.qcharge.openadr.exceptions.StaleOpenAdrSessionException;
-import com.qcharge.openadr.service.event.EventPoller;
 import com.qcharge.openadr.service.registration.RegistrationService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
@@ -23,8 +23,8 @@ import static com.qcharge.openadr.LogMessage.SESSION_STATE_CHANGED_TO;
 public class OpenAdrSessionLifecycleCoordinator {
 
     private final OpenAdrSessionProvider sessionProvider;
-    private final ObjectProvider<RegistrationService> registrationServiceProvider;
-    private final ObjectProvider<EventPoller> eventPollerProvider;
+    private final RegistrationService registrationService;
+    private final ApplicationEventPublisher eventPublisher;
     private final ReentrantLock lifecycleLock = new ReentrantLock();
 
     private volatile OpenAdrSessionState state;
@@ -34,12 +34,12 @@ public class OpenAdrSessionLifecycleCoordinator {
 
     public OpenAdrSessionLifecycleCoordinator(
             OpenAdrSessionProvider sessionProvider,
-            ObjectProvider<RegistrationService> registrationServiceProvider,
-            ObjectProvider<EventPoller> eventPollerProvider
+            RegistrationService registrationService,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.sessionProvider = sessionProvider;
-        this.registrationServiceProvider = registrationServiceProvider;
-        this.eventPollerProvider = eventPollerProvider;
+        this.registrationService = registrationService;
+        this.eventPublisher = eventPublisher;
     }
 
     public void bootstrap() {
@@ -69,12 +69,10 @@ public class OpenAdrSessionLifecycleCoordinator {
             requireCurrent(session);
             requireRegisteredState();
             transitionTo(OpenAdrSessionState.CANCELLING);
-            eventPollerProvider.getObject().stop();
+            stopPolling();
 
             try {
-                registrationServiceProvider
-                        .getObject()
-                        .performCancelRegistration(session);
+                registrationService.performCancelRegistration(session);
                 currentSession = sessionProvider.bootstrap();
                 transitionTo(OpenAdrSessionState.CANCELLED);
             } catch (RuntimeException failure) {
@@ -94,12 +92,10 @@ public class OpenAdrSessionLifecycleCoordinator {
             requireCurrent(session);
             requireRegisteredState();
             transitionTo(OpenAdrSessionState.CANCELLING);
-            eventPollerProvider.getObject().stop();
+            stopPolling();
 
             try {
-                registrationServiceProvider
-                        .getObject()
-                        .performRemoteCancellation(session);
+                registrationService.performRemoteCancellation(session);
                 currentSession = sessionProvider.bootstrap();
                 transitionTo(OpenAdrSessionState.CANCELLED);
             } catch (RuntimeException failure) {
@@ -197,39 +193,32 @@ public class OpenAdrSessionLifecycleCoordinator {
                     : OpenAdrSessionState.REGISTERING;
 
             transitionTo(targetState);
-            eventPollerProvider.getObject().stop();
+            stopPolling();
 
             try {
-                RegistrationService registrationService = registrationServiceProvider.getObject();
-
                 currentSession = switch (flow) {
                     case BOOTSTRAP -> registrationService.performBootstrapRegistration();
                     case FORCED_NEW -> registrationService.performForcedNewRegistration();
-                    case REGISTER_OR_REREGISTER -> performSessionAwareRegistration(registrationService, requestedSession);
+                    case REGISTER_OR_REREGISTER -> {
+                        if (requestedSession != null && requestedSession.registered()) {
+                            yield registrationService.performReregistration(requestedSession);
+                        }
+
+                        yield registrationService.performRegistration();
+                    }
                 };
 
                 transitionTo(OpenAdrSessionState.REGISTERED);
-                eventPollerProvider.getObject().start(currentSession.pollFrequency());
+                startPolling(currentSession.pollFrequency());
                 return currentSession;
             } catch (RuntimeException failure) {
                 transitionTo(OpenAdrSessionState.FAILED);
-                eventPollerProvider.getObject().stop();
+                stopPolling();
                 throw failure;
             }
         } finally {
             lifecycleLock.unlock();
         }
-    }
-
-    private OpenAdrSessionSnapshot performSessionAwareRegistration(
-            RegistrationService registrationService,
-            @Nullable OpenAdrSessionSnapshot requestedSession
-    ) {
-        if (requestedSession != null && requestedSession.registered()) {
-            return registrationService.performReregistration(requestedSession);
-        }
-
-        return registrationService.performRegistration();
     }
 
     private OpenAdrSessionSnapshot snapshot() {
@@ -269,5 +258,13 @@ public class OpenAdrSessionLifecycleCoordinator {
         log.info(SESSION_STATE_CHANGED_TO, previous, nextState,
                 currentSession == null ? null : currentSession.generation()
         );
+    }
+
+    private void startPolling(Duration pollFrequency) {
+        eventPublisher.publishEvent(new OpenAdrPollingStartedEvent(pollFrequency));
+    }
+
+    private void stopPolling() {
+        eventPublisher.publishEvent(new OpenAdrPollingStoppedEvent());
     }
 }

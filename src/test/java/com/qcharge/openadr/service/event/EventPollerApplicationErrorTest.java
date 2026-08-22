@@ -3,8 +3,8 @@ package com.qcharge.openadr.service.event;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
-import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
+import com.qcharge.openadr.service.registration.RegistrationMessageHandler;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.TaskScheduler;
 
 import static org.mockito.Mockito.never;
@@ -35,7 +34,7 @@ class EventPollerApplicationErrorTest {
     @Mock TaskScheduler taskScheduler;
     @Mock OpenAdrApplicationErrorMapper applicationErrorMapper;
     @Mock OpenAdrReplyFactory replyFactory;
-    @Mock ObjectProvider<RegistrationService> registrationServiceProvider;
+    @Mock RegistrationMessageHandler registrationMessageHandler;
     @Mock OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
     private EventPoller eventPoller;
@@ -51,7 +50,7 @@ class EventPollerApplicationErrorTest {
                 applicationErrorMapper,
                 replyFactory,
                 lifecycleCoordinator,
-                registrationServiceProvider
+                registrationMessageHandler
         );
     }
 

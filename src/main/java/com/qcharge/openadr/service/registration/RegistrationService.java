@@ -15,7 +15,6 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatePartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrQueryRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestReregistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
@@ -24,9 +23,6 @@ import com.qcharge.openadr.repository.OptScheduleRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
-import com.qcharge.openadr.service.report.ReportRequestHandler;
-import com.qcharge.openadr.service.report.ReportService;
-import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -35,8 +31,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -46,8 +41,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-import static com.qcharge.openadr.LogMessage.FAILED_VEN_BOOTSTRAP;
-import static com.qcharge.openadr.LogMessage.START_VEN_BOOTSTRAP;
 import static com.qcharge.openadr.exceptions.OpenADRResponseCode.INVALID_ID;
 import static com.qcharge.openadr.exceptions.OpenADRResponseCode.OK;
 
@@ -61,37 +54,9 @@ public class RegistrationService {
     private final VenReportRepository venReportRepository;
     private final OptScheduleRepository optScheduleRepository;
     private final VtnTransportService transportService;
-    private final ReportService reportService;
-    private final ReportRequestHandler reportRequestHandler;
     private final EventProtocolAdapter eventProtocolAdapter;
     private final OpenAdrSessionProvider sessionProvider;
-    private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
-
-    /**
-     * Returns the VEN ID assigned by the VTN for the current active registration.
-     * Configured VEN ID is used only before the first successful registration.
-     */
-    public String currentVenId() {
-        return lifecycleCoordinator.currentSession().venId();
-    }
-
-    /**
-     * Startup flow:
-     * 1. Optionally, query supported registration capabilities.
-     * 2. If no active registration exists, perform new registration.
-     * 3. If active registration exists, perform re-registration using persisted IDs.
-     * 4. Start polling using the frequency returned by the VTN or persisted earlier.
-     */
-    @EventListener(ApplicationReadyEvent.class)
-    public void onApplicationReady() {
-        log.info(START_VEN_BOOTSTRAP, properties.getVen().getId());
-
-        try {
-            lifecycleCoordinator.bootstrap();
-        } catch (Exception exception) {
-            log.error(FAILED_VEN_BOOTSTRAP, exception);
-        }
-    }
+    private final ApplicationEventPublisher eventPublisher;
 
     public OpenAdrSessionSnapshot performBootstrapRegistration() {
         if (properties.getVen().isQueryRegistrationOnStartup()) {
@@ -282,13 +247,14 @@ public class RegistrationService {
                 explicitlyNewRegistration
                         || result.newRegistrationInstance();
 
+        OpenAdrSessionSnapshot registeredSession = sessionProvider.fromRegistration(registration);
+
         if (runFullBootstrap) {
             eraseReportAndOptData();
-            runPostRegistrationFlow(registration);
+            eventPublisher.publishEvent(
+                    new PostRegistrationBootstrapEvent(registeredSession)
+            );
         }
-
-        OpenAdrSessionSnapshot registeredSession =
-                sessionProvider.fromRegistration(registration);
 
         log.info(
                 "VEN registration flow completed. " +
@@ -369,7 +335,7 @@ public class RegistrationService {
         );
     }
 
-    public void handleRequestReregistration(
+    public void acknowledgeRequestReregistration(
             OadrRequestReregistrationType request,
             OpenAdrSessionSnapshot session
     ) {
@@ -393,11 +359,9 @@ public class RegistrationService {
                 acknowledgement,
                 session
         );
-
-        lifecycleCoordinator.reregister(session);
     }
 
-    public void handleCancelPartyRegistration(
+    public boolean acknowledgeCancelPartyRegistration(
             OadrCancelPartyRegistrationType request, OpenAdrSessionSnapshot session
     ) {
         Optional<VenRegistration> activeOptional = registrationFor(session);
@@ -455,16 +419,10 @@ public class RegistrationService {
                             "match the active registration. requested={}",
                     requestRegistrationId
             );
-            return;
+            return false;
         }
 
-        lifecycleCoordinator.acceptRemoteCancellation(session);
-
-        log.info(
-                "VTN-initiated registration cancellation completed. " +
-                        "registrationId={}",
-                requestRegistrationId
-        );
+        return true;
     }
 
     public void performRemoteCancellation(OpenAdrSessionSnapshot session) {
@@ -585,20 +543,7 @@ public class RegistrationService {
         }
     }
 
-    private void runPostRegistrationFlow(VenRegistration registration) {
-        OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(registration);
-        OadrRegisteredReportType registeredReport =
-                reportService.registerReportingCapabilities(session);
-
-        reportRequestHandler.handleRegisteredReport(
-                registeredReport,
-                session
-        );
-
-        requestAllEvents(session);
-    }
-
-    private void requestAllEvents(OpenAdrSessionSnapshot session) {
+    void requestAllEvents(OpenAdrSessionSnapshot session) {
         requestAllEvents(session, newRequestId());
     }
 

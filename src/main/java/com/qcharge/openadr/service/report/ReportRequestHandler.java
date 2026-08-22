@@ -55,14 +55,6 @@ public class ReportRequestHandler {
     private final Map<String, ScheduledFuture<?>> activeReportTasks = new ConcurrentHashMap<>();
 
     @Transactional
-    public void handleRegisteredReport(OadrRegisteredReportType registeredReport) {
-        handleRegisteredReport(
-                registeredReport,
-                lifecycleCoordinator.requireRegisteredSession()
-        );
-    }
-
-    @Transactional
     public void handleRegisteredReport(
             OadrRegisteredReportType registeredReport,
             OpenAdrSessionSnapshot session
@@ -94,14 +86,6 @@ public class ReportRequestHandler {
     }
 
     @Transactional
-    public void handle(OadrCreateReportType createReport) {
-        handle(
-                createReport,
-                lifecycleCoordinator.requireRegisteredSession()
-        );
-    }
-
-    @Transactional
     public void handle(
             OadrCreateReportType createReport,
             OpenAdrSessionSnapshot session
@@ -116,13 +100,6 @@ public class ReportRequestHandler {
                 createReport.getRequestID(),
                 createReport.getOadrReportRequest(),
                 session
-        );
-    }
-
-    public void handleRegisterReport(OadrRegisterReportType registerReport) {
-        handleRegisterReport(
-                registerReport,
-                lifecycleCoordinator.requireRegisteredSession()
         );
     }
 
@@ -148,14 +125,6 @@ public class ReportRequestHandler {
                 OpenAdrOperations.REGISTERED_REPORT_RESPONSE,
                 response,
                 session
-        );
-    }
-
-    @Transactional
-    public void handleCancelReport(OadrCancelReportType cancelReport) {
-        handleCancelReport(
-                cancelReport,
-                lifecycleCoordinator.requireRegisteredSession()
         );
     }
 
@@ -209,13 +178,6 @@ public class ReportRequestHandler {
                 OpenAdrOperations.CANCELED_REPORT_RESPONSE,
                 response,
                 session
-        );
-    }
-
-    public void handleUpdateReport(OadrUpdateReportType updateReport) {
-        handleUpdateReport(
-                updateReport,
-                lifecycleCoordinator.requireRegisteredSession()
         );
     }
 

@@ -13,7 +13,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestReregistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
-import com.qcharge.openadr.service.registration.RegistrationService;
+import com.qcharge.openadr.service.registration.RegistrationMessageHandler;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
@@ -25,7 +25,6 @@ import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 
@@ -49,12 +48,7 @@ public class EventPoller {
     private final OpenAdrReplyFactory replyFactory;
     private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
 
-    /**
-     * Lazy provider avoids direct circular dependency:
-     * RegistrationService -> EventPoller
-     * EventPoller -> RegistrationService
-     */
-    private final ObjectProvider<RegistrationService> registrationServiceProvider;
+    private final RegistrationMessageHandler registrationMessageHandler;
 
     private final ReentrantLock pollLock = new ReentrantLock();
 
@@ -306,9 +300,10 @@ public class EventPoller {
                 log.warn("Received oadrCancelPartyRegistration. registrationId={}",
                         cancelRegistration.getRegistrationID());
 
-                registrationServiceProvider
-                        .getObject()
-                        .handleCancelPartyRegistration(cancelRegistration, session);
+                registrationMessageHandler.handleCancelPartyRegistration(
+                        cancelRegistration,
+                        session
+                );
 
                 yield PollResult.STOP;
             }
@@ -316,8 +311,7 @@ public class EventPoller {
             case OadrRequestReregistrationType requestReregistration -> {
                 log.warn("Received oadrRequestReregistration. venId={}", requestReregistration.getVenID());
 
-                registrationServiceProvider.getObject()
-                        .handleRequestReregistration(requestReregistration, session);
+                registrationMessageHandler.handleRequestReregistration(requestReregistration, session);
 
                 yield PollResult.STOP;
             }

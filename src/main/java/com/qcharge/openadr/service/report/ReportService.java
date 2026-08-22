@@ -14,7 +14,6 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrReportDescriptionType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.siscale.SiScaleCodeType;
 import com.qcharge.openadr.repository.VenReportRepository;
-import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -45,17 +44,6 @@ public class ReportService {
     private final OpenAdrProperties properties;
     private final VenReportRepository reportRepository;
     private final VtnTransportService transportService;
-    private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
-
-    @Transactional
-    public OadrRegisteredReportType registerReportingCapabilities(String venId) {
-        OpenAdrSessionSnapshot session =
-                lifecycleCoordinator.requireRegisteredSession();
-        if (!session.venId().equals(venId)) {
-            throw new IllegalStateException("VEN ID does not match current OpenADR session");
-        }
-        return registerReportingCapabilities(session);
-    }
 
     @Transactional
     public OadrRegisteredReportType registerReportingCapabilities(
@@ -100,13 +88,6 @@ public class ReportService {
         log.info("Reporting capabilities registered successfully");
 
         return registeredReport;
-    }
-
-    public OadrRegisterReportType buildMetadataRegisterReport(String reportRequestId) {
-        return buildMetadataRegisterReport(
-                reportRequestId,
-                lifecycleCoordinator.requireRegisteredSession()
-        );
     }
 
     public OadrRegisterReportType buildMetadataRegisterReport(
