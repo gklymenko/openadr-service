@@ -13,6 +13,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestReregistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
+import com.qcharge.openadr.service.registration.RemoteCancellationDecision;
 import com.qcharge.openadr.service.registration.RegistrationMessageHandler;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
@@ -33,6 +34,8 @@ import java.time.Instant;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.locks.ReentrantLock;
+
+import static com.qcharge.openadr.LogMessage.PULLED_CANCEL_PARTY_REGISTRATION;
 
 @Slf4j
 @Component
@@ -297,15 +300,14 @@ public class EventPoller {
             }
 
             case OadrCancelPartyRegistrationType cancelRegistration -> {
-                log.warn("Received oadrCancelPartyRegistration. registrationId={}",
-                        cancelRegistration.getRegistrationID());
+                log.warn(PULLED_CANCEL_PARTY_REGISTRATION, cancelRegistration.getRegistrationID());
 
-                boolean cancelled = registrationMessageHandler.handleCancelPartyRegistration(
-                        cancelRegistration,
-                        session
-                );
+                RemoteCancellationDecision decision =
+                        registrationMessageHandler.handleCancelPartyRegistration(cancelRegistration, session);
 
-                yield cancelled ? PollResult.STOP : PollResult.CONTINUE;
+                yield decision == RemoteCancellationDecision.REJECTED_INVALID_ID
+                        ? PollResult.CONTINUE
+                        : PollResult.STOP;
             }
 
             case OadrRequestReregistrationType requestReregistration -> {

@@ -22,6 +22,7 @@ import static com.qcharge.openadr.model.enums.VenRegistrationStatus.CANCELLING;
 import static com.qcharge.openadr.model.enums.VenRegistrationStatus.REGISTERED;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -94,6 +95,17 @@ class VenRegistrationStateServiceTest {
                 IllegalStateException.class,
                 () -> service.beginCancellation(session)
         );
+    }
+
+    @Test
+    void missingRegistrationCannotBeReservedForRemoteCancellation() {
+        OpenAdrSessionSnapshot session = registeredSession();
+        when(registrationRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertFalse(service.hasCancellableRegistration(session));
+        assertFalse(service.tryBeginCancellation(session));
+
+        verify(eventRepository, never()).deleteAll();
     }
 
     @Test

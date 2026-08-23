@@ -30,30 +30,48 @@ public class VenRegistrationStateService {
 
     @Transactional
     public void beginCancellation(OpenAdrSessionSnapshot session) {
+        if (!tryBeginCancellation(session)) {
+            throw new IllegalStateException(
+                    "Cannot begin cancellation for an inactive VEN registration"
+            );
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasCancellableRegistration(OpenAdrSessionSnapshot session) {
+        if (session.registrationEntityId() == null) {
+            return false;
+        }
+
+        return registrationRepository.findById(session.registrationEntityId())
+                .filter(registration -> persistedRegistrationMatchesSession(registration, session))
+                .map(VenRegistration::getStatus)
+                .filter(status -> status == REGISTERED || status == CANCELLING)
+                .isPresent();
+    }
+
+    @Transactional
+    public boolean tryBeginCancellation(OpenAdrSessionSnapshot session) {
+        if (session.registrationEntityId() == null) {
+            return false;
+        }
+
         Long registrationEntityId = requireRegistrationEntityId(session);
 
         int updated = registrationRepository.transitionStatus(
-                registrationEntityId,
-                session.venId(),
-                session.registrationId(),
-                REGISTERED,
-                CANCELLING,
-                Instant.now()
+                registrationEntityId, session.venId(), session.registrationId(),
+                REGISTERED, CANCELLING, Instant.now()
         );
 
         if (updated == 1) {
-            return;
+            return true;
         }
 
-        VenRegistration registration = requireRegistration(session);
-        requireMatchingSession(registration, session);
-
-        if (registration.getStatus() != CANCELLING) {
-            throw new IllegalStateException(
-                    "Cannot begin VEN registration cancellation in status="
-                            + registration.getStatus()
-            );
-        }
+        return registrationRepository.findById(registrationEntityId)
+                .filter(registration -> persistedRegistrationMatchesSession(registration, session))
+                .map(VenRegistration::getStatus)
+                .filter(status -> status == CANCELLING)
+                .isPresent();
     }
 
     @Transactional
@@ -78,12 +96,19 @@ public class VenRegistrationStateService {
             VenRegistration registration,
             OpenAdrSessionSnapshot session
     ) {
-        if (!Objects.equals(registration.getRegistrationId(), session.registrationId())
-                || !Objects.equals(registration.getVenId(), session.venId())) {
+        if (!persistedRegistrationMatchesSession(registration, session)) {
             throw new IllegalStateException(
                     "Persisted registration does not match OpenADR session snapshot"
             );
         }
+    }
+
+    private boolean persistedRegistrationMatchesSession(
+            VenRegistration registration, OpenAdrSessionSnapshot session
+    ) {
+        return Objects.equals(registration.getRegistrationId(), session.registrationId())
+                && Objects.equals(registration.getVenId(), session.venId()
+        );
     }
 
     @Transactional

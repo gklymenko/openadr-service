@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import static com.qcharge.openadr.LogMessage.COMPLETED_CANCEL_PARTY_REGISTRATION;
+
 /** Handles VTN-initiated registration commands received through polling. */
 @Slf4j
 @Component
@@ -24,18 +26,19 @@ public class RegistrationMessageHandler {
         lifecycleCoordinator.reregister(session);
     }
 
-    public boolean handleCancelPartyRegistration(
+    public RemoteCancellationDecision handleCancelPartyRegistration(
             OadrCancelPartyRegistrationType request, OpenAdrSessionSnapshot session
     ) {
-        if (!registrationService.acknowledgeCancelPartyRegistration(request, session)) {
-            return false;
+        RemoteCancellationDecision decision =
+                registrationService.prepareRemoteCancellation(request, session);
+
+        if (decision != RemoteCancellationDecision.ACCEPTED) {
+            return decision;
         }
 
         lifecycleCoordinator.acceptRemoteCancellation(session);
-        log.info(
-                "VTN-initiated registration cancellation completed. registrationId={}",
-                request.getRegistrationID()
-        );
-        return true;
+        registrationService.acknowledgeRemoteCancellation(request, session);
+        log.info(COMPLETED_CANCEL_PARTY_REGISTRATION, request.getRegistrationID());
+        return RemoteCancellationDecision.ACCEPTED;
     }
 }

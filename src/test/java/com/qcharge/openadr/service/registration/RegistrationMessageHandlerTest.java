@@ -11,8 +11,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,7 +33,7 @@ class RegistrationMessageHandlerTest {
 
         handler.handleRequestReregistration(request, session);
 
-        var order = org.mockito.Mockito.inOrder(
+        var order = inOrder(
                 registrationService,
                 lifecycleCoordinator
         );
@@ -47,13 +47,22 @@ class RegistrationMessageHandlerTest {
         OadrCancelPartyRegistrationType request =
                 new OadrCancelPartyRegistrationType();
         OpenAdrSessionSnapshot session = registeredSession();
-        when(registrationService.acknowledgeCancelPartyRegistration(request, session))
-                .thenReturn(true);
+        when(registrationService.prepareRemoteCancellation(request, session))
+                .thenReturn(RemoteCancellationDecision.ACCEPTED);
 
-        boolean cancelled = handler.handleCancelPartyRegistration(request, session);
+        RemoteCancellationDecision decision =
+                handler.handleCancelPartyRegistration(request, session);
 
-        assertTrue(cancelled);
-        verify(lifecycleCoordinator).acceptRemoteCancellation(session);
+        assertEquals(RemoteCancellationDecision.ACCEPTED, decision);
+        var order = inOrder(
+                registrationService,
+                lifecycleCoordinator
+        );
+        order.verify(registrationService)
+                .prepareRemoteCancellation(request, session);
+        order.verify(lifecycleCoordinator).acceptRemoteCancellation(session);
+        order.verify(registrationService)
+                .acknowledgeRemoteCancellation(request, session);
     }
 
     @Test
@@ -61,12 +70,32 @@ class RegistrationMessageHandlerTest {
         OadrCancelPartyRegistrationType request =
                 new OadrCancelPartyRegistrationType();
         OpenAdrSessionSnapshot session = registeredSession();
-        when(registrationService.acknowledgeCancelPartyRegistration(request, session))
-                .thenReturn(false);
+        when(registrationService.prepareRemoteCancellation(request, session))
+                .thenReturn(RemoteCancellationDecision.REJECTED_INVALID_ID);
 
-        boolean cancelled = handler.handleCancelPartyRegistration(request, session);
+        RemoteCancellationDecision decision =
+                handler.handleCancelPartyRegistration(request, session);
 
-        assertFalse(cancelled);
+        assertEquals(RemoteCancellationDecision.REJECTED_INVALID_ID, decision);
         verify(lifecycleCoordinator, never()).acceptRemoteCancellation(session);
+        verify(registrationService, never())
+                .acknowledgeRemoteCancellation(request, session);
+    }
+
+    @Test
+    void missingRegistrationIsIgnoredWithoutAcknowledgement() {
+        OadrCancelPartyRegistrationType request =
+                new OadrCancelPartyRegistrationType();
+        OpenAdrSessionSnapshot session = registeredSession();
+        when(registrationService.prepareRemoteCancellation(request, session))
+                .thenReturn(RemoteCancellationDecision.IGNORED_NOT_REGISTERED);
+
+        RemoteCancellationDecision decision =
+                handler.handleCancelPartyRegistration(request, session);
+
+        assertEquals(RemoteCancellationDecision.IGNORED_NOT_REGISTERED, decision);
+        verify(lifecycleCoordinator, never()).acceptRemoteCancellation(session);
+        verify(registrationService, never())
+                .acknowledgeRemoteCancellation(request, session);
     }
 }

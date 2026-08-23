@@ -74,8 +74,7 @@ public class OpenAdrSessionLifecycleCoordinator {
     }
 
     private void executeCancellation(
-            OpenAdrSessionSnapshot session,
-            CancellationFlow flow
+            OpenAdrSessionSnapshot session, CancellationFlow flow
     ) {
         lifecycleLock.lock();
         try {

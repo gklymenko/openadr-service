@@ -39,7 +39,10 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static com.qcharge.openadr.LogMessage.COMPLETED_OADR_QUERY_REGISTRATION;
+import static com.qcharge.openadr.LogMessage.ERROR_CANCEL_PARTY_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.FORCE_NEW_REGISTRATION;
+import static com.qcharge.openadr.LogMessage.IGNORE_CANCEL_PARTY_REGISTRATION;
+import static com.qcharge.openadr.LogMessage.INVALID_ID_CANCEL_PARTY_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.SEND_CANCEL_PARTY_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.SEND_CREATE_PARTY_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.SEND_OADR_QUERY_REGISTRATION;
@@ -248,27 +251,44 @@ public class RegistrationService {
         );
     }
 
-    public boolean acknowledgeCancelPartyRegistration(
+    public RemoteCancellationDecision prepareRemoteCancellation(
             OadrCancelPartyRegistrationType request, OpenAdrSessionSnapshot session
     ) {
         String requestRegistrationId = request.getRegistrationID();
 
-        log.info(
-                "Received oadrCancelPartyRegistration. registrationId={}",
-                requestRegistrationId
-        );
+        if (!session.registered() || !registrationStateService.hasCancellableRegistration(session)) {
+            log.warn(IGNORE_CANCEL_PARTY_REGISTRATION, requestRegistrationId);
+            return RemoteCancellationDecision.IGNORED_NOT_REGISTERED;
+        }
 
-        boolean registrationMatches = session.registered()
-                && Objects.equals(requestRegistrationId, session.registrationId())
+        boolean registrationMatches = Objects.equals(requestRegistrationId, session.registrationId())
                 && (!StringUtils.hasText(request.getVenID())
                 || Objects.equals(request.getVenID(), session.venId()));
 
-        int responseCode = registrationMatches ? OK : INVALID_ID;
-
-        if (registrationMatches) {
-            registrationStateService.beginCancellation(session);
+        if (!registrationMatches) {
+            sendCanceledPartyRegistration(request, session, INVALID_ID);
+            log.warn(INVALID_ID_CANCEL_PARTY_REGISTRATION, requestRegistrationId);
+            return RemoteCancellationDecision.REJECTED_INVALID_ID;
         }
 
+        if (!registrationStateService.tryBeginCancellation(session)) {
+            log.warn(ERROR_CANCEL_PARTY_REGISTRATION, requestRegistrationId);
+            return RemoteCancellationDecision.IGNORED_NOT_REGISTERED;
+        }
+
+        return RemoteCancellationDecision.ACCEPTED;
+    }
+
+    public void acknowledgeRemoteCancellation(
+            OadrCancelPartyRegistrationType request, OpenAdrSessionSnapshot session
+    ) {
+        sendCanceledPartyRegistration(request, session, OK);
+    }
+
+    private void sendCanceledPartyRegistration(
+            OadrCancelPartyRegistrationType request, OpenAdrSessionSnapshot session,
+            int responseCode
+    ) {
         EiResponseType eiResponse = Oadr20bResponseBuilders
                 .newOadr20bEiResponseBuilder(
                         request.getRequestID(),
@@ -280,7 +300,7 @@ public class RegistrationService {
                 Oadr20bEiRegisterPartyBuilders
                         .newOadr20bCanceledPartyRegistrationBuilder(
                                 eiResponse,
-                                requestRegistrationId,
+                                request.getRegistrationID(),
                                 session.venId()
                         )
                         .build();
@@ -290,17 +310,6 @@ public class RegistrationService {
                 response,
                 session
         );
-
-        if (!registrationMatches) {
-            log.warn(
-                    "Cannot cancel registration: registrationID does not " +
-                            "match the active registration. requested={}",
-                    requestRegistrationId
-            );
-            return false;
-        }
-
-        return true;
     }
 
     public void completeCancellation(OpenAdrSessionSnapshot session) {
