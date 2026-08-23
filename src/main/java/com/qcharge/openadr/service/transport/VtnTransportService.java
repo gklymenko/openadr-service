@@ -68,9 +68,7 @@ public class VtnTransportService {
             String xmlPayload = jaxb.marshal(jaxbElement, false);
 
             log.debug(
-                    "Sending OpenADR payload. operation={}, endpoint={}",
-                    operation.name(),
-                    operation.endpoint()
+                    "Sending OpenADR payload. operation={}, endpoint={}", operation.name(), operation.endpoint()
             );
 
             String xmlResponse = retryHandler.executeWithRetry(

@@ -5,7 +5,6 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledPartyRegistrationType;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.service.event.execution.EventExecutionCoordinator;
-import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
@@ -39,7 +38,6 @@ class RegistrationServiceCancellationTest {
     @Mock VenRegistrationRepository registrationRepository;
     @Mock VenRegistrationStateService registrationStateService;
     @Mock VtnTransportService transportService;
-    @Mock EventProtocolAdapter eventProtocolAdapter;
     @Mock EventExecutionCoordinator eventExecutionCoordinator;
     @Mock OpenAdrSessionProvider sessionProvider;
     @Mock ApplicationEventPublisher eventPublisher;
@@ -53,7 +51,6 @@ class RegistrationServiceCancellationTest {
                 registrationRepository,
                 registrationStateService,
                 transportService,
-                eventProtocolAdapter,
                 eventExecutionCoordinator,
                 sessionProvider,
                 eventPublisher

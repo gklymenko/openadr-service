@@ -3,7 +3,6 @@ package com.qcharge.openadr.service.registration;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.VenRegistration;
 import com.qcharge.openadr.model.enums.VenRegistrationStatus;
-import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiRegisterPartyBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EiResponseType;
@@ -11,29 +10,23 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledPartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatePartyRegistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedPartyRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrQueryRegistrationType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestReregistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrTransportType;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
 import com.qcharge.openadr.service.event.execution.EventExecutionCoordinator;
-import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
-import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
+import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.utility.RequestUtils;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -61,7 +54,6 @@ public class RegistrationService {
     private final VenRegistrationRepository registrationRepository;
     private final VenRegistrationStateService registrationStateService;
     private final VtnTransportService transportService;
-    private final EventProtocolAdapter eventProtocolAdapter;
     private final EventExecutionCoordinator eventExecutionCoordinator;
     private final OpenAdrSessionProvider sessionProvider;
     private final ApplicationEventPublisher eventPublisher;
@@ -81,9 +73,7 @@ public class RegistrationService {
 
         log.info(SEND_OADR_QUERY_REGISTRATION, requestId);
 
-        transportService.send(
-                OpenAdrOperations.QUERY_REGISTRATION, payload, session
-        );
+        transportService.send(OpenAdrOperations.QUERY_REGISTRATION, payload, session);
 
         log.info(COMPLETED_OADR_QUERY_REGISTRATION);
     }
@@ -327,49 +317,12 @@ public class RegistrationService {
         registration.setRequestedPollFrequency(duration);
 
         if (registration.getRegisteredAt() == null) {
-            registration.setRegisteredAt(nowUtc());
+            registration.setRegisteredAt(Instant.now());
         }
 
-        registration.setUpdatedAt(nowUtc());
+        registration.setUpdatedAt(Instant.now());
 
         return registrationRepository.save(registration);
-    }
-
-    public void requestAllEvents(@NotNull OpenAdrSessionSnapshot session, @NotBlank String requestId) {
-        String venId = session.venId();
-
-        OadrRequestEventType requestEvent = Oadr20bEiEventBuilders
-                .newOadrRequestEventBuilder(venId, requestId)
-                .build();
-
-        log.info("Sending oadrRequestEvent. venId={}, requestId={}", venId, requestId);
-
-        Object response = transportService.send(
-                OpenAdrOperations.REQUEST_EVENT, requestEvent, session
-        );
-
-        if (response instanceof OadrDistributeEventType distributeEvent) {
-            log.info("Received {} event(s) from oadrRequestEvent", distributeEvent.getOadrEvent().size());
-
-            eventProtocolAdapter.receive(distributeEvent, session);
-            return;
-        }
-
-        if (response instanceof OadrResponseType oadrResponse) {
-            log.info(
-                    "oadrRequestEvent returned response code={}",
-                    oadrResponse.getEiResponse() == null
-                            ? null
-                            : oadrResponse.getEiResponse()
-                            .getResponseCode()
-            );
-            return;
-        }
-
-        log.warn(
-                "Unexpected oadrRequestEvent response. type={}",
-                responseType(response)
-        );
     }
 
     private Optional<VenRegistration> findActiveRegistration() {
@@ -394,18 +347,9 @@ public class RegistrationService {
 
     private void markCancelled(VenRegistration registration) {
         registration.setStatus(VenRegistrationStatus.CANCELLED);
-        registration.setUpdatedAt(nowUtc());
+        registration.setUpdatedAt(Instant.now());
 
         registrationRepository.save(registration);
     }
 
-    private String responseType(Object response) {
-        return response == null
-                ? "null"
-                : response.getClass().getName();
-    }
-
-    private Instant nowUtc() {
-        return Instant.now();
-    }
 }

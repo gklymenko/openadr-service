@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.registration;
 
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
+import com.qcharge.openadr.service.event.EventRequestService;
 import com.qcharge.openadr.service.report.ReportRequestHandler;
 import com.qcharge.openadr.service.report.ReportService;
 import com.qcharge.openadr.utility.RequestUtils;
@@ -14,7 +15,7 @@ public class PostRegistrationBootstrapListener {
 
     private final ReportService reportService;
     private final ReportRequestHandler reportRequestHandler;
-    private final RegistrationService registrationService;
+    private final EventRequestService eventRequestService;
 
     @EventListener
     public void bootstrap(PostRegistrationBootstrapEvent event) {
@@ -22,6 +23,6 @@ public class PostRegistrationBootstrapListener {
 
         reportRequestHandler.handleRegisteredReport(registeredReport, event.session());
 
-        registrationService.requestAllEvents(event.session(), RequestUtils.newRequestId());
+        eventRequestService.requestAllEvents(event.session(), RequestUtils.newRequestId());
     }
 }

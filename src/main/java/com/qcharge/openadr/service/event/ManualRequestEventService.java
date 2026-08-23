@@ -21,7 +21,7 @@ public class ManualRequestEventService {
 
     private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
     private final EventPoller eventPoller;
-    private final RegistrationService registrationService;
+    private final EventRequestService eventRequestService;
     private final TaskScheduler openAdrTaskScheduler;
 
     public String requestEvents() {
@@ -53,7 +53,7 @@ public class ManualRequestEventService {
                     return;
                 }
 
-                registrationService.requestAllEvents(session, requestId);
+                eventRequestService.requestAllEvents(session, requestId);
             });
         } catch (RuntimeException failure) {
             log.error(

@@ -29,7 +29,7 @@ class ManualRequestEventServiceTest {
 
     @Mock OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
     @Mock EventPoller eventPoller;
-    @Mock RegistrationService registrationService;
+    @Mock EventRequestService eventRequestService;
     @Mock TaskScheduler taskScheduler;
     @Mock ScheduledFuture<?> scheduledFuture;
 
@@ -40,7 +40,7 @@ class ManualRequestEventServiceTest {
         service = new ManualRequestEventService(
                 lifecycleCoordinator,
                 eventPoller,
-                registrationService,
+                eventRequestService,
                 taskScheduler
         );
     }
@@ -68,7 +68,7 @@ class ManualRequestEventServiceTest {
         taskCaptor.getValue().run();
 
         verify(eventPoller).executeExclusivelyWithPolling(any(Runnable.class));
-        verify(registrationService).requestAllEvents(session, requestId);
+        verify(eventRequestService).requestAllEvents(session, requestId);
     }
 
     @Test
@@ -89,8 +89,7 @@ class ManualRequestEventServiceTest {
         service.requestEvents();
         taskCaptor.getValue().run();
 
-        verify(registrationService, never())
-                .requestAllEvents(any(), any());
+        verify(eventRequestService, never()).requestAllEvents(any(), any());
     }
 
     private OpenAdrSessionSnapshot registeredSession() {
