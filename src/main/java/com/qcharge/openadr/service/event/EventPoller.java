@@ -300,12 +300,12 @@ public class EventPoller {
                 log.warn("Received oadrCancelPartyRegistration. registrationId={}",
                         cancelRegistration.getRegistrationID());
 
-                registrationMessageHandler.handleCancelPartyRegistration(
+                boolean cancelled = registrationMessageHandler.handleCancelPartyRegistration(
                         cancelRegistration,
                         session
                 );
 
-                yield PollResult.STOP;
+                yield cancelled ? PollResult.STOP : PollResult.CONTINUE;
             }
 
             case OadrRequestReregistrationType requestReregistration -> {

@@ -164,6 +164,28 @@ class EventExecutionCoordinatorTest {
                 "event-1", ClearReason.CANCELLED);
     }
 
+    @Test
+    void registrationCancellationClearsAppliedEffectsAndDeletesAllEvents() {
+        DrEvent applied = event(1800L);
+        applied.setExecutionStatus(DrEvent.ExecutionStatus.APPLIED);
+        applied.setLastAppliedInterval(0);
+        applied.setAppliedAt(START);
+
+        DrEvent scheduled = event(1800L);
+        scheduled.setEventId("event-2");
+
+        when(repository.findAll()).thenReturn(List.of(applied, scheduled));
+
+        coordinator.clearDownstreamForRegistrationCancellation();
+
+        verify(executionPort).clearEvent(
+                "event-1", ClearReason.REGISTRATION_CANCELLED
+        );
+        verify(executionPort, never()).clearEvent(
+                "event-2", ClearReason.REGISTRATION_CANCELLED
+        );
+    }
+
     private DrEvent event(long durationSeconds) {
         DrEvent event = new DrEvent();
         event.setEventId("event-1");

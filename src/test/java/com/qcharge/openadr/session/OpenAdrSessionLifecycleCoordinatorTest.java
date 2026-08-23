@@ -212,6 +212,22 @@ class OpenAdrSessionLifecycleCoordinatorTest {
         verify(eventPublisher).publishEvent(new OpenAdrPollingStoppedEvent());
     }
 
+    @Test
+    void acceptedRemoteCancellationUsesSameLifecycleTransition() {
+        OpenAdrSessionSnapshot session = registeredSession(7, "REG-7");
+        OpenAdrSessionSnapshot bootstrap = bootstrapSession(8);
+
+        when(sessionProvider.current()).thenReturn(session);
+        when(sessionProvider.bootstrap()).thenReturn(bootstrap);
+
+        coordinator.acceptRemoteCancellation(session);
+
+        assertEquals(OpenAdrSessionState.CANCELLED, coordinator.state());
+        assertEquals(bootstrap, coordinator.currentSession());
+        verify(registrationService).completeCancellation(session);
+        verify(eventPublisher).publishEvent(new OpenAdrPollingStoppedEvent());
+    }
+
     private OpenAdrSessionSnapshot registeredSession(
             long generation,
             String registrationId

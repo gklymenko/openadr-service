@@ -35,6 +35,30 @@ public class EventExecutionCoordinator {
         events.forEach(event -> processSafely(event, now));
     }
 
+    /** Removes every persisted event and any downstream effect owned by this registration. */
+    public void clearDownstreamForRegistrationCancellation() {
+        List<DrEvent> events = eventService.findAll();
+
+        events.stream()
+                .filter(this::hasAppliedDownstreamEffect)
+                .forEach(event -> executionPort.clearEvent(
+                        event.getEventId(),
+                        EventExecutionPort.ClearReason.REGISTRATION_CANCELLED
+                ));
+
+        log.info(
+                "Cleared downstream effects for {} OpenADR event(s) after registration cancellation",
+                events.size()
+        );
+    }
+
+    private boolean hasAppliedDownstreamEffect(DrEvent event) {
+        return !event.isTestEvent()
+                && (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null)
+                && event.getExecutionStatus() != DrEvent.ExecutionStatus.COMPLETED
+                && event.getExecutionStatus() != DrEvent.ExecutionStatus.CANCELLED;
+    }
+
     private void processSafely(DrEvent event, Instant now) {
         try {
             advance(event, now);

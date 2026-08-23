@@ -11,6 +11,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -48,8 +50,9 @@ class RegistrationMessageHandlerTest {
         when(registrationService.acknowledgeCancelPartyRegistration(request, session))
                 .thenReturn(true);
 
-        handler.handleCancelPartyRegistration(request, session);
+        boolean cancelled = handler.handleCancelPartyRegistration(request, session);
 
+        assertTrue(cancelled);
         verify(lifecycleCoordinator).acceptRemoteCancellation(session);
     }
 
@@ -61,8 +64,9 @@ class RegistrationMessageHandlerTest {
         when(registrationService.acknowledgeCancelPartyRegistration(request, session))
                 .thenReturn(false);
 
-        handler.handleCancelPartyRegistration(request, session);
+        boolean cancelled = handler.handleCancelPartyRegistration(request, session);
 
+        assertFalse(cancelled);
         verify(lifecycleCoordinator, never()).acceptRemoteCancellation(session);
     }
 }

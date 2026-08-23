@@ -24,11 +24,11 @@ public class RegistrationMessageHandler {
         lifecycleCoordinator.reregister(session);
     }
 
-    public void handleCancelPartyRegistration(
+    public boolean handleCancelPartyRegistration(
             OadrCancelPartyRegistrationType request, OpenAdrSessionSnapshot session
     ) {
         if (!registrationService.acknowledgeCancelPartyRegistration(request, session)) {
-            return;
+            return false;
         }
 
         lifecycleCoordinator.acceptRemoteCancellation(session);
@@ -36,5 +36,6 @@ public class RegistrationMessageHandler {
                 "VTN-initiated registration cancellation completed. registrationId={}",
                 request.getRegistrationID()
         );
+        return true;
     }
 }

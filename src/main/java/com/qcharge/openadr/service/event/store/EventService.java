@@ -23,7 +23,12 @@ public class EventService {
         return repository.findAllByExecutionStatusIn(statuses);
     }
 
+    public List<DrEvent> findAll() {
+        return repository.findAll();
+    }
+
     public DrEvent save(DrEvent event) {
         return repository.save(event);
     }
+
 }

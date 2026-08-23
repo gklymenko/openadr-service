@@ -31,6 +31,7 @@ public class OpenAdrSessionLifecycleCoordinator {
     private volatile OpenAdrSessionSnapshot currentSession;
 
     private enum RegistrationFlow { REGISTER, REREGISTER, FORCED_NEW }
+    private enum CancellationFlow { VEN_INITIATED, VTN_INITIATED }
 
     public OpenAdrSessionLifecycleCoordinator(
             OpenAdrSessionProvider sessionProvider,
@@ -65,6 +66,17 @@ public class OpenAdrSessionLifecycleCoordinator {
     }
 
     public void cancel(@NonNull OpenAdrSessionSnapshot session) {
+        executeCancellation(session, CancellationFlow.VEN_INITIATED);
+    }
+
+    public void acceptRemoteCancellation(@NonNull OpenAdrSessionSnapshot session) {
+        executeCancellation(session, CancellationFlow.VTN_INITIATED);
+    }
+
+    private void executeCancellation(
+            OpenAdrSessionSnapshot session,
+            CancellationFlow flow
+    ) {
         lifecycleLock.lock();
         try {
             requireCurrent(session);
@@ -73,7 +85,7 @@ public class OpenAdrSessionLifecycleCoordinator {
             stopPolling();
 
             try {
-                registrationService.performCancelRegistration(session);
+                performCancellation(flow, session);
                 currentSession = sessionProvider.bootstrap();
                 transitionTo(OpenAdrSessionState.CANCELLED);
             } catch (RuntimeException failure) {
@@ -85,26 +97,15 @@ public class OpenAdrSessionLifecycleCoordinator {
         }
     }
 
-    public void acceptRemoteCancellation(OpenAdrSessionSnapshot session) {
-        Objects.requireNonNull(session, "session");
-
-        lifecycleLock.lock();
-        try {
-            requireCurrent(session);
-            requireRegisteredState();
-            transitionTo(OpenAdrSessionState.CANCELLING);
-            stopPolling();
-
-            try {
-                registrationService.performRemoteCancellation(session);
-                currentSession = sessionProvider.bootstrap();
-                transitionTo(OpenAdrSessionState.CANCELLED);
-            } catch (RuntimeException failure) {
-                transitionTo(OpenAdrSessionState.FAILED);
-                throw failure;
-            }
-        } finally {
-            lifecycleLock.unlock();
+    private void performCancellation(
+            CancellationFlow flow,
+            OpenAdrSessionSnapshot session
+    ) {
+        switch (flow) {
+            case VEN_INITIATED ->
+                    registrationService.performCancelRegistration(session);
+            case VTN_INITIATED ->
+                    registrationService.completeCancellation(session);
         }
     }
 

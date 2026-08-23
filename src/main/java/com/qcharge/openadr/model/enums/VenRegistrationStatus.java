@@ -1,5 +1,5 @@
 package com.qcharge.openadr.model.enums;
 
 public enum VenRegistrationStatus {
-    PENDING, REGISTERED, CANCELLED
+    PENDING, REGISTERED, CANCELLING, CANCELLED
 }

@@ -10,6 +10,7 @@ public interface EventExecutionPort {
     enum ClearReason {
         CANCELLED,
         COMPLETED,
-        IMPLICIT_CANCELLATION
+        IMPLICIT_CANCELLATION,
+        REGISTRATION_CANCELLED
     }
 }

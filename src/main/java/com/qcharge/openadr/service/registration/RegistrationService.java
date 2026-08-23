@@ -1,8 +1,6 @@
 package com.qcharge.openadr.service.registration;
 
-import com.qcharge.openadr.ApiMessage;
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.entity.VenRegistration;
 import com.qcharge.openadr.model.enums.VenRegistrationStatus;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
@@ -19,9 +17,8 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestReregistrationType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrTransportType;
-import com.qcharge.openadr.repository.OptScheduleRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
-import com.qcharge.openadr.repository.VenReportRepository;
+import com.qcharge.openadr.service.event.execution.EventExecutionCoordinator;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
@@ -58,10 +55,10 @@ public class RegistrationService {
 
     private final OpenAdrProperties properties;
     private final VenRegistrationRepository registrationRepository;
-    private final VenReportRepository venReportRepository;
-    private final OptScheduleRepository optScheduleRepository;
+    private final VenRegistrationStateService registrationStateService;
     private final VtnTransportService transportService;
     private final EventProtocolAdapter eventProtocolAdapter;
+    private final EventExecutionCoordinator eventExecutionCoordinator;
     private final OpenAdrSessionProvider sessionProvider;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -190,7 +187,7 @@ public class RegistrationService {
         OpenAdrSessionSnapshot registeredSession = sessionProvider.fromRegistration(registration);
 
         if (runFullBootstrap) {
-            eraseReportAndOptData();
+            registrationStateService.clearDependentRegistrationData();
             eventPublisher.publishEvent(new PostRegistrationBootstrapEvent(registeredSession));
         }
 
@@ -203,7 +200,7 @@ public class RegistrationService {
     }
 
     public void performCancelRegistration(OpenAdrSessionSnapshot session) {
-        VenRegistration registration = requireRegistration(session);
+        registrationStateService.beginCancellation(session);
 
         String requestId = RequestUtils.newRequestId();
 
@@ -211,20 +208,20 @@ public class RegistrationService {
                 Oadr20bEiRegisterPartyBuilders
                         .newOadr20bCancelPartyRegistrationBuilder(
                                 requestId,
-                                registration.getRegistrationId(),
-                                registration.getVenId()
+                                session.registrationId(),
+                                session.venId()
                         )
                         .build();
 
-        log.info(SEND_CANCEL_PARTY_REGISTRATION, registration.getVenId(), registration.getRegistrationId());
+        log.info(SEND_CANCEL_PARTY_REGISTRATION, session.venId(), session.registrationId());
 
         transportService.send(
                 OpenAdrOperations.CANCEL_PARTY_REGISTRATION, payload, session
         );
 
-        markCancelled(registration);
+        completeCancellation(session);
 
-        log.info(VEN_REGISTRATION_CANCEL_COMPLETED, registration.getRegistrationId());
+        log.info(VEN_REGISTRATION_CANCEL_COMPLETED, session.registrationId());
     }
 
     public void acknowledgeRequestReregistration(
@@ -254,8 +251,6 @@ public class RegistrationService {
     public boolean acknowledgeCancelPartyRegistration(
             OadrCancelPartyRegistrationType request, OpenAdrSessionSnapshot session
     ) {
-        Optional<VenRegistration> activeOptional = registrationFor(session);
-
         String requestRegistrationId = request.getRegistrationID();
 
         log.info(
@@ -263,23 +258,16 @@ public class RegistrationService {
                 requestRegistrationId
         );
 
-        boolean registrationMatches = activeOptional
-                .map(VenRegistration::getRegistrationId)
-                .filter(StringUtils::hasText)
-                .map(requestRegistrationId::equals)
-                .orElse(false);
+        boolean registrationMatches = session.registered()
+                && Objects.equals(requestRegistrationId, session.registrationId())
+                && (!StringUtils.hasText(request.getVenID())
+                || Objects.equals(request.getVenID(), session.venId()));
 
         int responseCode = registrationMatches ? OK : INVALID_ID;
 
-        String responseVenId = activeOptional
-                .map(VenRegistration::getVenId)
-                .filter(StringUtils::hasText)
-                .orElseGet(() -> {
-                    if (StringUtils.hasText(request.getVenID())) {
-                        return request.getVenID();
-                    }
-                    return session.venId();
-                });
+        if (registrationMatches) {
+            registrationStateService.beginCancellation(session);
+        }
 
         EiResponseType eiResponse = Oadr20bResponseBuilders
                 .newOadr20bEiResponseBuilder(
@@ -293,7 +281,7 @@ public class RegistrationService {
                         .newOadr20bCanceledPartyRegistrationBuilder(
                                 eiResponse,
                                 requestRegistrationId,
-                                responseVenId
+                                session.venId()
                         )
                         .build();
 
@@ -315,8 +303,9 @@ public class RegistrationService {
         return true;
     }
 
-    public void performRemoteCancellation(OpenAdrSessionSnapshot session) {
-        markCancelled(requireRegistration(session));
+    public void completeCancellation(OpenAdrSessionSnapshot session) {
+        eventExecutionCoordinator.clearDownstreamForRegistrationCancellation();
+        registrationStateService.completeCancellation(session);
     }
 
     private VenRegistration saveRegistration(
@@ -434,16 +423,6 @@ public class RegistrationService {
         log.warn(
                 "Unexpected oadrRequestEvent response. type={}",
                 responseType(response)
-        );
-    }
-
-    private void eraseReportAndOptData() {
-        venReportRepository.deleteAll();
-        optScheduleRepository.deleteAll();
-
-        log.info(
-                "Cleared VEN report and opt schedule state for " +
-                        "the new registration instance"
         );
     }
 
