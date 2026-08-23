@@ -252,8 +252,7 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
     }
 
     private void validatePollFrequency(
-            OadrCreatedPartyRegistrationType response,
-            String requestId
+            OadrCreatedPartyRegistrationType response, String requestId
     ) {
         if (response.getOadrRequestedOadrPollFreq() == null) {
             throw missing("oadrCreatedPartyRegistration.oadrRequestedOadrPollFreq", requestId);

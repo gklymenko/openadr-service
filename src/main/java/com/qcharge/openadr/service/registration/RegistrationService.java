@@ -317,20 +317,14 @@ public class RegistrationService {
                 existing != null
                         ? existing
                         : new VenRegistration();
-        String requestedPollFrequency = extractRequestedPollFrequency(response);
 
         registration.setVenId(response.getVenID());
         registration.setVtnId(response.getVtnID());
         registration.setRegistrationId(response.getRegistrationID());
         registration.setStatus(VenRegistrationStatus.REGISTERED);
 
-        /*
-         * If a re-registration response omits or contains an invalid polling
-         * frequency, retain the value previously provided by the VTN.
-         */
-        if (StringUtils.hasText(requestedPollFrequency)) {
-            registration.setRequestedPollFrequency(requestedPollFrequency);
-        }
+        String duration = response.getOadrRequestedOadrPollFreq().getDuration();
+        registration.setRequestedPollFrequency(duration);
 
         if (registration.getRegisteredAt() == null) {
             registration.setRegisteredAt(nowUtc());
@@ -339,56 +333,6 @@ public class RegistrationService {
         registration.setUpdatedAt(nowUtc());
 
         return registrationRepository.save(registration);
-    }
-
-    /**
-     * Reads the polling frequency assigned by the VTN.
-     * The Original ISO-8601 value is persisted, for example, PT10S or PT1M.
-     */
-    private String extractRequestedPollFrequency(OadrCreatedPartyRegistrationType response) {
-        if (response.getOadrRequestedOadrPollFreq() == null) {
-            log.error(
-                    "Protocol error: oadrCreatedPartyRegistration does not " +
-                            "contain oadrRequestedOadrPollFreq for HTTP Pull"
-            );
-            return null;
-        }
-
-        String value = response
-                .getOadrRequestedOadrPollFreq()
-                .getDuration();
-
-
-        if (!StringUtils.hasText(value)) {
-            log.error(
-                    "Protocol error: oadrRequestedOadrPollFreq duration " +
-                            "is empty"
-            );
-            return null;
-        }
-
-        try {
-            Duration parsed = Duration.parse(value);
-
-            if (parsed.isZero() || parsed.isNegative()) {
-                log.error(
-                        "Invalid oadrRequestedOadrPollFreq={}: duration " +
-                                "must be positive",
-                        value
-                );
-                return null;
-            }
-
-            return value;
-        } catch (RuntimeException exception) {
-            log.error(
-                    "Invalid oadrRequestedOadrPollFreq={}. " +
-                            "The value will not be persisted.",
-                    value,
-                    exception
-            );
-            return null;
-        }
     }
 
     public void requestAllEvents(@NotNull OpenAdrSessionSnapshot session, @NotBlank String requestId) {
@@ -463,11 +407,5 @@ public class RegistrationService {
 
     private Instant nowUtc() {
         return Instant.now();
-    }
-
-    private record RegistrationResult(
-            VenRegistration registration,
-            boolean newRegistrationInstance
-    ) {
     }
 }
