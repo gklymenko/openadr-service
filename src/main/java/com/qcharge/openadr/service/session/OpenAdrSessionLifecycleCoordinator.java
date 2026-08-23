@@ -53,10 +53,6 @@ public class OpenAdrSessionLifecycleCoordinator {
         executeRegistration(flow, session);
     }
 
-    public OpenAdrSessionSnapshot register() {
-        return executeRegistration(RegistrationFlow.REGISTER, snapshot());
-    }
-
     public OpenAdrSessionSnapshot forceNewRegistration() {
         return executeRegistration(RegistrationFlow.FORCED_NEW, snapshot());
     }

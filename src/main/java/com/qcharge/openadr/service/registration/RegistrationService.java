@@ -46,8 +46,9 @@ import static com.qcharge.openadr.LogMessage.INVALID_ID_CANCEL_PARTY_REGISTRATIO
 import static com.qcharge.openadr.LogMessage.SEND_CANCEL_PARTY_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.SEND_CREATE_PARTY_REGISTRATION;
 import static com.qcharge.openadr.LogMessage.SEND_OADR_QUERY_REGISTRATION;
+import static com.qcharge.openadr.LogMessage.VEN_NEW_REGISTRATION_COMPLETED;
 import static com.qcharge.openadr.LogMessage.VEN_REGISTRATION_CANCEL_COMPLETED;
-import static com.qcharge.openadr.LogMessage.VEN_REGISTRATION_COMPLETED;
+import static com.qcharge.openadr.LogMessage.VEN_REREGISTRATION_COMPLETED;
 import static com.qcharge.openadr.exceptions.OpenADRResponseCode.INVALID_ID;
 import static com.qcharge.openadr.exceptions.OpenADRResponseCode.OK;
 
@@ -88,46 +89,22 @@ public class RegistrationService {
     }
 
     public OpenAdrSessionSnapshot performRegistration() {
-        RegistrationResult result = registerNew();
-        return completeRegistration(result);
+        VenRegistration newRegistration = registerNew();
+        return completeRegistration(newRegistration);
     }
 
     public OpenAdrSessionSnapshot performReregistration(OpenAdrSessionSnapshot session) {
-        VenRegistration venRegistration = requireRegistration(session);
-        RegistrationResult result = reregister(venRegistration);
-        return completeRegistration(result);
-    }
+        VenRegistration existing = requireRegistration(session);
+        VenRegistration reregistered = reregister(existing);
 
-    /**
-     * Creates a completely new registration request without registrationID.
-     */
-    private RegistrationResult registerNew() {
-        OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
+        OpenAdrSessionSnapshot registeredSession = sessionProvider.fromRegistration(reregistered);
 
-        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(session);
+        log.info(
+                VEN_REREGISTRATION_COMPLETED, registeredSession.venId(), registeredSession.vtnId(),
+                registeredSession.registrationId(), registeredSession.pollFrequency()
+        );
 
-        VenRegistration registration = saveRegistration(response, null);
-
-        return new RegistrationResult(registration, true);
-    }
-
-    /**
-     * Re-registers using the VEN ID and registration ID stored in the database.
-     */
-    private RegistrationResult reregister(VenRegistration existing) {
-        OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(existing);
-
-        String previousRegistrationId = existing.getRegistrationId();
-
-        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(session);
-
-        String receivedRegistrationId = response.getRegistrationID();
-
-        boolean newRegistrationInstance = !Objects.equals(previousRegistrationId, receivedRegistrationId);
-
-        VenRegistration registration = saveRegistration(response, existing);
-
-        return new RegistrationResult(registration, newRegistrationInstance);
+        return registeredSession;
     }
 
     public OpenAdrSessionSnapshot performForcedNewRegistration() {
@@ -135,11 +112,33 @@ public class RegistrationService {
 
         Optional<VenRegistration> previousActive = findActiveRegistration();
 
-        RegistrationResult newRegistration = registerNew();
+        VenRegistration newRegistration = registerNew();
 
         previousActive.ifPresent(this::markCancelled);
 
         return completeRegistration(newRegistration);
+    }
+
+    /**
+     * Creates a completely new registration request without registrationID.
+     */
+    private VenRegistration registerNew() {
+        OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
+
+        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(session);
+
+        return saveRegistration(response, null);
+    }
+
+    /**
+     * Re-registers using the VEN ID and registration ID stored in the database.
+     */
+    private VenRegistration reregister(VenRegistration existing) {
+        OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(existing);
+
+        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(session);
+
+        return saveRegistration(response, existing);
     }
 
     private OadrCreatedPartyRegistrationType sendCreatePartyRegistration(OpenAdrSessionSnapshot session) {
@@ -182,21 +181,15 @@ public class RegistrationService {
      * the full metadata/event bootstrap is performed.
      * For an unchanged re-registration instance, polling is simply resumed.
      */
-    private OpenAdrSessionSnapshot completeRegistration(RegistrationResult result) {
-        VenRegistration registration = result.registration();
-
-        boolean runFullBootstrap = result.newRegistrationInstance();
-
+    private OpenAdrSessionSnapshot completeRegistration(VenRegistration registration) {
         OpenAdrSessionSnapshot registeredSession = sessionProvider.fromRegistration(registration);
 
-        if (runFullBootstrap) {
-            registrationStateService.clearDependentRegistrationData();
-            eventPublisher.publishEvent(new PostRegistrationBootstrapEvent(registeredSession));
-        }
+        registrationStateService.clearDependentRegistrationData();
+        eventPublisher.publishEvent(new PostRegistrationBootstrapEvent(registeredSession));
 
         log.info(
-                VEN_REGISTRATION_COMPLETED, registration.getVenId(), registration.getVtnId(),
-                registration.getRegistrationId(), runFullBootstrap, registeredSession.pollFrequency()
+                VEN_NEW_REGISTRATION_COMPLETED, registration.getVenId(), registration.getVtnId(),
+                registration.getRegistrationId(), registeredSession.pollFrequency()
         );
 
         return registeredSession;

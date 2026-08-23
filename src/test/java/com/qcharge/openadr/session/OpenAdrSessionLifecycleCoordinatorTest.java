@@ -87,18 +87,6 @@ class OpenAdrSessionLifecycleCoordinatorTest {
     }
 
     @Test
-    void registerUsesRegularRegistrationForUnregisteredSession() {
-        OpenAdrSessionSnapshot initialSession = bootstrapSession(1);
-        OpenAdrSessionSnapshot registeredSession = registeredSession(2, "REG-2");
-        when(sessionProvider.current()).thenReturn(initialSession);
-        when(registrationService.performRegistration()).thenReturn(registeredSession);
-
-        assertEquals(registeredSession, coordinator.register());
-
-        verify(registrationService).performRegistration();
-    }
-
-    @Test
     void forceNewRegistrationUsesForcedRegistrationFlow() {
         OpenAdrSessionSnapshot currentSession = registeredSession(1, "REG-1");
         OpenAdrSessionSnapshot registeredSession = registeredSession(2, "REG-2");

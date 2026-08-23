@@ -14,8 +14,11 @@ public class LogMessage {
     public static final String FAILED_VEN_BOOTSTRAP = "OpenADR VEN bootstrap failed";
 
     public static final String SEND_CREATE_PARTY_REGISTRATION = "Send oadrCreatePartyRegistration. venId={}, requestId={}, reRegistration={}";
-    public static final String VEN_REGISTRATION_COMPLETED = "VEN registration flow completed. venId={}, vtnId={}, " +
-            "registrationId={}, newRegistrationInstance={}, pollInterval={}";
+    public static final String VEN_NEW_REGISTRATION_COMPLETED = "VEN registration flow completed. venId={}, vtnId={}, " +
+            "registrationId={}, pollInterval={}";
+
+    public static final String VEN_REREGISTRATION_COMPLETED = "VEN re-registration flow completed. venId={}, vtnId={}, " +
+            "registrationId={}, pollInterval={}";
 
     public static final String SEND_CANCEL_PARTY_REGISTRATION = "Send oadrCancelPartyRegistration. venId={}, registrationId={}";
     public static final String VEN_REGISTRATION_CANCEL_COMPLETED = "VEN registration cancelled. registrationId={}";
