@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -74,6 +75,30 @@ class VenRegistrationStateServiceTest {
         );
         verify(registrationRepository, never()).findById(1L);
         verify(eventRepository, never()).deleteAll();
+    }
+
+    @Test
+    void tryBeginCancellationUsesTheSameAtomicReservation() {
+        OpenAdrSessionSnapshot session = registeredSession();
+        when(registrationRepository.transitionStatus(
+                eq(1L),
+                eq("VEN-1"),
+                eq("REG-1"),
+                eq(REGISTERED),
+                eq(CANCELLING),
+                any(Instant.class)
+        )).thenReturn(1);
+
+        assertTrue(service.tryBeginCancellation(session));
+
+        verify(registrationRepository).transitionStatus(
+                eq(1L),
+                eq("VEN-1"),
+                eq("REG-1"),
+                eq(REGISTERED),
+                eq(CANCELLING),
+                any(Instant.class)
+        );
     }
 
     @Test

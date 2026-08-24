@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -96,21 +97,15 @@ public class OpenAdrSessionProvider {
     }
 
     private Duration pollFrequency(String persistedValue) {
-        if (hasText(persistedValue)) {
-            try {
-                Duration duration = Duration.parse(persistedValue);
-                if (!duration.isZero() && !duration.isNegative()) {
-                    return duration;
-                }
-            } catch (RuntimeException exception) {
-                log.warn(
-                        "Cannot parse requestedPollFrequency={} for session snapshot",
-                        persistedValue,
-                        exception
-                );
-            }
+        try {
+            return Duration.parse(persistedValue);
+        } catch (DateTimeParseException exception) {
+            throw new IllegalStateException(
+                    "Persisted requestedPollFrequency is invalid: "
+                            + persistedValue,
+                    exception
+            );
         }
-        return configuredPollFrequency();
     }
 
     private Duration configuredPollFrequency() {

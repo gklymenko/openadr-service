@@ -30,11 +30,14 @@ public class VenRegistrationStateService {
 
     @Transactional
     public void beginCancellation(OpenAdrSessionSnapshot session) {
-        if (!tryBeginCancellation(session)) {
-            throw new IllegalStateException(
-                    "Cannot begin cancellation for an inactive VEN registration"
-            );
+        if (!reserveCancellation(session)) {
+            throw new IllegalStateException("Cannot begin cancellation for an inactive VEN registration");
         }
+    }
+
+    @Transactional
+    public boolean tryBeginCancellation(OpenAdrSessionSnapshot session) {
+        return reserveCancellation(session);
     }
 
     @Transactional(readOnly = true)
@@ -50,8 +53,7 @@ public class VenRegistrationStateService {
                 .isPresent();
     }
 
-    @Transactional
-    public boolean tryBeginCancellation(OpenAdrSessionSnapshot session) {
+    private boolean reserveCancellation(OpenAdrSessionSnapshot session) {
         if (session.registrationEntityId() == null) {
             return false;
         }

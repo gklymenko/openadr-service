@@ -14,6 +14,7 @@ import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.time.format.DateTimeParseException;
 
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.hasText;
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.invalidData;
@@ -255,7 +256,9 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
             OadrCreatedPartyRegistrationType response, String requestId
     ) {
         if (response.getOadrRequestedOadrPollFreq() == null) {
-            throw missing("oadrCreatedPartyRegistration.oadrRequestedOadrPollFreq", requestId);
+            throw missing(
+                    "oadrCreatedPartyRegistration.oadrRequestedOadrPollFreq", requestId
+            );
         }
 
         String value = requireText(
@@ -264,13 +267,20 @@ public class RegistrationValidator implements OpenAdrExchangeValidator {
                 requestId
         );
 
+        final Duration duration;
+
         try {
-            Duration duration = Duration.parse(value);
-            if (duration.isZero() || duration.isNegative()) {
-                throw invalidData("oadrRequestedOadrPollFreq must be positive", requestId);
-            }
-        } catch (RuntimeException exception) {
-            throw invalidData("Invalid oadrRequestedOadrPollFreq: " + value, requestId);
+            duration = Duration.parse(value);
+        } catch (DateTimeParseException exception) {
+            throw invalidData(
+                    "Invalid oadrRequestedOadrPollFreq: " + value, requestId
+            );
+        }
+
+        if (duration.isZero() || duration.isNegative()) {
+            throw invalidData(
+                    "oadrRequestedOadrPollFreq must be positive", requestId
+            );
         }
     }
 }

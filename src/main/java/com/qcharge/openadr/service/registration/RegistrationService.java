@@ -102,7 +102,7 @@ public class RegistrationService {
 
         Optional<VenRegistration> previousActive = findActiveRegistration();
 
-        VenRegistration newRegistration = registerNew();
+        VenRegistration newRegistration = registerForcedNew();
 
         previousActive.ifPresent(this::markCancelled);
 
@@ -115,9 +115,25 @@ public class RegistrationService {
     private VenRegistration registerNew() {
         OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
 
-        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(session);
+        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(
+                session, session.venId(), null
+        );
 
-        return saveRegistration(response, null);
+        return saveRegistration(response, Optional.empty());
+    }
+
+    /**
+     * Rule 406 / N1_0060: a new registration initiated while already
+     * registered must omit both venID and registrationID.
+     */
+    private VenRegistration registerForcedNew() {
+        OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
+
+        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(
+                session, null, null
+        );
+
+        return saveRegistration(response, Optional.empty());
     }
 
     /**
@@ -126,20 +142,22 @@ public class RegistrationService {
     private VenRegistration reregister(VenRegistration existing) {
         OpenAdrSessionSnapshot session = sessionProvider.fromRegistration(existing);
 
-        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(session);
+        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(
+                session, session.venId(), session.registrationId()
+        );
 
-        return saveRegistration(response, existing);
+        return saveRegistration(response, Optional.of(existing));
     }
 
-    private OadrCreatedPartyRegistrationType sendCreatePartyRegistration(OpenAdrSessionSnapshot session) {
-        String venId = session.venId();
-        String registrationId = session.registrationId();
+    private OadrCreatedPartyRegistrationType sendCreatePartyRegistration(
+            OpenAdrSessionSnapshot session, String requestVenId, String requestRegistrationId
+    ) {
         String requestId = RequestUtils.newRequestId();
 
         var builder = Oadr20bEiRegisterPartyBuilders
                 .newOadr20bCreatePartyRegistrationBuilder(
                         requestId,
-                        venId,
+                        requestVenId,
                         properties.getVen().getProfile()
                 )
                 .withOadrTransportName(OadrTransportType.SIMPLE_HTTP)
@@ -148,8 +166,8 @@ public class RegistrationService {
                 .withOadrXmlSignature(false)
                 .withOadrHttpPullModel(true);
 
-        if (StringUtils.hasText(registrationId)) {
-            builder.withRegistrationId(registrationId);
+        if (StringUtils.hasText(requestRegistrationId)) {
+            builder.withRegistrationId(requestRegistrationId);
         }
 
         if (StringUtils.hasText(properties.getVen().getName())) {
@@ -158,7 +176,7 @@ public class RegistrationService {
 
         OadrCreatePartyRegistrationType payload = builder.build();
 
-        log.info(SEND_CREATE_PARTY_REGISTRATION, venId, requestId, StringUtils.hasText(registrationId));
+        log.info(SEND_CREATE_PARTY_REGISTRATION, requestVenId, requestId, StringUtils.hasText(requestRegistrationId));
 
         return transportService.send(
                 OpenAdrOperations.CREATE_PARTY_REGISTRATION, payload, session
@@ -289,9 +307,7 @@ public class RegistrationService {
                         .build();
 
         transportService.send(
-                OpenAdrOperations.CANCELED_PARTY_REGISTRATION_RESPONSE,
-                response,
-                session
+                OpenAdrOperations.CANCELED_PARTY_REGISTRATION_RESPONSE, response, session
         );
     }
 
@@ -301,20 +317,17 @@ public class RegistrationService {
     }
 
     private VenRegistration saveRegistration(
-            OadrCreatedPartyRegistrationType response, VenRegistration existing
+            OadrCreatedPartyRegistrationType response, Optional<VenRegistration> existing
     ) {
-        VenRegistration registration =
-                existing != null
-                        ? existing
-                        : new VenRegistration();
-
+        VenRegistration registration = existing.orElseGet(VenRegistration::new);
         registration.setVenId(response.getVenID());
         registration.setVtnId(response.getVtnID());
         registration.setRegistrationId(response.getRegistrationID());
         registration.setStatus(VenRegistrationStatus.REGISTERED);
 
-        String duration = response.getOadrRequestedOadrPollFreq().getDuration();
-        registration.setRequestedPollFrequency(duration);
+        registration.setRequestedPollFrequency(
+                response.getOadrRequestedOadrPollFreq().getDuration()
+        );
 
         if (registration.getRegisteredAt() == null) {
             registration.setRegisteredAt(Instant.now());

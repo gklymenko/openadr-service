@@ -72,19 +72,6 @@ class OpenAdrSessionProviderTest {
     }
 
     @Test
-    void invalidPersistedPollFrequencyUsesConfiguredFallback() {
-        VenRegistration registration = new VenRegistration();
-        registration.setId(42L);
-        registration.setVenId("ASSIGNED-VEN");
-        registration.setRegistrationId("REG-42");
-        registration.setRequestedPollFrequency("invalid");
-
-        OpenAdrSessionSnapshot snapshot = provider.fromRegistration(registration);
-
-        assertEquals(Duration.ofSeconds(30), snapshot.pollFrequency());
-    }
-
-    @Test
     void generationIsStableForSamePersistedRegistrationVersion() {
         VenRegistration registration = registration(
                 Instant.parse("2026-07-30T08:00:00Z")

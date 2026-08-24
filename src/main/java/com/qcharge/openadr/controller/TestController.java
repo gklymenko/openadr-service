@@ -28,12 +28,10 @@ public class TestController {
 
     @PostMapping("/test/request-event")
     public ResponseEntity<RequestEventAcceptedResponse> requestEvent() {
+        log.warn("TEST ENDPOINT: manually triggering asynchronously oadrRequestEvent");
         String requestId = manualRequestEventService.requestEvents();
 
-        log.warn(
-                "TEST ENDPOINT: asynchronously queued oadrRequestEvent. requestId={}",
-                requestId
-        );
+        log.warn("TEST ENDPOINT: asynchronously queued oadrRequestEvent. requestId={}", requestId);
 
         return ResponseEntity.accepted().body(
                 new RequestEventAcceptedResponse(requestId, "ACCEPTED")

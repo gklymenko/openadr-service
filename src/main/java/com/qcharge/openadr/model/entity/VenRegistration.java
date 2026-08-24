@@ -44,7 +44,8 @@ public class VenRegistration {
     @Enumerated(EnumType.STRING)
     private VenRegistrationStatus status = VenRegistrationStatus.PENDING;
 
-    @Column(name = "requested_poll_frequency", length = 64)
+    @NotBlank
+    @Column(name = "requested_poll_frequency", nullable = false, length = 64)
     private String requestedPollFrequency;
 
     @Column(name = "registered_at")

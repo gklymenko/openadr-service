@@ -42,4 +42,6 @@ public class LogMessage {
     public static final String SEND_OPENADR_REQUEST = "Send {} venId={}, registrationId={}";
     public static final String REQUEST_EVENT_EMPTY = "oadrRequestEvent completed without distributed events";
 
+    public static final String FAIL_REQUEST_EVENT = "Manual oadrRequestEvent failed. requestId={}, generation={}";
+
 }

@@ -80,7 +80,14 @@ public class OpenAdrSessionLifecycleCoordinator {
             stopPolling();
 
             try {
-                performCancellation(flow, session);
+
+                switch (flow) {
+                    case VEN_INITIATED ->
+                            registrationService.performCancelRegistration(session);
+                    case VTN_INITIATED ->
+                            registrationService.completeCancellation(session);
+                }
+
                 currentSession = sessionProvider.bootstrap();
                 transitionTo(OpenAdrSessionState.CANCELLED);
             } catch (RuntimeException failure) {
@@ -89,18 +96,6 @@ public class OpenAdrSessionLifecycleCoordinator {
             }
         } finally {
             lifecycleLock.unlock();
-        }
-    }
-
-    private void performCancellation(
-            CancellationFlow flow,
-            OpenAdrSessionSnapshot session
-    ) {
-        switch (flow) {
-            case VEN_INITIATED ->
-                    registrationService.performCancelRegistration(session);
-            case VTN_INITIATED ->
-                    registrationService.completeCancellation(session);
         }
     }
 
@@ -185,7 +180,7 @@ public class OpenAdrSessionLifecycleCoordinator {
 
             requireValidFlow(flow, requestedSession);
 
-            OpenAdrSessionState targetState = before.registered()
+            OpenAdrSessionState targetState = flow == RegistrationFlow.REREGISTER
                     ? OpenAdrSessionState.REREGISTERING
                     : OpenAdrSessionState.REGISTERING;
 

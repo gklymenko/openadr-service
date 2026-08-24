@@ -60,7 +60,7 @@ public class EventPoller {
     private volatile Duration pollInterval;
 
     public void start(Duration initialPollInterval) {
-        pollInterval = sanitizePollInterval(initialPollInterval);
+        pollInterval = initialPollInterval;
         running = true;
 
         cancelCurrentTask();
@@ -86,22 +86,6 @@ public class EventPoller {
         cancelCurrentTask();
 
         log.info("OpenADR polling stopped");
-    }
-
-    public void updatePollInterval(Duration newPollInterval) {
-        Duration sanitized = sanitizePollInterval(newPollInterval);
-
-        if (sanitized.equals(pollInterval)) {
-            return;
-        }
-
-        log.info("Updating OpenADR poll interval from {} to {}", pollInterval, sanitized);
-        pollInterval = sanitized;
-
-        if (running) {
-            cancelCurrentTask();
-            scheduleNextPoll(delayWithJitter());
-        }
     }
 
     /**
@@ -139,8 +123,7 @@ public class EventPoller {
         } catch (OpenAdrApplicationException applicationError) {
             if (session == null) {
                 log.error(
-                        "OpenADR application error occurred before a registered "
-                                + "polling session was captured",
+                        "OpenADR application error occurred before a registered polling session was captured",
                         applicationError
                 );
             } else {
@@ -155,15 +138,6 @@ public class EventPoller {
                 scheduleNextPoll(delayWithJitter());
             }
         }
-    }
-
-    void handlePollingApplicationError(
-            OpenAdrApplicationException applicationError
-    ) {
-        handlePollingApplicationError(
-                applicationError,
-                lifecycleCoordinator.requireRegisteredSession()
-        );
     }
 
     void handlePollingApplicationError(
@@ -405,14 +379,6 @@ public class EventPoller {
                 .nextLong(0, jitter.toMillis() + 1);
 
         return pollInterval.plusMillis(jitterMillis);
-    }
-
-    private Duration sanitizePollInterval(Duration requested) {
-        if (requested == null || requested.isZero() || requested.isNegative()) {
-            return Duration.ofSeconds(properties.getTransport().getPollIntervalSeconds());
-        }
-
-        return requested;
     }
 
     private void cancelCurrentTask() {

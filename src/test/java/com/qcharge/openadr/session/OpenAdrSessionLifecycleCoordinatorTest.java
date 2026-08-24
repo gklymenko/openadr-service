@@ -91,7 +91,14 @@ class OpenAdrSessionLifecycleCoordinatorTest {
         OpenAdrSessionSnapshot currentSession = registeredSession(1, "REG-1");
         OpenAdrSessionSnapshot registeredSession = registeredSession(2, "REG-2");
         when(sessionProvider.current()).thenReturn(currentSession);
-        when(registrationService.performForcedNewRegistration()).thenReturn(registeredSession);
+        when(registrationService.performForcedNewRegistration())
+                .thenAnswer(invocation -> {
+                    assertEquals(
+                            OpenAdrSessionState.REGISTERING,
+                            coordinator.state()
+                    );
+                    return registeredSession;
+                });
 
         assertEquals(registeredSession, coordinator.forceNewRegistration());
 

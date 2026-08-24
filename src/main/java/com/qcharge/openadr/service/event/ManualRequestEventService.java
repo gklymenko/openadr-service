@@ -1,6 +1,5 @@
 package com.qcharge.openadr.service.event;
 
-import com.qcharge.openadr.service.registration.RegistrationService;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.utility.RequestUtils;
@@ -11,7 +10,8 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.UUID;
+
+import static com.qcharge.openadr.LogMessage.FAIL_REQUEST_EVENT;
 
 @Slf4j
 @Service
@@ -25,8 +25,7 @@ public class ManualRequestEventService {
     private final TaskScheduler openAdrTaskScheduler;
 
     public String requestEvents() {
-        OpenAdrSessionSnapshot session =
-                lifecycleCoordinator.requireRegisteredSession();
+        OpenAdrSessionSnapshot session = lifecycleCoordinator.requireRegisteredSession();
         String requestId = RequestUtils.newRequestId();
 
         openAdrTaskScheduler.schedule(
@@ -38,30 +37,21 @@ public class ManualRequestEventService {
     }
 
     private void executeRequest(
-            OpenAdrSessionSnapshot session,
-            String requestId
+            OpenAdrSessionSnapshot session, String requestId
     ) {
         try {
             eventPoller.executeExclusivelyWithPolling(() -> {
-                if (!lifecycleCoordinator.isActive(session)) {
-                    log.warn(
-                            "Skipping manual oadrRequestEvent for inactive session. "
-                                    + "requestId={}, generation={}",
-                            requestId,
-                            session.generation()
-                    );
-                    return;
+                if (lifecycleCoordinator.isActive(session)) {
+                    eventRequestService.requestAllEvents(session, requestId);
                 }
 
-                eventRequestService.requestAllEvents(session, requestId);
+                log.warn(
+                        "Skipping manual oadrRequestEvent for inactive session. requestId={}, generation={}",
+                        requestId, session.generation()
+                );
             });
-        } catch (RuntimeException failure) {
-            log.error(
-                    "Manual oadrRequestEvent failed. requestId={}, generation={}",
-                    requestId,
-                    session.generation(),
-                    failure
-            );
+        } catch (RuntimeException ex) {
+            log.error(FAIL_REQUEST_EVENT, requestId, session.generation(), ex);
         }
     }
 }
