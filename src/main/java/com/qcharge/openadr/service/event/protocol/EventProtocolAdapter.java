@@ -8,6 +8,7 @@ import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
+import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.command.EventOptType;
 import com.qcharge.openadr.service.event.processing.EventCancellationService;
@@ -24,14 +25,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashSet;
 import java.util.Set;
 
+import static com.qcharge.openadr.LogMessage.IGNORE_EMPTY_EVENT_ENTRY;
+
 /** OpenADR XML boundary: converts oadrDistributeEvent into application commands and responses. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class EventProtocolAdapter {
-
-    private static final String RESPONSE_REQUIRED_ALWAYS = "always";
-
     private final EventProcessor eventProcessor;
     private final EventCancellationService cancellationService;
     private final VtnTransportService transportService;
@@ -53,15 +53,28 @@ public class EventProtocolAdapter {
         Set<String> receivedEventIds = new HashSet<>();
 
         for (OadrEvent event : distributeEvent.getOadrEvent()) {
+            if (event == null) {
+                log.warn(IGNORE_EMPTY_EVENT_ENTRY, requestId);
+                continue;
+            }
+
             EventProcessingResult result = processEvent(event, receivedEventIds, session.venId());
+
             if (!requiresResponse(event)) {
                 continue;
             }
-            EventResponse eventResponse = Oadr20bEiEventBuilders
-                    .newOadr20bCreatedEventEventResponseBuilder(
-                            result.eventId(), result.modificationNumber(), requestId,
-                            result.responseCode(), protocolOptType(result.optType()))
-                    .build();
+
+            EventResponse eventResponse =
+                    Oadr20bEiEventBuilders
+                            .newOadr20bCreatedEventEventResponseBuilder(
+                                    result.eventId(),
+                                    result.modificationNumber(),
+                                    requestId,
+                                    result.responseCode(),
+                                    protocolOptType(result.optType())
+                            )
+                            .build();
+
             responseBuilder.addEventResponse(eventResponse);
             responseCount++;
         }
@@ -78,16 +91,11 @@ public class EventProtocolAdapter {
     }
 
     private boolean requiresResponse(OadrEvent event) {
-        return event != null
-                && event.getOadrResponseRequired() != null
-                && RESPONSE_REQUIRED_ALWAYS.equalsIgnoreCase(
-                        String.valueOf(event.getOadrResponseRequired()));
+        return ResponseRequiredType.ALWAYS == event.getOadrResponseRequired();
     }
 
     private EventProcessingResult processEvent(
-            OadrEvent source,
-            Set<String> receivedEventIds,
-            String venId
+            OadrEvent source, Set<String> receivedEventIds, String venId
     ) {
         String eventId = commandMapper.eventIdOf(source);
         long modificationNumber = commandMapper.modificationNumberOf(source);

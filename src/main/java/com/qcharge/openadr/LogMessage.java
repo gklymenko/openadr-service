@@ -58,4 +58,6 @@ public class LogMessage {
 
     public static final String VTN_QUEUE_EMPTY = "VTN queue is empty after {} poll(s)";
 
+    public static final String IGNORE_EMPTY_EVENT_ENTRY = "Ignoring null oadrEvent entry in oadrDistributeEvent. requestId={}";
+
 }

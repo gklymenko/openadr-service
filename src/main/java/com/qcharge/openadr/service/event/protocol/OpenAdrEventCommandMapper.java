@@ -3,6 +3,7 @@ package com.qcharge.openadr.service.event.protocol;
 import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.oadr20b.ei.EiEventSignalType;
 import com.qcharge.openadr.model.oadr20b.ei.EiTargetType;
+import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
 import com.qcharge.openadr.model.oadr20b.ei.IntervalType;
 import com.qcharge.openadr.model.oadr20b.ei.PayloadFloatType;
 import com.qcharge.openadr.model.oadr20b.ei.SignalPayloadType;
@@ -52,27 +53,25 @@ public class OpenAdrEventCommandMapper {
     }
 
     public String eventIdOf(OadrEvent source) {
-        return source != null
-                && source.getEiEvent() != null
+        return source.getEiEvent() != null
                 && source.getEiEvent().getEventDescriptor() != null
-                ? source.getEiEvent().getEventDescriptor().getEventID() : null;
+                ? source.getEiEvent().getEventDescriptor().getEventID()
+                : null;
     }
 
     public long modificationNumberOf(OadrEvent source) {
-        return source != null
-                && source.getEiEvent() != null
+        return source.getEiEvent() != null
                 && source.getEiEvent().getEventDescriptor() != null
-                ? source.getEiEvent().getEventDescriptor().getModificationNumber() : 0L;
+                ? source.getEiEvent().getEventDescriptor().getModificationNumber()
+                : 0L;
     }
 
-    private com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType requireDescriptor(
-            OadrEvent source
-    ) {
-        if (source == null
-                || source.getEiEvent() == null
+    private EventDescriptorType requireDescriptor(OadrEvent source) {
+        if (source.getEiEvent() == null
                 || source.getEiEvent().getEventDescriptor() == null) {
             throw complianceError("eventDescriptor is required");
         }
+
         return source.getEiEvent().getEventDescriptor();
     }
 
