@@ -21,16 +21,32 @@ public class EventValidator implements OpenAdrExchangeValidator {
 
     @Override
     public boolean supports(OpenAdrExchangeContext<?, ?> context) {
-        return context.operation() == OpenAdrOperations.REQUEST_EVENT
-                || context.operation() == OpenAdrOperations.CREATED_EVENT
-                || context.operation() == OpenAdrOperations.POLL
-                && context.response() instanceof OadrDistributeEventType;
+        if (context.operation() == OpenAdrOperations.REQUEST_EVENT
+                || context.operation() == OpenAdrOperations.CREATED_EVENT) {
+            return true;
+        }
+
+        return context.operation() == OpenAdrOperations.POLL
+                && (
+                context.response() instanceof OadrDistributeEventType
+                        || context.response() instanceof OadrResponseType
+        );
     }
 
     @Override
     public void validate(OpenAdrExchangeContext<?, ?> context) {
         if (context.response() instanceof OadrDistributeEventType response) {
             validateDistributeEvent(context, response);
+            return;
+        }
+
+        if (context.request() instanceof OadrPollType
+                && context.response() instanceof OadrResponseType response) {
+            requireEiResponse(
+                    response.getEiResponse(),
+                    "oadrResponse",
+                    null
+            );
             return;
         }
 

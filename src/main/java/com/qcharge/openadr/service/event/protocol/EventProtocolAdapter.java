@@ -51,6 +51,7 @@ public class EventProtocolAdapter {
 
         int responseCount = 0;
         Set<String> receivedEventIds = new HashSet<>();
+
         for (OadrEvent event : distributeEvent.getOadrEvent()) {
             EventProcessingResult result = processEvent(event, receivedEventIds, session.venId());
             if (!requiresResponse(event)) {

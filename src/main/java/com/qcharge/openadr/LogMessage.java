@@ -44,4 +44,18 @@ public class LogMessage {
 
     public static final String FAIL_REQUEST_EVENT = "Manual oadrRequestEvent failed. requestId={}, generation={}";
 
+    public static final String POLLING_STARTED = "OpenADR polling started. interval={}";
+    public static final String POLLING_STOPPED = "OpenADR polling stopped";
+    public static final String POLLING_STOPPED_ON_MAX_LIMIT = "Stopped polling after reaching max queue drain limit: {}";
+    public static final String POLL_CYCLE_FAILED = "OpenADR poll cycle failed";
+
+    public static final String POLL_CYCLE_FAILED_BY_VTN_RESPONSE = "OpenADR poll operation failed. operation={}, " +
+            "responseCode={}, requestId={}, action={}";
+
+    public static final String VTN_REQUIRES_VEN_RE_REGISTRATION = "VTN requires VEN re-registration. operation={}, responseCode={}, requestId={}";
+
+    public static final String SENDING_OADR_POLL = "Sending oadrPoll. venId={}";
+
+    public static final String VTN_QUEUE_EMPTY = "VTN queue is empty after {} poll(s)";
+
 }

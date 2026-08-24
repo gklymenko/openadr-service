@@ -27,15 +27,25 @@ import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.Trigger;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static com.qcharge.openadr.LogMessage.POLLING_STARTED;
+import static com.qcharge.openadr.LogMessage.POLLING_STOPPED;
+import static com.qcharge.openadr.LogMessage.POLLING_STOPPED_ON_MAX_LIMIT;
+import static com.qcharge.openadr.LogMessage.POLL_CYCLE_FAILED;
+import static com.qcharge.openadr.LogMessage.POLL_CYCLE_FAILED_BY_VTN_RESPONSE;
 import static com.qcharge.openadr.LogMessage.PULLED_CANCEL_PARTY_REGISTRATION;
+import static com.qcharge.openadr.LogMessage.SENDING_OADR_POLL;
+import static com.qcharge.openadr.LogMessage.VTN_QUEUE_EMPTY;
+import static com.qcharge.openadr.LogMessage.VTN_REQUIRES_VEN_RE_REGISTRATION;
 
 @Slf4j
 @Component
@@ -54,38 +64,31 @@ public class EventPoller {
     private final RegistrationMessageHandler registrationMessageHandler;
 
     private final ReentrantLock pollLock = new ReentrantLock();
-
-    private volatile ScheduledFuture<?> scheduledTask;
-    private volatile boolean running;
-    private volatile Duration pollInterval;
+    private final Object schedulingMonitor = new Object();
+    private ScheduledFuture<?> scheduledTask;
 
     public void start(Duration initialPollInterval) {
-        pollInterval = initialPollInterval;
-        running = true;
+        Duration pollInterval = requirePositivePollInterval(initialPollInterval);
 
-        cancelCurrentTask();
-        scheduleNextPoll(Duration.ZERO);
-
-        /*
-         * When registration restart is triggered by a payload received inside
-         * the current poll cycle, its finally block will schedule the next poll.
-         */
-        if (pollLock.isHeldByCurrentThread()) {
-            log.info(
-                    "OpenADR polling interval restored inside active poll cycle. interval={}",
-                    pollInterval
+        synchronized (schedulingMonitor) {
+            cancelCurrentTask();
+            scheduledTask = Objects.requireNonNull(
+                    openAdrTaskScheduler.schedule(
+                            this::runPollCycle, pollingTrigger(pollInterval)
+                    ),
+                    "OpenADR polling task was not scheduled"
             );
-            return;
         }
 
-        log.info("OpenADR polling started. interval={}", pollInterval);
+        log.info(POLLING_STARTED, pollInterval);
     }
 
     public void stop() {
-        running = false;
-        cancelCurrentTask();
+        synchronized (schedulingMonitor) {
+            cancelCurrentTask();
+        }
 
-        log.info("OpenADR polling stopped");
+        log.info(POLLING_STOPPED);
     }
 
     /**
@@ -105,13 +108,8 @@ public class EventPoller {
     }
 
     private void runPollCycle() {
-        if (!running) {
-            return;
-        }
-
         if (!pollLock.tryLock()) {
             log.warn("Skipping OpenADR poll cycle because previous cycle is still running");
-            scheduleNextPoll(delayWithJitter());
             return;
         }
 
@@ -130,39 +128,27 @@ public class EventPoller {
                 handlePollingApplicationError(applicationError, session);
             }
         } catch (Exception e) {
-            log.error("OpenADR poll cycle failed", e);
+            log.error(POLL_CYCLE_FAILED, e);
         } finally {
             pollLock.unlock();
-
-            if (running) {
-                scheduleNextPoll(delayWithJitter());
-            }
         }
     }
 
-    void handlePollingApplicationError(
-            OpenAdrApplicationException applicationError,
-            OpenAdrSessionSnapshot failedSession
+    private void handlePollingApplicationError(
+            OpenAdrApplicationException applicationError, OpenAdrSessionSnapshot failedSession
     ) {
-        if (applicationError.getAction()
-                != ApplicationErrorAction.REQUIRE_REREGISTRATION) {
+        if (applicationError.getAction() != ApplicationErrorAction.REQUIRE_REREGISTRATION) {
             log.error(
-                    "OpenADR poll operation failed. operation={}, "
-                            + "responseCode={}, requestId={}, action={}",
-                    applicationError.getOperationName(),
-                    applicationError.getResponseCode(),
-                    applicationError.getRequestId(),
-                    applicationError.getAction(),
-                    applicationError
+                    POLL_CYCLE_FAILED_BY_VTN_RESPONSE,
+                    applicationError.getOperationName(), applicationError.getResponseCode(),
+                    applicationError.getRequestId(), applicationError.getAction(), applicationError
             );
             return;
         }
 
         log.warn(
-                "VTN requires VEN re-registration. operation={}, "
-                        + "responseCode={}, requestId={}",
-                applicationError.getOperationName(),
-                applicationError.getResponseCode(),
+                VTN_REQUIRES_VEN_RE_REGISTRATION,
+                applicationError.getOperationName(), applicationError.getResponseCode(),
                 applicationError.getRequestId()
         );
 
@@ -182,16 +168,16 @@ public class EventPoller {
             PollResult result = handlePollResponse(exchange);
 
             if (result == PollResult.QUEUE_EMPTY) {
-                log.debug("VTN queue is empty after {} poll(s)", iteration);
+                log.debug(VTN_QUEUE_EMPTY, iteration);
                 return;
             }
 
-            if (result == PollResult.STOP) {
+            if (result == PollResult.ABORT_CYCLE) {
                 return;
             }
         }
 
-        log.warn("Stopped polling after reaching max queue drain limit: {}", maxIterations);
+        log.warn(POLLING_STOPPED_ON_MAX_LIMIT, maxIterations);
     }
 
     private PollExchange sendPoll(OpenAdrSessionSnapshot session) {
@@ -200,7 +186,7 @@ public class EventPoller {
                 .withSchemaVersion(properties.getVen().getProfile())
                 .build();
 
-        log.debug("Sending oadrPoll. venId={}", session.venId());
+        log.debug(SENDING_OADR_POLL, session.venId());
 
         return new PollExchange(
                 session,
@@ -210,38 +196,31 @@ public class EventPoller {
 
     private PollResult handlePollResponse(PollExchange exchange) {
         return lifecycleCoordinator.executeIfActive(
-                exchange.session(),
-                () -> handleActivePollResponse(exchange)
+                exchange.session(), () -> handleActivePollResponse(exchange)
         ).orElseGet(() -> {
             log.info(
-                    "Ignoring poll response from inactive OpenADR session. "
-                            + "generation={}",
+                    "Ignoring poll response from inactive OpenADR session. generation={}",
                     exchange.session().generation()
             );
-            return PollResult.STOP;
+            return PollResult.ABORT_CYCLE;
         });
     }
 
     private PollResult handleActivePollResponse(PollExchange exchange) {
-        Object response = exchange.response();
-        if (response == null) {
-            log.warn("VTN returned empty response to oadrPoll");
-            return PollResult.STOP;
-        }
-
         try {
-            return dispatchPollResponse(exchange.session(), response);
+
+            return dispatchPollResponse(exchange.session(), exchange.response());
+
         } catch (RuntimeException failure) {
-            return handleApplicationFailure(exchange.session(), response, failure);
+            return handleApplicationFailure(exchange.session(), exchange.response(), failure);
         }
     }
 
     private PollResult dispatchPollResponse(
-            OpenAdrSessionSnapshot session,
-            Object response
+            OpenAdrSessionSnapshot session, Object response
     ) {
         return switch (response) {
-            case OadrResponseType oadrResponse -> handleOadrResponse(oadrResponse);
+            case OadrResponseType ignored -> PollResult.QUEUE_EMPTY;
 
             case OadrDistributeEventType distributeEvent -> {
                 log.info("Received oadrDistributeEvent. events={}", distributeEvent.getOadrEvent().size());
@@ -281,20 +260,18 @@ public class EventPoller {
 
                 yield decision == RemoteCancellationDecision.REJECTED_INVALID_ID
                         ? PollResult.CONTINUE
-                        : PollResult.STOP;
+                        : PollResult.ABORT_CYCLE;
             }
 
             case OadrRequestReregistrationType requestReregistration -> {
                 log.warn("Received oadrRequestReregistration. venId={}", requestReregistration.getVenID());
-
                 registrationMessageHandler.handleRequestReregistration(requestReregistration, session);
-
-                yield PollResult.STOP;
+                yield PollResult.ABORT_CYCLE;
             }
 
             default -> {
                 log.warn("Unsupported oadrPoll response type: {}", response.getClass().getName());
-                yield PollResult.STOP;
+                yield PollResult.ABORT_CYCLE;
             }
         };
     }
@@ -334,68 +311,57 @@ public class EventPoller {
         return PollResult.CONTINUE;
     }
 
-    private record PollExchange(
-            OpenAdrSessionSnapshot session,
-            Object response
-    ) {
+    private Trigger pollingTrigger(Duration pollInterval) {
+        return context -> {
+            Instant lastCompletion = context.lastCompletion();
+
+            if (lastCompletion == null) {
+                return context.getClock().instant();
+            }
+
+            // Schedule relative to completion, not start time. A slow HTTP exchange therefore delays the next poll
+            // instead of creating overlapping polls.
+            return lastCompletion
+                    .plus(pollInterval)
+                    .plus(randomJitter());
+        };
     }
 
-    private PollResult handleOadrResponse(OadrResponseType response) {
-        String code = response.getEiResponse().getResponseCode();
+    private Duration randomJitter() {
+        long maxJitterMillis = maxJitter().toMillis();
 
-        if ("200".equals(code)) {
-            log.debug("oadrPoll returned oadrResponse 200. Queue is empty.");
-            return PollResult.QUEUE_EMPTY;
+        if (maxJitterMillis <= 0) {
+            return Duration.ZERO;
         }
 
-        log.warn(
-                "oadrPoll returned non-200 oadrResponse. code={}, description={}",
-                code,
-                response.getEiResponse().getResponseDescription()
-        );
-
-        return PollResult.QUEUE_EMPTY;
-    }
-
-    private void scheduleNextPoll(Duration delay) {
-        if (!running) {
-            return;
-        }
-
-        scheduledTask = openAdrTaskScheduler.schedule(
-                this::runPollCycle,
-                Instant.now().plus(delay)
+        return Duration.ofMillis(
+                ThreadLocalRandom.current().nextLong(maxJitterMillis + 1)
         );
     }
 
-    private Duration delayWithJitter() {
-        Duration jitter = maxJitter();
-
-        if (jitter.isZero() || jitter.isNegative()) {
-            return pollInterval;
+    private Duration requirePositivePollInterval(Duration pollInterval) {
+        if (pollInterval == null
+                || pollInterval.isZero()
+                || pollInterval.isNegative()) {
+            throw new IllegalArgumentException(
+                    "OpenADR poll interval must be positive"
+            );
         }
 
-        long jitterMillis = ThreadLocalRandom.current()
-                .nextLong(0, jitter.toMillis() + 1);
-
-        return pollInterval.plusMillis(jitterMillis);
+        return pollInterval;
     }
 
     private void cancelCurrentTask() {
         ScheduledFuture<?> task = scheduledTask;
 
         if (task != null) {
+            // Cancel future executions without interrupting an in-flight HTTP exchange.
+            // Interrupting transport code may leave the protocol outcome unknown. The
+            // completed response is still checked against the active session before use.
             task.cancel(false);
             scheduledTask = null;
         }
     }
-
-    private enum PollResult {
-        CONTINUE,
-        QUEUE_EMPTY,
-        STOP
-    }
-
     private int maxQueueDrainPolls() {
         return properties.getTransport().getMaxPollDrainIterations();
     }
@@ -403,4 +369,17 @@ public class EventPoller {
     private Duration maxJitter() {
         return Duration.ofSeconds(properties.getTransport().getMaxPollJitterSeconds());
     }
+
+    private record PollExchange(
+            OpenAdrSessionSnapshot session,
+            Object response
+    ) {
+    }
+
+    private enum PollResult {
+        CONTINUE,
+        QUEUE_EMPTY,
+        ABORT_CYCLE
+    }
+
 }
