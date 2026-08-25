@@ -40,7 +40,7 @@ public class EventPayloadMapper {
         target.setEventId(source.eventId());
         target.setModificationNumber(Math.toIntExact(source.modificationNumber()));
         EventStatus status = source.status();
-        target.setStatus(status);
+        target.setVenStatus(status);
         target.setVtnStatus(status);
         target.setOptType(optType);
         target.setPriority(source.priority());

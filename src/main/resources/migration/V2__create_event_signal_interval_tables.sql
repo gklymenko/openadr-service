@@ -10,6 +10,7 @@ CREATE TABLE dr_event_signal (
                                  item_base_type    VARCHAR(128)   NULL,
                                  item_units        VARCHAR(64)    NULL,
                                  si_scale_code     VARCHAR(32)    NULL,
+                                 selected_for_execution BOOLEAN NOT NULL DEFAULT FALSE,
                                  CONSTRAINT fk_dr_event_signal_event
                                      FOREIGN KEY (event_id) REFERENCES dr_event (id),
                                  CONSTRAINT uk_dr_event_signal_event_signal_id

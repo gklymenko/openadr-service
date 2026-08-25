@@ -43,6 +43,8 @@ import static com.qcharge.openadr.LogMessage.POLLING_STOPPED_ON_MAX_LIMIT;
 import static com.qcharge.openadr.LogMessage.POLL_CYCLE_FAILED;
 import static com.qcharge.openadr.LogMessage.POLL_CYCLE_FAILED_BY_VTN_RESPONSE;
 import static com.qcharge.openadr.LogMessage.PULLED_CANCEL_PARTY_REGISTRATION;
+import static com.qcharge.openadr.LogMessage.PULLED_REQUEST_RE_REGISTRATION;
+import static com.qcharge.openadr.LogMessage.PULLED_UNSUPPORTED_TYPE;
 import static com.qcharge.openadr.LogMessage.SENDING_OADR_POLL;
 import static com.qcharge.openadr.LogMessage.VTN_QUEUE_EMPTY;
 import static com.qcharge.openadr.LogMessage.VTN_REQUIRES_VEN_RE_REGISTRATION;
@@ -264,13 +266,13 @@ public class EventPoller {
             }
 
             case OadrRequestReregistrationType requestReregistration -> {
-                log.warn("Received oadrRequestReregistration. venId={}", requestReregistration.getVenID());
+                log.warn(PULLED_REQUEST_RE_REGISTRATION, requestReregistration.getVenID());
                 registrationMessageHandler.handleRequestReregistration(requestReregistration, session);
                 yield PollResult.ABORT_CYCLE;
             }
 
             default -> {
-                log.warn("Unsupported oadrPoll response type: {}", response.getClass().getName());
+                log.warn(PULLED_UNSUPPORTED_TYPE, response.getClass().getName());
                 yield PollResult.ABORT_CYCLE;
             }
         };

@@ -76,7 +76,7 @@ class DrEventCancellationTest extends AbstractOadrTest {
         verify(repository).save(captor.capture());
         DrEvent cancelled = captor.getValue();
         assertEquals(EventCancellationType.IMPLICIT, cancelled.getCancellationType());
-        assertEquals(EventStatus.CANCELLED, cancelled.getStatus());
+        assertEquals(EventStatus.CANCELLED, cancelled.getVenStatus());
         assertEquals(EventExecutionStatus.CANCELLED, cancelled.getExecutionStatus());
         assertEquals(cancelled.getCancellationRequestedAt(), cancelled.getCancellationEffectiveAt());
         verify(transportService, never()).send(any(), any(), any());
@@ -85,7 +85,7 @@ class DrEventCancellationTest extends AbstractOadrTest {
     @Test
     void implicitCancellationOfAppliedEventSchedulesRandomizedTermination() {
         DrEvent event = knownEvent(EventExecutionStatus.APPLIED);
-        event.setStatus(EventStatus.ACTIVE);
+        event.setVenStatus(EventStatus.ACTIVE);
         event.setStartAfterSeconds(120L);
         Instant before = Instant.now();
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
@@ -94,7 +94,7 @@ class DrEventCancellationTest extends AbstractOadrTest {
 
         assertEquals(EventCancellationType.IMPLICIT, event.getCancellationType());
         assertEquals(EventExecutionStatus.CANCEL_PENDING, event.getExecutionStatus());
-        assertEquals(EventStatus.ACTIVE, event.getStatus());
+        assertEquals(EventStatus.ACTIVE, event.getVenStatus());
         assertNotNull(event.getCancellationEffectiveAt());
         assertFalse(event.getCancellationRequestedAt().isBefore(before));
         long terminationOffset = Duration.between(
@@ -116,7 +116,7 @@ class DrEventCancellationTest extends AbstractOadrTest {
         descriptor.setEventStatus(EventStatusEnumeratedType.CANCELLED);
 
         DrEvent event = knownEvent(EventExecutionStatus.APPLIED);
-        event.setStatus(EventStatus.ACTIVE);
+        event.setVenStatus(EventStatus.ACTIVE);
         event.setStartAfterSeconds(120L);
         when(repository.findByEventId("Event_939393")).thenReturn(Optional.of(event));
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of());
@@ -139,7 +139,7 @@ class DrEventCancellationTest extends AbstractOadrTest {
         DrEvent event = new DrEvent();
         event.setEventId("Event_939393");
         event.setModificationNumber(0);
-        event.setStatus(EventStatus.FAR);
+        event.setVenStatus(EventStatus.FAR);
         event.setVtnStatus(EventStatus.FAR);
         event.setExecutionStatus(executionStatus);
         event.setOptType(EventOptType.OPT_IN);

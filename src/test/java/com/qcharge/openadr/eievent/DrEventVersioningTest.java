@@ -179,7 +179,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
         DrEvent event = new DrEvent();
         event.setEventId("Event_939393");
         event.setModificationNumber(modificationNumber);
-        event.setStatus(EventStatus.FAR);
+        event.setVenStatus(EventStatus.FAR);
         event.setOptType(EventOptType.OPT_IN);
         return event;
     }

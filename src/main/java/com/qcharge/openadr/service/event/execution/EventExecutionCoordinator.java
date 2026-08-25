@@ -86,11 +86,11 @@ public class EventExecutionCoordinator {
         }
 
         EventStatus calculatedStatus = timeline.statusAt(event, now);
-        boolean statusChanged = event.getStatus() != calculatedStatus;
+        boolean statusChanged = event.getVenStatus() != calculatedStatus;
         if (statusChanged) {
             log.info("OpenADR event status transition. eventId={}, from={}, to={}",
-                    event.getEventId(), event.getStatus(), calculatedStatus);
-            event.setStatus(calculatedStatus);
+                    event.getEventId(), event.getVenStatus(), calculatedStatus);
+            event.setVenStatus(calculatedStatus);
         }
         if (calculatedStatus == EventStatus.COMPLETED) {
             complete(event, now);
@@ -139,7 +139,7 @@ public class EventExecutionCoordinator {
                             : EventExecutionPort.ClearReason.CANCELLED;
             executionPort.clearEvent(event.getEventId(), reason);
         }
-        event.setStatus(EventStatus.CANCELLED);
+        event.setVenStatus(EventStatus.CANCELLED);
         event.setVtnStatus(EventStatus.CANCELLED);
         event.setExecutionStatus(EventExecutionStatus.CANCELLED);
         event.setCompletedAt(now);

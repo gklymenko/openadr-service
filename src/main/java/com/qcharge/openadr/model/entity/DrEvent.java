@@ -23,7 +23,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,14 +53,20 @@ public class DrEvent {
     @Column(name = "row_version", nullable = false)
     private Long rowVersion = 0L;
 
-    @Column(name = "status", nullable = false)
+    //Current effective VEN status based on time and local lifecycle, EventExecutionCoordinator
+    @Column(name = "ven_status", nullable = false)
     @Enumerated(EnumType.STRING)
-    private EventStatus status;
+    private EventStatus venStatus;
 
+    /**
+     * Authoritative lifecycle status reported by, or inferred from,
+     * the latest complete VTN event polling synchronization.
+     */
     @Column(name = "vtn_status", nullable = false)
     @Enumerated(EnumType.STRING)
     private EventStatus vtnStatus;
 
+    //Internal state of applying the event to downstream systems
     @Column(name = "execution_status", nullable = false)
     @Enumerated(EnumType.STRING)
     private EventExecutionStatus executionStatus = EventExecutionStatus.RECEIVED;

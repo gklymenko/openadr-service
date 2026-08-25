@@ -54,7 +54,7 @@ class EventExecutionCoordinatorTest {
 
         coordinator.processAt(START.minusSeconds(301));
 
-        assertEquals(EventStatus.FAR, event.getStatus());
+        assertEquals(EventStatus.FAR, event.getVenStatus());
         assertEquals(EventExecutionStatus.SCHEDULED, event.getExecutionStatus());
         verify(executionPort, never()).applyInterval(any());
     }
@@ -66,10 +66,10 @@ class EventExecutionCoordinatorTest {
         when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(event));
 
         coordinator.processAt(START.minusSeconds(60));
-        assertEquals(EventStatus.NEAR, event.getStatus());
+        assertEquals(EventStatus.NEAR, event.getVenStatus());
 
         coordinator.processAt(START);
-        assertEquals(EventStatus.ACTIVE, event.getStatus());
+        assertEquals(EventStatus.ACTIVE, event.getVenStatus());
         assertEquals(EventExecutionStatus.APPLIED, event.getExecutionStatus());
         assertEquals(0, event.getLastAppliedInterval());
         verify(executionPort).applyInterval(new EventIntervalExecution(
@@ -93,7 +93,7 @@ class EventExecutionCoordinatorTest {
 
         coordinator.processAt(START.plusSeconds(1800));
 
-        assertEquals(EventStatus.COMPLETED, event.getStatus());
+        assertEquals(EventStatus.COMPLETED, event.getVenStatus());
         assertEquals(EventExecutionStatus.COMPLETED, event.getExecutionStatus());
         assertEquals(START.plusSeconds(1800), event.getCompletedAt());
         verify(executionPort).clearEvent("event-1", ClearReason.COMPLETED);
@@ -106,7 +106,7 @@ class EventExecutionCoordinatorTest {
 
         coordinator.processAt(START.plusSeconds(3600));
 
-        assertEquals(EventStatus.ACTIVE, event.getStatus());
+        assertEquals(EventStatus.ACTIVE, event.getVenStatus());
         assertEquals(1, event.getLastAppliedInterval());
         verify(executionPort, never()).clearEvent(any(), any());
     }
@@ -120,7 +120,7 @@ class EventExecutionCoordinatorTest {
         coordinator.processAt(START);
         coordinator.processAt(START.plusSeconds(1800));
 
-        assertEquals(EventStatus.COMPLETED, event.getStatus());
+        assertEquals(EventStatus.COMPLETED, event.getVenStatus());
         assertEquals(EventExecutionStatus.COMPLETED, event.getExecutionStatus());
         assertEquals(0, event.getLastAppliedInterval());
         verify(executionPort, never()).applyInterval(any());
@@ -130,7 +130,7 @@ class EventExecutionCoordinatorTest {
     @Test
     void cancellationPendingKeepsAppliedIntervalUntilEffectiveTime() {
         DrEvent event = event(1800L);
-        event.setStatus(EventStatus.ACTIVE);
+        event.setVenStatus(EventStatus.ACTIVE);
         event.setExecutionStatus(EventExecutionStatus.CANCEL_PENDING);
         event.setLastAppliedInterval(0);
         event.setAppliedAt(START);
@@ -141,7 +141,7 @@ class EventExecutionCoordinatorTest {
 
         coordinator.processAt(START.plusSeconds(159L));
 
-        assertEquals(EventStatus.ACTIVE, event.getStatus());
+        assertEquals(EventStatus.ACTIVE, event.getVenStatus());
         assertEquals(EventExecutionStatus.CANCEL_PENDING, event.getExecutionStatus());
         verify(executionPort, never()).clearEvent(any(), any());
         verify(executionPort, never()).applyInterval(any());
@@ -150,7 +150,7 @@ class EventExecutionCoordinatorTest {
     @Test
     void cancellationPendingIsClearedAndFinalizedAtEffectiveTime() {
         DrEvent event = event(1800L);
-        event.setStatus(EventStatus.ACTIVE);
+        event.setVenStatus(EventStatus.ACTIVE);
         event.setExecutionStatus(EventExecutionStatus.CANCEL_PENDING);
         event.setLastAppliedInterval(0);
         event.setAppliedAt(START);
@@ -161,7 +161,7 @@ class EventExecutionCoordinatorTest {
 
         coordinator.processAt(START.plusSeconds(160L));
 
-        assertEquals(EventStatus.CANCELLED, event.getStatus());
+        assertEquals(EventStatus.CANCELLED, event.getVenStatus());
         assertEquals(EventExecutionStatus.CANCELLED, event.getExecutionStatus());
         assertEquals(START.plusSeconds(160L), event.getCompletedAt());
         verify(executionPort).clearEvent(
@@ -193,7 +193,7 @@ class EventExecutionCoordinatorTest {
     private DrEvent event(long durationSeconds) {
         DrEvent event = new DrEvent();
         event.setEventId("event-1");
-        event.setStatus(EventStatus.FAR);
+        event.setVenStatus(EventStatus.FAR);
         event.setVtnStatus(EventStatus.FAR);
         event.setExecutionStatus(EventExecutionStatus.SCHEDULED);
         event.setOptType(EventOptType.OPT_IN);

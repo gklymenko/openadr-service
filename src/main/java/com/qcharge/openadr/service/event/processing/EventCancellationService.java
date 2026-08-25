@@ -34,11 +34,14 @@ public class EventCancellationService {
 
     public void request(DrEvent event, EventCancellationType type) {
         if (event.getExecutionStatus() == EventExecutionStatus.CANCEL_PENDING
-                || event.getExecutionStatus() == EventExecutionStatus.CANCELLED) {
+                || event.getExecutionStatus() == EventExecutionStatus.CANCELLED
+        ) {
             event.setVtnStatus(EventStatus.CANCELLED);
+
             if (event.getCancellationType() == null) {
                 event.setCancellationType(type);
             }
+
             eventService.save(event);
             return;
         }
@@ -58,7 +61,7 @@ public class EventCancellationService {
         if (active) {
             event.setExecutionStatus(EventExecutionStatus.CANCEL_PENDING);
         } else {
-            event.setStatus(EventStatus.CANCELLED);
+            event.setVenStatus(EventStatus.CANCELLED);
             event.setExecutionStatus(EventExecutionStatus.CANCELLED);
             event.setCompletedAt(requestedAt);
         }
@@ -76,11 +79,13 @@ public class EventCancellationService {
                 .forEach(event -> {
                     request(event, EventCancellationType.IMPLICIT);
                     log.info(
-                            "Implicitly cancelled OpenADR event omitted from snapshot. eventId={}, effectiveAt={}",
+                            "Implicitly cancelled OpenADR event omitted from oadrDistributeEvent snapshot. eventId={}, effectiveAt={}",
                             event.getEventId(), event.getCancellationEffectiveAt());
                 });
     }
 
+    // Rule 65.When an event has a positive startAfter randomization window and is cancelled—explicitly or implicitly—the
+    // VEN must randomize when it terminates the active event within: 0 <= terminationOffset <= startAfter
     private long randomOffset(Long windowSeconds) {
         return windowSeconds == null || windowSeconds <= 0L
                 ? 0L

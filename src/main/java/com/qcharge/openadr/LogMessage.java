@@ -39,6 +39,10 @@ public class LogMessage {
     public static final String ERROR_CANCEL_PARTY_REGISTRATION = "Ignoring oadrCancelPartyRegistration because the registration is no longer active. registrationId={}";
     public static final String COMPLETED_CANCEL_PARTY_REGISTRATION = "VTN-initiated registration cancellation completed. registrationId={}";
 
+    public static final String PULLED_REQUEST_RE_REGISTRATION = "Pulled oadrRequestReregistration. venId={}";
+
+    public static final String PULLED_UNSUPPORTED_TYPE = "Pulled unsupported oadrPoll response type: {}";
+
     public static final String SEND_OPENADR_REQUEST = "Send {} venId={}, registrationId={}";
     public static final String REQUEST_EVENT_EMPTY = "oadrRequestEvent completed without distributed events";
 

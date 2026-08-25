@@ -147,7 +147,7 @@ public class EventProcessor {
         aggregate.setPriority(event.priority());
         aggregate.setTestEvent(existing != null ? existing.isTestEvent() : event.testEvent());
         if (existing == null) {
-            aggregate.setStatus(EventStatus.COMPLETED);
+            aggregate.setVenStatus(EventStatus.COMPLETED);
             aggregate.setOptType(EventOptType.OPT_OUT);
             aggregate.setExecutionStatus(EventExecutionStatus.COMPLETED);
             payloadMapper.initializeTerminalEvent(aggregate, event);

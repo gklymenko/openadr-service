@@ -1,2 +1,0 @@
-ALTER TABLE dr_event
-    ADD COLUMN test_event BOOLEAN NOT NULL DEFAULT FALSE AFTER priority;
