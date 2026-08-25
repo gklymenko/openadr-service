@@ -1,7 +1,7 @@
 package com.qcharge.openadr.support;
 
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.EventPolicyService;
 import com.qcharge.openadr.service.event.mapping.EventEntityMapper;
 import com.qcharge.openadr.service.event.mapping.EventPayloadMapper;
 import com.qcharge.openadr.service.event.processing.EventCancellationService;
@@ -12,7 +12,7 @@ import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
 import com.qcharge.openadr.service.event.store.EventService;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.transport.VtnTransportService;
-import com.qcharge.openadr.service.validation.EventValidator;
+import com.qcharge.openadr.service.validation.EventEntryValidator;
 
 import java.time.Clock;
 
@@ -25,7 +25,7 @@ public final class EventProtocolTestComponents {
     public static EventProtocolAdapter protocolAdapter(
             DrEventRepository repository,
             VtnTransportService transportService,
-            EventValidationService validationService,
+            EventPolicyService validationService,
             EventResourceResolver resourceResolver
     ) {
         return protocolAdapter(
@@ -41,7 +41,7 @@ public final class EventProtocolTestComponents {
     public static EventProtocolAdapter protocolAdapter(
             DrEventRepository repository,
             VtnTransportService transportService,
-            EventValidationService validationService,
+            EventPolicyService validationService,
             EventResourceResolver resourceResolver,
             Clock clock
     ) {
@@ -54,7 +54,7 @@ public final class EventProtocolTestComponents {
     public static EventProtocolAdapter protocolAdapter(
             DrEventRepository repository,
             VtnTransportService transportService,
-            EventValidationService validationService,
+            EventPolicyService validationService,
             EventResourceResolver resourceResolver,
             Clock clock,
             OpenAdrEventCommandMapper commandMapper
@@ -79,7 +79,7 @@ public final class EventProtocolTestComponents {
                 processor,
                 cancellationService,
                 transportService,
-                new EventValidator(),
+                new EventEntryValidator(),
                 commandMapper
         );
     }

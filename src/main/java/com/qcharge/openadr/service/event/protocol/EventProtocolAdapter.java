@@ -19,7 +19,7 @@ import com.qcharge.openadr.service.event.processing.EventProcessor;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
-import com.qcharge.openadr.service.validation.EventValidator;
+import com.qcharge.openadr.service.validation.EventEntryValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
@@ -44,7 +44,7 @@ public class EventProtocolAdapter {
     private final EventProcessor eventProcessor;
     private final EventCancellationService cancellationService;
     private final VtnTransportService transportService;
-    private final EventValidator eventValidator;
+    private final EventEntryValidator eventEntryValidator;
     private final OpenAdrEventCommandMapper commandMapper;
 
     @Transactional
@@ -110,7 +110,7 @@ public class EventProtocolAdapter {
             OadrEvent source, Set<String> receivedEventIds, String venId
     ) {
         try {
-            eventValidator.validateEvent(source);
+            eventEntryValidator.validate(source);
 
             EventDescriptorType descriptor = source.getEiEvent().getEventDescriptor();
             String eventId = descriptor.getEventID();

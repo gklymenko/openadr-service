@@ -6,7 +6,7 @@ import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.service.event.EventValidationException;
-import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.EventPolicyService;
 import com.qcharge.openadr.model.enums.event.EventOptType;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.model.enums.event.EventStatus;
@@ -33,7 +33,7 @@ public class EventProcessor {
 
     private final EventService eventService;
     private final EventVersionPolicy versionPolicy;
-    private final EventValidationService validationService;
+    private final EventPolicyService eventPolicyService;
     private final EventResourceResolver resourceResolver;
     private final EventPayloadMapper payloadMapper;
     private final EventCancellationService cancellationService;
@@ -92,8 +92,8 @@ public class EventProcessor {
             return result(eventId, modificationNumber, OpenADRResponseCode.OK, optType);
         }
 
-        List<EventSignalCommand> signals = validationService.validateSignals(event);
-        Optional<EventSignalCommand> selected = validationService.selectPreferredSignal(signals);
+        List<EventSignalCommand> signals = eventPolicyService.supportedSignals(event);
+        Optional<EventSignalCommand> selected = eventPolicyService.selectPreferredSignal(signals);
         if (selected.isEmpty()) {
             return result(eventId, modificationNumber,
                     OpenADRResponseCode.SIGNAL_NOT_SUPPORTED, EventOptType.OPT_OUT);
@@ -115,7 +115,7 @@ public class EventProcessor {
     }
 
     private ResolvedEventTarget validateAndResolveTarget(ReceiveEventCommand event, String venId) {
-        validationService.validateMarketContext(event.marketContext());
+        eventPolicyService.requireAllowedMarketContext(event.marketContext());
         return resourceResolver.resolveEventTarget(event.target(), venId);
     }
 

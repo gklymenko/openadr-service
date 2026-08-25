@@ -5,12 +5,12 @@ import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
-import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.EventPolicyService;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.command.EventIntervalCommand;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
-import com.qcharge.openadr.service.validation.EventValidator;
+import com.qcharge.openadr.service.validation.EventEntryValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -23,18 +23,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SignalParsingTest extends AbstractOadrTest {
 
-    private EventValidationService service;
+    private EventPolicyService service;
     private OpenAdrEventCommandMapper mapper;
-    private EventValidator eventValidator;
+    private EventEntryValidator eventValidator;
 
     @BeforeEach
     void setUp() {
         OpenAdrProperties props = new OpenAdrProperties();
         props.getVen().setId("test-ven");
         props.getReport().setResourceId("resource1");
-        service = new EventValidationService(props);
+        service = new EventPolicyService(props);
         mapper = new OpenAdrEventCommandMapper();
-        eventValidator = new EventValidator();
+        eventValidator = new EventEntryValidator();
     }
 
     @Test
@@ -45,7 +45,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
         assertTrue(result.isPresent());
         EventSignalCommand signal = result.get();
-        assertEquals(EventValidationService.SIGNAL_LOAD_DISPATCH, signal.signalName());
+        assertEquals(EventPolicyService.SIGNAL_LOAD_DISPATCH, signal.signalName());
         assertEquals("setpoint", signal.signalType());
         assertNotNull(signal.currentValue());
         assertEquals(0, BigDecimal.valueOf(25.0).compareTo(signal.currentValue()));
@@ -67,7 +67,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
         assertTrue(result.isPresent());
         EventSignalCommand signal = result.get();
-        assertEquals(EventValidationService.SIGNAL_ELECTRICITY_PRICE, signal.signalName());
+        assertEquals(EventPolicyService.SIGNAL_ELECTRICITY_PRICE, signal.signalName());
         assertEquals("price", signal.signalType());
         assertNotNull(signal.currentValue());
         assertTrue(signal.currentValue().compareTo(BigDecimal.ZERO) > 0);
@@ -84,7 +84,7 @@ class SignalParsingTest extends AbstractOadrTest {
         // existing fixture has both SIMPLE and ELECTRICITY_PRICE; LOAD_DISPATCH wins first but is absent,
         // so ELECTRICITY_PRICE takes priority over SIMPLE — verify we get ELECTRICITY_PRICE here
         // (fixture has SIMPLE first then ELECTRICITY_PRICE, but priority list is LOAD_DISPATCH > ELECTRICITY_PRICE > SIMPLE)
-        assertEquals(EventValidationService.SIGNAL_ELECTRICITY_PRICE, result.get().signalName());
+        assertEquals(EventPolicyService.SIGNAL_ELECTRICITY_PRICE, result.get().signalName());
     }
 
     @Test
@@ -95,7 +95,7 @@ class SignalParsingTest extends AbstractOadrTest {
                 .getEiEventSignals()
                 .getEiEventSignal()
                 .removeIf(signal ->
-                        !EventValidationService.SIGNAL_SIMPLE.equalsIgnoreCase(
+                        !EventPolicyService.SIGNAL_SIMPLE.equalsIgnoreCase(
                                 signal.getSignalName()
                         )
                 );
@@ -104,7 +104,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
         assertTrue(result.isPresent());
         assertEquals(
-                EventValidationService.SIGNAL_SIMPLE,
+                EventPolicyService.SIGNAL_SIMPLE,
                 result.get().signalName()
         );
         assertEquals("level", result.get().signalType());
@@ -128,7 +128,7 @@ class SignalParsingTest extends AbstractOadrTest {
         Optional<EventSignalCommand> result = parseSignal(event);
 
         assertTrue(result.isPresent());
-        assertEquals(EventValidationService.SIGNAL_LOAD_DISPATCH, result.get().signalName(),
+        assertEquals(EventPolicyService.SIGNAL_LOAD_DISPATCH, result.get().signalName(),
                 "LOAD_DISPATCH must take priority");
     }
 
@@ -280,8 +280,8 @@ class SignalParsingTest extends AbstractOadrTest {
     }
 
     private List<EventSignalCommand> parseSignals(OadrEvent event) {
-        eventValidator.validateEvent(event);
-        return service.validateSignals(mapper.map(event));
+        eventValidator.validate(event);
+        return service.supportedSignals(mapper.map(event));
     }
 
     private OadrEvent loadFirstEvent(String filename) throws Oadr20bUnmarshalException {

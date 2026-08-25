@@ -12,7 +12,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
-import com.qcharge.openadr.service.validation.EventValidator;
+import com.qcharge.openadr.service.validation.DistributeEventValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,15 +21,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
 
-class EventValidatorTest {
+class DistributeEventValidatorTest {
 
     private final OpenAdrProperties properties = new OpenAdrProperties();
-    private EventValidator validator;
+    private DistributeEventValidator validator;
 
     @BeforeEach
     void setUp() {
         properties.getVtn().setId("VTN-1");
-        validator = new EventValidator();
+        validator = new DistributeEventValidator();
     }
 
     @Test

@@ -12,7 +12,7 @@ import com.qcharge.openadr.model.oadr20b.ei.EventStatusEnumeratedType;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.repository.DrEventRepository;
-import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.EventPolicyService;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
@@ -60,7 +60,7 @@ class DrEventCancellationTest extends AbstractOadrTest {
         adapter = protocolAdapter(
                 repository,
                 transportService,
-                new EventValidationService(properties),
+                new EventPolicyService(properties),
                 eventResourceResolver
         );
     }

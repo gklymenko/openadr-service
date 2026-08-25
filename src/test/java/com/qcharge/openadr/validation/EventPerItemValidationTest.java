@@ -10,7 +10,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.service.event.EventValidationException;
-import com.qcharge.openadr.service.event.EventValidationService;
+import com.qcharge.openadr.service.event.EventPolicyService;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
@@ -38,7 +38,7 @@ class EventPerItemValidationTest extends AbstractOadrTest {
 
     private final DrEventRepository repository = mock(DrEventRepository.class);
     private final VtnTransportService transportService = mock(VtnTransportService.class);
-    private final EventValidationService validationService = mock(EventValidationService.class);
+    private final EventPolicyService validationService = mock(EventPolicyService.class);
     private final EventResourceResolver eventResourceResolver = mock(EventResourceResolver.class);
 
     private EventProtocolAdapter adapter;
@@ -46,7 +46,7 @@ class EventPerItemValidationTest extends AbstractOadrTest {
     @BeforeEach
     void setUp() {
         when(repository.findByEventId("EVENT-1")).thenReturn(Optional.empty());
-        when(validationService.validateSignals(org.mockito.ArgumentMatchers.any()))
+        when(validationService.supportedSignals(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(List.of());
         when(validationService.selectPreferredSignal(org.mockito.ArgumentMatchers.anyList()))
                 .thenReturn(Optional.empty());
@@ -180,7 +180,7 @@ class EventPerItemValidationTest extends AbstractOadrTest {
                 "SIG-1", "SIMPLE", "level", null,
                 null, null, null, null, List.of(), null
         );
-        when(validationService.validateSignals(any())).thenReturn(List.of(selected));
+        when(validationService.supportedSignals(any())).thenReturn(List.of(selected));
         when(validationService.selectPreferredSignal(any())).thenReturn(Optional.of(selected));
         when(eventResourceResolver.resolveSignalTargets(any(), any()))
                 .thenThrow(new EventValidationException(

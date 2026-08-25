@@ -14,7 +14,7 @@ import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedEventTarget;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
-import com.qcharge.openadr.service.validation.EventValidator;
+import com.qcharge.openadr.service.validation.EventEntryValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,14 +32,14 @@ class EventResourceResolverTest extends AbstractOadrTest {
     private OpenAdrResourceRepository repository;
     private EventResourceResolver resolver;
     private OpenAdrEventCommandMapper mapper;
-    private EventValidator eventValidator;
+    private EventEntryValidator eventValidator;
 
     @BeforeEach
     void setUp() {
         repository = mock(OpenAdrResourceRepository.class);
         resolver = new EventResourceResolver(repository, new OpenAdrProperties());
         mapper = new OpenAdrEventCommandMapper();
-        eventValidator = new EventValidator();
+        eventValidator = new EventEntryValidator();
     }
 
     @Test
@@ -50,7 +50,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
         when(repository.findAllByResourceIdInAndEnabledTrue(anyCollection()))
                 .thenReturn(List.of(resource));
 
-        eventValidator.validateEvent(event);
+        eventValidator.validate(event);
         ResolvedEventTarget result = resolver.resolveEventTarget(
                 mapper.map(event).target(), "VEN-1");
 
@@ -154,7 +154,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
     }
 
     private EventSignalCommand signal(OadrEvent event, String signalId) {
-        eventValidator.validateEvent(event);
+        eventValidator.validate(event);
         return mapper.map(event).signals().stream()
                 .filter(signal -> signalId.equals(signal.signalId()))
                 .findFirst()
