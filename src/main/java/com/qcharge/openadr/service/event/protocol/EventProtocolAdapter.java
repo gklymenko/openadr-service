@@ -13,8 +13,9 @@ import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.model.enums.event.EventOptType;
 import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
-import com.qcharge.openadr.service.event.processing.EventBatchProcessor;
+import com.qcharge.openadr.service.event.processing.EventCancellationService;
 import com.qcharge.openadr.service.event.processing.EventProcessingResult;
+import com.qcharge.openadr.service.event.processing.EventProcessor;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -23,15 +24,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_DUPLICATED;
+import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_REJECTED_UNEXPECTEDLY;
 import static com.qcharge.openadr.LogMessage.EVENT_RESPONSE_SKIPPED_INVALID_IDENTITY;
 import static com.qcharge.openadr.LogMessage.IGNORE_EMPTY_EVENT_ENTRY;
 import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_REJECTED;
@@ -41,11 +41,13 @@ import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_REJECTED;
 @Component
 @RequiredArgsConstructor
 public class EventProtocolAdapter {
-    private final EventBatchProcessor eventBatchProcessor;
+    private final EventProcessor eventProcessor;
+    private final EventCancellationService cancellationService;
     private final VtnTransportService transportService;
     private final EventEntryValidator eventEntryValidator;
     private final OpenAdrEventCommandMapper commandMapper;
 
+    @Transactional
     public void receive(OadrDistributeEventType distributeEvent, OpenAdrSessionSnapshot session) {
         VtnEventLogger.logReceivedEvents(distributeEvent);
         String requestId = distributeEvent.getRequestID() != null ? distributeEvent.getRequestID() : "";
@@ -57,52 +59,39 @@ public class EventProtocolAdapter {
         var responseBuilder = Oadr20bEiEventBuilders
                 .newCreatedEventBuilder(eiResponse, session.venId());
 
-        List<PreparedEvent> preparedEvents = new ArrayList<>();
+        int responseCount = 0;
         Set<String> receivedEventIds = new HashSet<>();
-        Set<String> acceptedEventIds = new HashSet<>();
 
-        // Rules 19 and 48: reject malformed entries individually before opening the snapshot
-        // transaction; valid siblings must still be processed and acknowledged.
         for (OadrEvent event : distributeEvent.getOadrEvent()) {
             if (event == null) {
                 log.warn(IGNORE_EMPTY_EVENT_ENTRY, requestId);
                 continue;
             }
 
-            preparedEvents.add(prepareEvent(event, receivedEventIds, acceptedEventIds));
-        }
+            Optional<EventProcessingResult> result = processEvent(event, receivedEventIds, session.venId());
 
-        List<ReceiveEventCommand> commands = preparedEvents.stream()
-                .map(PreparedEvent::command)
-                .flatMap(Optional::stream)
-                .toList();
-        List<EventProcessingResult> processedEvents = eventBatchProcessor.process(
-                commands,
-                receivedEventIds,
-                session.venId()
-        );
-
-        Iterator<EventProcessingResult> processed = processedEvents.iterator();
-        int responseCount = 0;
-        for (PreparedEvent prepared : preparedEvents) {
-            Optional<EventProcessingResult> result = prepared.rejection();
-            if (prepared.command().isPresent()) {
-                if (!processed.hasNext()) {
-                    throw new IllegalStateException("Missing result for a processed OpenADR event");
-                }
-                result = Optional.of(processed.next());
-            }
-
-            if (!prepared.responseRequired() || result.isEmpty()) {
+            if (!requiresResponse(event) || result.isEmpty()) {
                 continue;
             }
 
-            responseBuilder.addEventResponse(eventResponse(result.orElseThrow(), requestId));
+            EventProcessingResult processedEvent = result.orElseThrow();
+
+            EventResponse eventResponse =
+                    Oadr20bEiEventBuilders
+                            .newOadr20bCreatedEventEventResponseBuilder(
+                                    processedEvent.eventId(),
+                                    processedEvent.modificationNumber(),
+                                    requestId,
+                                    processedEvent.responseCode(),
+                                    protocolOptType(processedEvent.optType())
+                            )
+                            .build();
+
+            responseBuilder.addEventResponse(eventResponse);
             responseCount++;
         }
-        if (processed.hasNext()) {
-            throw new IllegalStateException("Unexpected extra OpenADR event processing result");
-        }
+
+        cancellationService.reconcileSnapshot(receivedEventIds);
         if (responseCount == 0) {
             log.info("No oadrCreatedEvent sent because no correlatable event response was produced");
             return;
@@ -113,27 +102,23 @@ public class EventProtocolAdapter {
         log.info("Sent oadrCreatedEvent. eventResponses={}", responseCount);
     }
 
-    private PreparedEvent prepareEvent(
-            OadrEvent source,
-            Set<String> receivedEventIds,
-            Set<String> acceptedEventIds
-    ) {
-        String eventId = eventIdOf(source);
-        if (Strings.isNotBlank(eventId)) {
-            // Rule 61: an identifiable entry is present in the snapshot even when its new
-            // version is rejected; rejecting an update must not imply-cancel the stored event.
-            receivedEventIds.add(eventId);
-        }
+    private boolean requiresResponse(OadrEvent event) {
+        return ResponseRequiredType.ALWAYS == event.getOadrResponseRequired();
+    }
 
+    private Optional<EventProcessingResult> processEvent(
+            OadrEvent source, Set<String> receivedEventIds, String venId
+    ) {
         try {
             eventEntryValidator.validate(source);
 
             EventDescriptorType descriptor = source.getEiEvent().getEventDescriptor();
+            String eventId = descriptor.getEventID();
             long modificationNumber = descriptor.getModificationNumber();
 
-            if (!acceptedEventIds.add(eventId)) {
+            if (!receivedEventIds.add(eventId)) {
                 log.warn(EVENT_ENTRY_DUPLICATED, eventId);
-                return PreparedEvent.rejected(source, new EventProcessingResult(
+                return Optional.of(new EventProcessingResult(
                         eventId,
                         modificationNumber,
                         OpenADRResponseCode.INVALID_ID,
@@ -142,25 +127,27 @@ public class EventProtocolAdapter {
             }
 
             ReceiveEventCommand eventCommand = commandMapper.map(source);
-            return PreparedEvent.valid(source, eventCommand);
+            return Optional.of(eventProcessor.processSafely(eventCommand, venId));
         } catch (EventValidationException exception) {
-            return PreparedEvent.rejected(source, processingFailure(source, exception));
+            return processingFailure(source, exception);
         }
     }
 
     private Optional<EventProcessingResult> processingFailure(
-            OadrEvent source, EventValidationException exception
+            OadrEvent source, RuntimeException exception
     ) {
         String eventId = eventIdOf(source);
         Long modificationNumber = modificationNumberOf(source);
-        int responseCode = exception.getResponseCode();
-        log.warn(
-                EVENT_ENTRY_REJECTED,
-                eventId,
-                modificationNumber,
-                responseCode,
-                exception.getMessage()
-        );
+        int responseCode;
+
+        if (exception instanceof EventValidationException validationException) {
+            responseCode = validationException.getResponseCode();
+            log.warn(EVENT_ENTRY_REJECTED, eventId, modificationNumber, responseCode, exception.getMessage());
+
+        } else {
+            responseCode = OpenADRResponseCode.INVALID_DATA;
+            log.error(EVENT_ENTRY_REJECTED_UNEXPECTEDLY, eventId, modificationNumber, exception);
+        }
 
         if (Strings.isBlank(eventId) || modificationNumber == null) {
             log.warn(EVENT_RESPONSE_SKIPPED_INVALID_IDENTITY, eventId, modificationNumber);
@@ -170,18 +157,6 @@ public class EventProtocolAdapter {
         return Optional.of(new EventProcessingResult(
                 eventId, modificationNumber, responseCode, EventOptType.OPT_OUT
         ));
-    }
-
-    private EventResponse eventResponse(EventProcessingResult processedEvent, String requestId) {
-        return Oadr20bEiEventBuilders
-                .newOadr20bCreatedEventEventResponseBuilder(
-                        processedEvent.eventId(),
-                        processedEvent.modificationNumber(),
-                        requestId,
-                        processedEvent.responseCode(),
-                        protocolOptType(processedEvent.optType())
-                )
-                .build();
     }
 
     private String eventIdOf(OadrEvent source) {
@@ -202,37 +177,5 @@ public class EventProtocolAdapter {
 
     private OptTypeType protocolOptType(EventOptType optType) {
         return optType == EventOptType.OPT_OUT ? OptTypeType.OPT_OUT : OptTypeType.OPT_IN;
-    }
-
-    private record PreparedEvent(
-            Optional<ReceiveEventCommand> command,
-            Optional<EventProcessingResult> rejection,
-            boolean responseRequired
-    ) {
-        private static PreparedEvent valid(OadrEvent source, ReceiveEventCommand command) {
-            return new PreparedEvent(
-                    Optional.of(command),
-                    Optional.empty(),
-                    ResponseRequiredType.ALWAYS == source.getOadrResponseRequired()
-            );
-        }
-
-        private static PreparedEvent rejected(
-                OadrEvent source,
-                EventProcessingResult rejection
-        ) {
-            return rejected(source, Optional.of(rejection));
-        }
-
-        private static PreparedEvent rejected(
-                OadrEvent source,
-                Optional<EventProcessingResult> rejection
-        ) {
-            return new PreparedEvent(
-                    Optional.empty(),
-                    rejection,
-                    ResponseRequiredType.ALWAYS == source.getOadrResponseRequired()
-            );
-        }
     }
 }
