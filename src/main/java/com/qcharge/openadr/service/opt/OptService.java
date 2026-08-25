@@ -1,5 +1,6 @@
 package com.qcharge.openadr.service.opt;
 
+import com.qcharge.openadr.model.enums.event.EventOptType;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.OptSchedule;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiOptBuilders;
@@ -64,8 +65,8 @@ public class OptService {
         );
 
         if (response instanceof OadrCreatedOptType created) {
-            OptSchedule.OptType scheduleType = optType == OptTypeType.OPT_IN
-                    ? OptSchedule.OptType.OPT_IN : OptSchedule.OptType.OPT_OUT;
+            EventOptType scheduleType = optType == OptTypeType.OPT_IN
+                    ? EventOptType.OPT_IN : EventOptType.OPT_OUT;
             handleCreatedOpt(created, eventId, scheduleType,
                     optType == OptTypeType.OPT_OUT ? reason.value() : null);
         } else {
@@ -107,7 +108,7 @@ public class OptService {
 
     private void handleCreatedOpt(OadrCreatedOptType response,
                                   String eventId,
-                                  OptSchedule.OptType optType,
+                                  EventOptType optType,
                                   String reason) {
         String responseCode = response.getEiResponse().getResponseCode();
         if (!"200".equals(responseCode)) {
@@ -121,7 +122,7 @@ public class OptService {
         log.info("Opt saved: optId={}, type={}, eventId={}", response.getOptID(), optType, eventId);
     }
 
-    private OptSchedule buildOptSchedule(String optId, OptSchedule.OptType optType,
+    private OptSchedule buildOptSchedule(String optId, EventOptType optType,
                                           String reason, String eventId) {
         OptSchedule opt = new OptSchedule();
         opt.setOptId(optId);

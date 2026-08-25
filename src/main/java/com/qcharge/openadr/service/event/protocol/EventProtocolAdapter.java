@@ -10,7 +10,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.service.event.EventValidationException;
-import com.qcharge.openadr.service.event.command.EventOptType;
+import com.qcharge.openadr.model.enums.event.EventOptType;
 import com.qcharge.openadr.service.event.processing.EventCancellationService;
 import com.qcharge.openadr.service.event.processing.EventProcessingResult;
 import com.qcharge.openadr.service.event.processing.EventProcessor;

@@ -1,5 +1,9 @@
 package com.qcharge.openadr.model.entity;
 
+import com.qcharge.openadr.model.enums.event.EventCancellationType;
+import com.qcharge.openadr.model.enums.event.EventExecutionStatus;
+import com.qcharge.openadr.model.enums.event.EventOptType;
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -60,11 +64,11 @@ public class DrEvent {
 
     @Column(name = "execution_status", nullable = false)
     @Enumerated(EnumType.STRING)
-    private ExecutionStatus executionStatus = ExecutionStatus.RECEIVED;
+    private EventExecutionStatus executionStatus = EventExecutionStatus.RECEIVED;
 
     @Column(name = "opt_type")
     @Enumerated(EnumType.STRING)
-    private OptType optType;
+    private EventOptType optType;
 
     @Column(name = "priority")
     private Integer priority;
@@ -104,7 +108,7 @@ public class DrEvent {
 
     @Column(name = "cancellation_type")
     @Enumerated(EnumType.STRING)
-    private CancellationType cancellationType;
+    private EventCancellationType cancellationType;
 
     @Column(name = "cancellation_requested_at")
     private Instant cancellationRequestedAt;
@@ -157,31 +161,4 @@ public class DrEvent {
         });
     }
 
-    public enum EventStatus {
-        FAR,
-        NEAR,
-        ACTIVE,
-        COMPLETED,
-        CANCELLED
-    }
-
-    public enum OptType {
-        OPT_IN,
-        OPT_OUT
-    }
-
-    public enum ExecutionStatus {
-        RECEIVED,
-        SCHEDULED,
-        APPLIED,
-        CANCEL_PENDING,
-        COMPLETED,
-        CANCELLED,
-        FAILED
-    }
-
-    public enum CancellationType {
-        EXPLICIT,
-        IMPLICIT
-    }
 }

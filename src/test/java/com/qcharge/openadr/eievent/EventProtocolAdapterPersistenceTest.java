@@ -1,5 +1,6 @@
 package com.qcharge.openadr.eievent;
 
+import com.qcharge.openadr.model.enums.event.EventExecutionStatus;
 import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
 import com.qcharge.openadr.config.OpenAdrProperties;
@@ -80,7 +81,7 @@ class EventProtocolAdapterPersistenceTest extends AbstractOadrTest {
         assertEquals("RES_123", saved.getResources().getFirst().getResourceId());
         assertSame(saved, saved.getResources().getFirst().getEvent());
         assertTrue(saved.isTestEvent());
-        assertEquals(DrEvent.ExecutionStatus.SCHEDULED, saved.getExecutionStatus());
+        assertEquals(EventExecutionStatus.SCHEDULED, saved.getExecutionStatus());
         assertEquals(Instant.parse("2001-12-17T09:40:47Z"), saved.getRequestedStartTime());
         assertEquals(180L, saved.getStartAfterSeconds());
         assertEquals(

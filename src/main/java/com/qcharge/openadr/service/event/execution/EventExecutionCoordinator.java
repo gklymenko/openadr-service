@@ -1,5 +1,8 @@
 package com.qcharge.openadr.service.event.execution;
 
+import com.qcharge.openadr.model.enums.event.EventCancellationType;
+import com.qcharge.openadr.model.enums.event.EventExecutionStatus;
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.entity.DrEventInterval;
 import com.qcharge.openadr.model.entity.DrEventSignal;
@@ -19,10 +22,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EventExecutionCoordinator {
 
-    private static final EnumSet<DrEvent.ExecutionStatus> RECOVERABLE_STATUSES = EnumSet.of(
-            DrEvent.ExecutionStatus.SCHEDULED,
-            DrEvent.ExecutionStatus.APPLIED,
-            DrEvent.ExecutionStatus.CANCEL_PENDING
+    private static final EnumSet<EventExecutionStatus> RECOVERABLE_STATUSES = EnumSet.of(
+            EventExecutionStatus.SCHEDULED,
+            EventExecutionStatus.APPLIED,
+            EventExecutionStatus.CANCEL_PENDING
     );
 
     private final EventService eventService;
@@ -55,20 +58,20 @@ public class EventExecutionCoordinator {
     private boolean hasAppliedDownstreamEffect(DrEvent event) {
         return !event.isTestEvent()
                 && (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null)
-                && event.getExecutionStatus() != DrEvent.ExecutionStatus.COMPLETED
-                && event.getExecutionStatus() != DrEvent.ExecutionStatus.CANCELLED;
+                && event.getExecutionStatus() != EventExecutionStatus.COMPLETED
+                && event.getExecutionStatus() != EventExecutionStatus.CANCELLED;
     }
 
     private void processSafely(DrEvent event, Instant now) {
         try {
             advance(event, now);
         } catch (RuntimeException exception) {
-            if (event.getExecutionStatus() == DrEvent.ExecutionStatus.CANCEL_PENDING) {
+            if (event.getExecutionStatus() == EventExecutionStatus.CANCEL_PENDING) {
                 log.error("OpenADR cancellation termination failed and will be retried. eventId={}",
                         event.getEventId(), exception);
                 return;
             }
-            event.setExecutionStatus(DrEvent.ExecutionStatus.FAILED);
+            event.setExecutionStatus(EventExecutionStatus.FAILED);
             eventService.save(event);
             log.error("OpenADR event lifecycle execution failed. eventId={}",
                     event.getEventId(), exception);
@@ -76,24 +79,24 @@ public class EventExecutionCoordinator {
     }
 
     private void advance(DrEvent event, Instant now) {
-        if (event.getExecutionStatus() == DrEvent.ExecutionStatus.CANCEL_PENDING
+        if (event.getExecutionStatus() == EventExecutionStatus.CANCEL_PENDING
                 && !now.isBefore(event.getCancellationEffectiveAt())) {
             terminateCancellation(event, now);
             return;
         }
 
-        DrEvent.EventStatus calculatedStatus = timeline.statusAt(event, now);
+        EventStatus calculatedStatus = timeline.statusAt(event, now);
         boolean statusChanged = event.getStatus() != calculatedStatus;
         if (statusChanged) {
             log.info("OpenADR event status transition. eventId={}, from={}, to={}",
                     event.getEventId(), event.getStatus(), calculatedStatus);
             event.setStatus(calculatedStatus);
         }
-        if (calculatedStatus == DrEvent.EventStatus.COMPLETED) {
+        if (calculatedStatus == EventStatus.COMPLETED) {
             complete(event, now);
             return;
         }
-        if (calculatedStatus != DrEvent.EventStatus.ACTIVE) {
+        if (calculatedStatus != EventStatus.ACTIVE) {
             if (statusChanged) {
                 eventService.save(event);
             }
@@ -102,8 +105,8 @@ public class EventExecutionCoordinator {
 
         DrEventSignal signal = timeline.selectedSignal(event);
         int intervalIndex = timeline.activeIntervalIndex(event, signal, now);
-        boolean cancellationPending = event.getExecutionStatus() == DrEvent.ExecutionStatus.CANCEL_PENDING;
-        if ((event.getExecutionStatus() == DrEvent.ExecutionStatus.APPLIED || cancellationPending)
+        boolean cancellationPending = event.getExecutionStatus() == EventExecutionStatus.CANCEL_PENDING;
+        if ((event.getExecutionStatus() == EventExecutionStatus.APPLIED || cancellationPending)
                 && event.getLastAppliedInterval() == intervalIndex) {
             return;
         }
@@ -122,7 +125,7 @@ public class EventExecutionCoordinator {
         }
 
         event.setExecutionStatus(cancellationPending
-                ? DrEvent.ExecutionStatus.CANCEL_PENDING : DrEvent.ExecutionStatus.APPLIED);
+                ? EventExecutionStatus.CANCEL_PENDING : EventExecutionStatus.APPLIED);
         event.setLastAppliedInterval(intervalIndex);
         event.setAppliedAt(now);
         eventService.save(event);
@@ -131,14 +134,14 @@ public class EventExecutionCoordinator {
     private void terminateCancellation(DrEvent event, Instant now) {
         if (!event.isTestEvent() && (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null)) {
             EventExecutionPort.ClearReason reason =
-                    event.getCancellationType() == DrEvent.CancellationType.IMPLICIT
+                    event.getCancellationType() == EventCancellationType.IMPLICIT
                             ? EventExecutionPort.ClearReason.IMPLICIT_CANCELLATION
                             : EventExecutionPort.ClearReason.CANCELLED;
             executionPort.clearEvent(event.getEventId(), reason);
         }
-        event.setStatus(DrEvent.EventStatus.CANCELLED);
-        event.setVtnStatus(DrEvent.EventStatus.CANCELLED);
-        event.setExecutionStatus(DrEvent.ExecutionStatus.CANCELLED);
+        event.setStatus(EventStatus.CANCELLED);
+        event.setVtnStatus(EventStatus.CANCELLED);
+        event.setExecutionStatus(EventExecutionStatus.CANCELLED);
         event.setCompletedAt(now);
         eventService.save(event);
     }
@@ -147,7 +150,7 @@ public class EventExecutionCoordinator {
         if (!event.isTestEvent() && (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null)) {
             executionPort.clearEvent(event.getEventId(), EventExecutionPort.ClearReason.COMPLETED);
         }
-        event.setExecutionStatus(DrEvent.ExecutionStatus.COMPLETED);
+        event.setExecutionStatus(EventExecutionStatus.COMPLETED);
         event.setCompletedAt(now);
         eventService.save(event);
     }

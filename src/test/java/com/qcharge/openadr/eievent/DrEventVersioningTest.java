@@ -1,5 +1,7 @@
 package com.qcharge.openadr.eievent;
 
+import com.qcharge.openadr.model.enums.event.EventOptType;
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
 import com.qcharge.openadr.config.OpenAdrProperties;
@@ -177,8 +179,8 @@ class DrEventVersioningTest extends AbstractOadrTest {
         DrEvent event = new DrEvent();
         event.setEventId("Event_939393");
         event.setModificationNumber(modificationNumber);
-        event.setStatus(DrEvent.EventStatus.FAR);
-        event.setOptType(DrEvent.OptType.OPT_IN);
+        event.setStatus(EventStatus.FAR);
+        event.setOptType(EventOptType.OPT_IN);
         return event;
     }
 

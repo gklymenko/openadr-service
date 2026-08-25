@@ -1,5 +1,6 @@
 package com.qcharge.openadr.service.event.execution;
 
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.entity.DrEventInterval;
 import com.qcharge.openadr.model.entity.DrEventSignal;
@@ -13,23 +14,23 @@ import java.util.Optional;
 @Component
 public class EventTimelineCalculator {
 
-    public DrEvent.EventStatus statusAt(DrEvent event, Instant now) {
+    public EventStatus statusAt(DrEvent event, Instant now) {
         Instant actualStart = event.getStartTime();
         long rampUpSeconds = event.getRampUpSeconds() != null
                 ? Math.abs(event.getRampUpSeconds()) : 0L;
         Instant nearStart = actualStart.minusSeconds(rampUpSeconds);
         if (now.isBefore(nearStart)) {
-            return DrEvent.EventStatus.FAR;
+            return EventStatus.FAR;
         }
         if (now.isBefore(actualStart)) {
-            return rampUpSeconds > 0 ? DrEvent.EventStatus.NEAR : DrEvent.EventStatus.FAR;
+            return rampUpSeconds > 0 ? EventStatus.NEAR : EventStatus.FAR;
         }
         Long durationSeconds = event.getDurationSeconds();
         if (durationSeconds == null || durationSeconds == 0L) {
-            return DrEvent.EventStatus.ACTIVE;
+            return EventStatus.ACTIVE;
         }
         return now.isBefore(actualStart.plusSeconds(durationSeconds))
-                ? DrEvent.EventStatus.ACTIVE : DrEvent.EventStatus.COMPLETED;
+                ? EventStatus.ACTIVE : EventStatus.COMPLETED;
     }
 
     public DrEventSignal selectedSignal(DrEvent event) {

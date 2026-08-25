@@ -1,5 +1,6 @@
 package com.qcharge.openadr.model.entity;
 
+import com.qcharge.openadr.model.enums.event.EventOptType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -38,7 +39,7 @@ public class OptSchedule {
 
     @Column(name = "opt_type", nullable = false)
     @Enumerated(EnumType.STRING)
-    private OptType optType;
+    private EventOptType optType;
 
     @Column(name = "opt_reason")
     private String optReason;
@@ -66,10 +67,6 @@ public class OptSchedule {
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();
-    }
-
-    public enum OptType {
-        OPT_IN, OPT_OUT
     }
 
     public enum OptStatus {

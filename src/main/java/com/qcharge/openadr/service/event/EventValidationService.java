@@ -5,7 +5,7 @@ import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.service.event.command.EventIntervalCommand;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
-import com.qcharge.openadr.service.event.command.EventStatus;
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

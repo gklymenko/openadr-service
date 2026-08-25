@@ -1,5 +1,8 @@
 package com.qcharge.openadr.service.event.processing;
 
+import com.qcharge.openadr.model.enums.event.EventCancellationType;
+import com.qcharge.openadr.model.enums.event.EventExecutionStatus;
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.service.event.store.EventService;
 import lombok.RequiredArgsConstructor;
@@ -19,20 +22,20 @@ import java.util.concurrent.ThreadLocalRandom;
 @RequiredArgsConstructor
 public class EventCancellationService {
 
-    private static final EnumSet<DrEvent.ExecutionStatus> RECONCILABLE_STATUSES = EnumSet.of(
-            DrEvent.ExecutionStatus.RECEIVED,
-            DrEvent.ExecutionStatus.SCHEDULED,
-            DrEvent.ExecutionStatus.APPLIED,
-            DrEvent.ExecutionStatus.FAILED
+    private static final EnumSet<EventExecutionStatus> RECONCILABLE_STATUSES = EnumSet.of(
+            EventExecutionStatus.RECEIVED,
+            EventExecutionStatus.SCHEDULED,
+            EventExecutionStatus.APPLIED,
+            EventExecutionStatus.FAILED
     );
 
     private final EventService eventService;
     private final Clock clock;
 
-    public void request(DrEvent event, DrEvent.CancellationType type) {
-        if (event.getExecutionStatus() == DrEvent.ExecutionStatus.CANCEL_PENDING
-                || event.getExecutionStatus() == DrEvent.ExecutionStatus.CANCELLED) {
-            event.setVtnStatus(DrEvent.EventStatus.CANCELLED);
+    public void request(DrEvent event, EventCancellationType type) {
+        if (event.getExecutionStatus() == EventExecutionStatus.CANCEL_PENDING
+                || event.getExecutionStatus() == EventExecutionStatus.CANCELLED) {
+            event.setVtnStatus(EventStatus.CANCELLED);
             if (event.getCancellationType() == null) {
                 event.setCancellationType(type);
             }
@@ -41,22 +44,22 @@ public class EventCancellationService {
         }
 
         Instant requestedAt = clock.instant();
-        boolean active = event.getExecutionStatus() == DrEvent.ExecutionStatus.APPLIED
+        boolean active = event.getExecutionStatus() == EventExecutionStatus.APPLIED
                 || event.getLastAppliedInterval() >= 0
                 || event.getAppliedAt() != null;
         long terminationOffset = active ? randomOffset(event.getStartAfterSeconds()) : 0L;
 
-        event.setVtnStatus(DrEvent.EventStatus.CANCELLED);
+        event.setVtnStatus(EventStatus.CANCELLED);
         event.setCancellationType(type);
         event.setCancellationRequestedAt(requestedAt);
         event.setCancellationEffectiveAt(requestedAt.plusSeconds(terminationOffset));
         event.setUpdatedAt(requestedAt);
 
         if (active) {
-            event.setExecutionStatus(DrEvent.ExecutionStatus.CANCEL_PENDING);
+            event.setExecutionStatus(EventExecutionStatus.CANCEL_PENDING);
         } else {
-            event.setStatus(DrEvent.EventStatus.CANCELLED);
-            event.setExecutionStatus(DrEvent.ExecutionStatus.CANCELLED);
+            event.setStatus(EventStatus.CANCELLED);
+            event.setExecutionStatus(EventExecutionStatus.CANCELLED);
             event.setCompletedAt(requestedAt);
         }
         eventService.save(event);
@@ -71,7 +74,7 @@ public class EventCancellationService {
         knownEvents.stream()
                 .filter(event -> !receivedEventIds.contains(event.getEventId()))
                 .forEach(event -> {
-                    request(event, DrEvent.CancellationType.IMPLICIT);
+                    request(event, EventCancellationType.IMPLICIT);
                     log.info(
                             "Implicitly cancelled OpenADR event omitted from snapshot. eventId={}, effectiveAt={}",
                             event.getEventId(), event.getCancellationEffectiveAt());

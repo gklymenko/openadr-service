@@ -1,5 +1,7 @@
 package com.qcharge.openadr.service.event.command;
 
+import com.qcharge.openadr.model.enums.event.EventStatus;
+
 import java.util.List;
 
 /** Complete application command produced from one OpenADR oadrEvent. */

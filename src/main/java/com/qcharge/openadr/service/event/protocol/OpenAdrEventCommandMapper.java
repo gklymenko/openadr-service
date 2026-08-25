@@ -14,7 +14,7 @@ import com.qcharge.openadr.model.oadr20b.power.PowerRealType;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.command.EventIntervalCommand;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
-import com.qcharge.openadr.service.event.command.EventStatus;
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.service.event.command.EventTargetCommand;
 import com.qcharge.openadr.service.event.command.EventTimingCommand;
 import com.qcharge.openadr.service.event.command.ReceiveEventCommand;

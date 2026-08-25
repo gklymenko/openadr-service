@@ -1,5 +1,6 @@
 package com.qcharge.openadr.service.event.store;
 
+import com.qcharge.openadr.model.enums.event.EventExecutionStatus;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.repository.DrEventRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +20,7 @@ public class EventService {
         return repository.findByEventId(eventId);
     }
 
-    public List<DrEvent> findByExecutionStatusIn(Collection<DrEvent.ExecutionStatus> statuses) {
+    public List<DrEvent> findByExecutionStatusIn(Collection<EventExecutionStatus> statuses) {
         return repository.findAllByExecutionStatusIn(statuses);
     }
 

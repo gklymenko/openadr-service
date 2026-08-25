@@ -1,11 +1,12 @@
 package com.qcharge.openadr.service.event.mapping;
 
+import com.qcharge.openadr.model.enums.event.EventExecutionStatus;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.entity.DrEventResource;
 import com.qcharge.openadr.model.entity.DrEventSignal;
-import com.qcharge.openadr.service.event.command.EventOptType;
+import com.qcharge.openadr.model.enums.event.EventOptType;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
-import com.qcharge.openadr.service.event.command.EventStatus;
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
 import com.qcharge.openadr.service.resource.EventResourceResolver.ResolvedResource;
 import lombok.RequiredArgsConstructor;
@@ -38,17 +39,17 @@ public class EventPayloadMapper {
 
         target.setEventId(source.eventId());
         target.setModificationNumber(Math.toIntExact(source.modificationNumber()));
-        DrEvent.EventStatus status = status(source.status());
+        EventStatus status = source.status();
         target.setStatus(status);
         target.setVtnStatus(status);
-        target.setOptType(optType(optType));
+        target.setOptType(optType);
         target.setPriority(source.priority());
         target.setTestEvent(source.testEvent());
         applyTiming(target, timing);
         target.setDurationSeconds(source.timing().durationSeconds());
         target.setExecutionStatus(optType == EventOptType.OPT_IN
-                ? DrEvent.ExecutionStatus.SCHEDULED
-                : DrEvent.ExecutionStatus.RECEIVED);
+                ? EventExecutionStatus.SCHEDULED
+                : EventExecutionStatus.RECEIVED);
         target.setLastAppliedInterval(-1);
         target.setAppliedAt(null);
         target.setCompletedAt(null);
@@ -86,10 +87,6 @@ public class EventPayloadMapper {
         );
     }
 
-    public DrEvent.EventStatus status(EventStatus status) {
-        return DrEvent.EventStatus.valueOf(status.name());
-    }
-
     private List<DrEventSignal> toSignals(List<EventSignalCommand> sources, String selectedSignalId) {
         return IntStream.range(0, sources.size()).mapToObj(sequence -> {
             EventSignalCommand source = sources.get(sequence);
@@ -116,10 +113,6 @@ public class EventPayloadMapper {
         target.setStartTime(timing.actualStartTime());
         target.setRampUpSeconds(timing.rampUpSeconds());
         target.setRecoverySeconds(timing.recoverySeconds());
-    }
-
-    private DrEvent.OptType optType(EventOptType value) {
-        return value == EventOptType.OPT_OUT ? DrEvent.OptType.OPT_OUT : DrEvent.OptType.OPT_IN;
     }
 
     private long randomOffset(long windowSeconds) {

@@ -1,13 +1,15 @@
 package com.qcharge.openadr.service.event.processing;
 
+import com.qcharge.openadr.model.enums.event.EventCancellationType;
+import com.qcharge.openadr.model.enums.event.EventExecutionStatus;
 import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.TargetMismatchException;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.EventValidationService;
-import com.qcharge.openadr.service.event.command.EventOptType;
+import com.qcharge.openadr.model.enums.event.EventOptType;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
-import com.qcharge.openadr.service.event.command.EventStatus;
+import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
 import com.qcharge.openadr.service.event.mapping.EventPayloadMapper;
 import com.qcharge.openadr.service.event.store.EventService;
@@ -84,7 +86,7 @@ public class EventProcessor {
         }
         if (event.status() == EventStatus.COMPLETED) {
             applyCompletion(event, existing);
-            EventOptType optType = existing != null && existing.getOptType() == DrEvent.OptType.OPT_IN
+            EventOptType optType = existing != null && existing.getOptType() == EventOptType.OPT_IN
                     ? EventOptType.OPT_IN : EventOptType.OPT_OUT;
             return result(eventId, modificationNumber, OpenADRResponseCode.OK, optType);
         }
@@ -118,11 +120,11 @@ public class EventProcessor {
 
     private EventProcessingResult processDuplicate(DrEvent existing, ReceiveEventCommand event) {
         if (event.status() == EventStatus.COMPLETED
-                && existing.getVtnStatus() != DrEvent.EventStatus.COMPLETED) {
-            existing.setVtnStatus(DrEvent.EventStatus.COMPLETED);
+                && existing.getVtnStatus() != EventStatus.COMPLETED) {
+            existing.setVtnStatus(EventStatus.COMPLETED);
             eventService.save(existing);
         }
-        EventOptType optType = existing.getOptType() == DrEvent.OptType.OPT_OUT
+        EventOptType optType = existing.getOptType() == EventOptType.OPT_OUT
                 ? EventOptType.OPT_OUT : EventOptType.OPT_IN;
         return result(event.eventId(), event.modificationNumber(),
                 OpenADRResponseCode.OK, optType);
@@ -131,23 +133,23 @@ public class EventProcessor {
     private void applyCancellation(ReceiveEventCommand event, DrEvent existing) {
         existing.setEventId(event.eventId());
         existing.setModificationNumber(Math.toIntExact(event.modificationNumber()));
-        existing.setVtnStatus(DrEvent.EventStatus.CANCELLED);
-        existing.setOptType(DrEvent.OptType.OPT_IN);
+        existing.setVtnStatus(EventStatus.CANCELLED);
+        existing.setOptType(EventOptType.OPT_IN);
         existing.setPriority(event.priority());
-        cancellationService.request(existing, DrEvent.CancellationType.EXPLICIT);
+        cancellationService.request(existing, EventCancellationType.EXPLICIT);
     }
 
     private void applyCompletion(ReceiveEventCommand event, DrEvent existing) {
         DrEvent aggregate = existing != null ? existing : new DrEvent();
         aggregate.setEventId(event.eventId());
         aggregate.setModificationNumber(Math.toIntExact(event.modificationNumber()));
-        aggregate.setVtnStatus(DrEvent.EventStatus.COMPLETED);
+        aggregate.setVtnStatus(EventStatus.COMPLETED);
         aggregate.setPriority(event.priority());
         aggregate.setTestEvent(existing != null ? existing.isTestEvent() : event.testEvent());
         if (existing == null) {
-            aggregate.setStatus(DrEvent.EventStatus.COMPLETED);
-            aggregate.setOptType(DrEvent.OptType.OPT_OUT);
-            aggregate.setExecutionStatus(DrEvent.ExecutionStatus.COMPLETED);
+            aggregate.setStatus(EventStatus.COMPLETED);
+            aggregate.setOptType(EventOptType.OPT_OUT);
+            aggregate.setExecutionStatus(EventExecutionStatus.COMPLETED);
             payloadMapper.initializeTerminalEvent(aggregate, event);
         }
         aggregate.setUpdatedAt(clock.instant());
