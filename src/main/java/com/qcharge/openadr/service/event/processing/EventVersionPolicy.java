@@ -8,9 +8,6 @@ import org.springframework.stereotype.Component;
 public class EventVersionPolicy {
 
     public State evaluate(DrEvent storedEvent, long receivedModificationNumber) {
-        if (storedEvent == null) {
-            return State.NEW;
-        }
         int storedModificationNumber = storedEvent.getModificationNumber();
         if (receivedModificationNumber == storedModificationNumber) {
             return State.DUPLICATE;

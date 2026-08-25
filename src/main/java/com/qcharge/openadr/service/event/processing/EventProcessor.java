@@ -39,39 +39,41 @@ public class EventProcessor {
     private final EventCancellationService cancellationService;
     private final Clock clock;
 
-    public EventProcessingResult processSafely(ReceiveEventCommand event, String venId) {
+    /**
+     * Converts expected VTN event errors to per-event responses. Unexpected failures escape so
+     * the surrounding snapshot transaction is rolled back.
+     */
+    public EventProcessingResult process(ReceiveEventCommand event, String venId) {
         try {
-            return process(event, venId);
+            return processValidated(event, venId);
         } catch (EventValidationException exception) {
-            return failure(event, exception.getResponseCode(), exception, false);
+            return failure(event, exception.getResponseCode(), exception);
         } catch (TargetMismatchException exception) {
-            return failure(event, OpenADRResponseCode.TARGET_MISMATCH, exception, false);
-        } catch (IllegalArgumentException exception) {
-            return failure(event, OpenADRResponseCode.INVALID_DATA, exception, false);
-        } catch (Exception exception) {
-            return failure(event, OpenADRResponseCode.INVALID_DATA, exception, true);
+            return failure(event, OpenADRResponseCode.TARGET_MISMATCH, exception);
         }
     }
 
-    private EventProcessingResult process(ReceiveEventCommand event, String venId) {
+    private EventProcessingResult processValidated(ReceiveEventCommand event, String venId) {
         String eventId = event.eventId();
         long modificationNumber = event.modificationNumber();
-        DrEvent existing = eventService.findByEventId(eventId).orElse(null);
+        Optional<DrEvent> existing = eventService.findByEventId(eventId);
 
-        boolean unknownCancellation = existing == null && event.status() == EventStatus.CANCELLED;
-        EventVersionPolicy.State version = unknownCancellation
-                ? EventVersionPolicy.State.NEW
-                : versionPolicy.evaluate(existing, modificationNumber);
+        boolean unknownCancellation = existing.isEmpty()
+                && event.status() == EventStatus.CANCELLED;
+        EventVersionPolicy.State version = existing
+                .map(stored -> versionPolicy.evaluate(stored, modificationNumber))
+                .orElse(EventVersionPolicy.State.NEW);
 
         if (version == EventVersionPolicy.State.OUT_OF_SEQUENCE) {
             log.warn("Out-of-sequence OpenADR event. eventId={}, stored={}, received={}",
-                    eventId, existing != null ? existing.getModificationNumber() : null,
+                    eventId,
+                    existing.map(DrEvent::getModificationNumber).orElse(null),
                     modificationNumber);
             return result(eventId, modificationNumber,
                     OpenADRResponseCode.OUT_OF_SEQUENCE, EventOptType.OPT_OUT);
         }
         if (version == EventVersionPolicy.State.DUPLICATE) {
-            return processDuplicate(existing, event);
+            return processDuplicate(requireExisting(existing, eventId, version), event);
         }
 
         ResolvedEventTarget eventTarget = validateAndResolveTarget(event, venId);
@@ -81,14 +83,22 @@ public class EventProcessor {
                 return result(eventId, modificationNumber,
                         OpenADRResponseCode.OK, EventOptType.OPT_IN);
             }
-            applyCancellation(event, existing);
+            applyCancellation(
+                    event,
+                    requireExisting(existing, eventId, version)
+            );
             return result(eventId, modificationNumber,
                     OpenADRResponseCode.OK, EventOptType.OPT_IN);
         }
         if (event.status() == EventStatus.COMPLETED) {
-            applyCompletion(event, existing);
-            EventOptType optType = existing != null && existing.getOptType() == EventOptType.OPT_IN
-                    ? EventOptType.OPT_IN : EventOptType.OPT_OUT;
+            boolean newEvent = existing.isEmpty();
+            DrEvent aggregate = existing.orElseGet(DrEvent::new);
+            applyCompletion(event, aggregate, newEvent);
+            EventOptType optType = existing
+                    .map(DrEvent::getOptType)
+                    .filter(EventOptType.OPT_IN::equals)
+                    .map(ignored -> EventOptType.OPT_IN)
+                    .orElse(EventOptType.OPT_OUT);
             return result(eventId, modificationNumber, OpenADRResponseCode.OK, optType);
         }
 
@@ -103,7 +113,7 @@ public class EventProcessor {
                 resourceResolver.resolveSignalTargets(signals, eventTarget);
         EventSignalCommand selectedSignal = selected.get();
         EventOptType optType = EventOptType.OPT_IN;
-        DrEvent aggregate = existing != null ? existing : new DrEvent();
+        DrEvent aggregate = existing.orElseGet(DrEvent::new);
         payloadMapper.applyExecutableEvent(
                 aggregate, event, optType, signals, selectedSignal.signalId(),
                 resourcesBySignal.getOrDefault(selectedSignal.signalId(), List.of()));
@@ -127,8 +137,27 @@ public class EventProcessor {
         }
         EventOptType optType = existing.getOptType() == EventOptType.OPT_OUT
                 ? EventOptType.OPT_OUT : EventOptType.OPT_IN;
+        log.info(
+                "Processed duplicate OpenADR event version. eventId={}, modificationNumber={}, "
+                        + "vtnStatus={}, optType={}",
+                event.eventId(),
+                event.modificationNumber(),
+                existing.getVtnStatus(),
+                optType
+        );
         return result(event.eventId(), event.modificationNumber(),
                 OpenADRResponseCode.OK, optType);
+    }
+
+    private DrEvent requireExisting(
+            Optional<DrEvent> existing,
+            String eventId,
+            EventVersionPolicy.State version
+    ) {
+        return existing.orElseThrow(() -> new IllegalStateException(
+                "Stored OpenADR event is required for state=%s, eventId=%s"
+                        .formatted(version, eventId)
+        ));
     }
 
     private void applyCancellation(ReceiveEventCommand event, DrEvent existing) {
@@ -140,14 +169,17 @@ public class EventProcessor {
         cancellationService.request(existing, EventCancellationType.EXPLICIT);
     }
 
-    private void applyCompletion(ReceiveEventCommand event, DrEvent existing) {
-        DrEvent aggregate = existing != null ? existing : new DrEvent();
+    private void applyCompletion(
+            ReceiveEventCommand event,
+            DrEvent aggregate,
+            boolean newEvent
+    ) {
         aggregate.setEventId(event.eventId());
         aggregate.setModificationNumber(Math.toIntExact(event.modificationNumber()));
         aggregate.setVtnStatus(EventStatus.COMPLETED);
         aggregate.setPriority(event.priority());
-        aggregate.setTestEvent(existing != null ? existing.isTestEvent() : event.testEvent());
-        if (existing == null) {
+        aggregate.setTestEvent(newEvent ? event.testEvent() : aggregate.isTestEvent());
+        if (newEvent) {
             aggregate.setVenStatus(EventStatus.COMPLETED);
             aggregate.setOptType(EventOptType.OPT_OUT);
             aggregate.setExecutionStatus(EventExecutionStatus.COMPLETED);
@@ -158,16 +190,11 @@ public class EventProcessor {
     }
 
     private EventProcessingResult failure(
-            ReceiveEventCommand event, int responseCode, Exception exception, boolean unexpected
+            ReceiveEventCommand event, int responseCode, Exception exception
     ) {
-        if (unexpected) {
-            log.error("Failed to process OpenADR event. eventId={}, modificationNumber={}",
-                    event.eventId(), event.modificationNumber(), exception);
-        } else {
-            log.warn("OpenADR event rejected. eventId={}, modificationNumber={}, "
-                            + "responseCode={}, reason={}",
-                    event.eventId(), event.modificationNumber(), responseCode, exception.getMessage());
-        }
+        log.warn("OpenADR event rejected. eventId={}, modificationNumber={}, "
+                        + "responseCode={}, reason={}",
+                event.eventId(), event.modificationNumber(), responseCode, exception.getMessage());
         return result(event.eventId(), event.modificationNumber(),
                 responseCode, EventOptType.OPT_OUT);
     }

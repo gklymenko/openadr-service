@@ -5,6 +5,7 @@ import com.qcharge.openadr.service.event.EventPolicyService;
 import com.qcharge.openadr.service.event.mapping.EventEntityMapper;
 import com.qcharge.openadr.service.event.mapping.EventPayloadMapper;
 import com.qcharge.openadr.service.event.processing.EventCancellationService;
+import com.qcharge.openadr.service.event.processing.EventBatchProcessor;
 import com.qcharge.openadr.service.event.processing.EventProcessor;
 import com.qcharge.openadr.service.event.processing.EventVersionPolicy;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
@@ -75,9 +76,12 @@ public final class EventProtocolTestComponents {
                 cancellationService,
                 clock
         );
-        return new EventProtocolAdapter(
+        EventBatchProcessor batchProcessor = new EventBatchProcessor(
                 processor,
-                cancellationService,
+                cancellationService
+        );
+        return new EventProtocolAdapter(
+                batchProcessor,
                 transportService,
                 new EventEntryValidator(),
                 commandMapper

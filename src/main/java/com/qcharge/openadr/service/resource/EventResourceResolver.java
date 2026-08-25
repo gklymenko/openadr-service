@@ -12,7 +12,6 @@ import com.qcharge.openadr.service.event.command.SignalTargetCommand;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.Comparator;
@@ -57,7 +56,6 @@ public class EventResourceResolver {
     private final OpenAdrResourceRepository repository;
     private final OpenAdrProperties properties;
 
-    @Transactional(readOnly = true)
     public ResolvedEventTarget resolveEventTarget(EventTargetCommand target, String venId) {
         if (target == null || !target.present()) {
             if (!properties.getEvent().isAllowUntargetedEvents()) {

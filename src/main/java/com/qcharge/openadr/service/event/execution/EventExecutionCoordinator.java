@@ -22,21 +22,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EventExecutionCoordinator {
 
-    private static final EnumSet<EventExecutionStatus> RECOVERABLE_STATUSES = EnumSet.of(
-            EventExecutionStatus.SCHEDULED,
-            EventExecutionStatus.APPLIED,
-            EventExecutionStatus.CANCEL_PENDING
-    );
-
     private final EventService eventService;
     private final EventExecutionPort executionPort;
     private final EventTimelineCalculator timeline;
-
-    @Transactional
-    public void processAt(Instant now) {
-        List<DrEvent> events = eventService.findByExecutionStatusIn(RECOVERABLE_STATUSES);
-        events.forEach(event -> processSafely(event, now));
-    }
 
     /** Removes every persisted event and any downstream effect owned by this registration. */
     public void clearDownstreamForRegistrationCancellation() {
@@ -55,30 +43,7 @@ public class EventExecutionCoordinator {
         );
     }
 
-    private boolean hasAppliedDownstreamEffect(DrEvent event) {
-        return !event.isTestEvent()
-                && (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null)
-                && event.getExecutionStatus() != EventExecutionStatus.COMPLETED
-                && event.getExecutionStatus() != EventExecutionStatus.CANCELLED;
-    }
-
-    private void processSafely(DrEvent event, Instant now) {
-        try {
-            advance(event, now);
-        } catch (RuntimeException exception) {
-            if (event.getExecutionStatus() == EventExecutionStatus.CANCEL_PENDING) {
-                log.error("OpenADR cancellation termination failed and will be retried. eventId={}",
-                        event.getEventId(), exception);
-                return;
-            }
-            event.setExecutionStatus(EventExecutionStatus.FAILED);
-            eventService.save(event);
-            log.error("OpenADR event lifecycle execution failed. eventId={}",
-                    event.getEventId(), exception);
-        }
-    }
-
-    private void advance(DrEvent event, Instant now) {
+    public void process(DrEvent event, Instant now) {
         if (event.getExecutionStatus() == EventExecutionStatus.CANCEL_PENDING
                 && !now.isBefore(event.getCancellationEffectiveAt())) {
             terminateCancellation(event, now);
@@ -153,5 +118,12 @@ public class EventExecutionCoordinator {
         event.setExecutionStatus(EventExecutionStatus.COMPLETED);
         event.setCompletedAt(now);
         eventService.save(event);
+    }
+
+    private boolean hasAppliedDownstreamEffect(DrEvent event) {
+        return !event.isTestEvent()
+                && (event.getLastAppliedInterval() >= 0 || event.getAppliedAt() != null)
+                && event.getExecutionStatus() != EventExecutionStatus.COMPLETED
+                && event.getExecutionStatus() != EventExecutionStatus.CANCELLED;
     }
 }
