@@ -3,6 +3,7 @@ package com.qcharge.openadr.validation;
 import com.qcharge.openadr.AbstractOadrTest;
 import com.qcharge.openadr.TestSessionFixtures;
 import com.qcharge.openadr.exceptions.OpenADRResponseCode;
+import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
@@ -144,6 +146,49 @@ class EventPerItemValidationTest extends AbstractOadrTest {
         assertEquals(
                 String.valueOf(OpenADRResponseCode.INVALID_DATA),
                 response.getResponseCode()
+        );
+    }
+
+    @Test
+    void invalidUpdateDoesNotImplicitlyCancelStoredEvent()
+            throws Oadr20bUnmarshalException {
+        DrEvent stored = new DrEvent();
+        stored.setEventId("EVENT-1");
+        when(repository.findAllByExecutionStatusIn(any())).thenReturn(List.of(stored));
+
+        OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
+        distributeEvent.setRequestID("DIST-1");
+        distributeEvent.setVtnID("VTN-1");
+        OadrDistributeEventType.OadrEvent invalidUpdate = event("EVENT-1");
+        invalidUpdate.getEiEvent().getEventDescriptor().setEventStatus(null);
+        distributeEvent.getOadrEvent().add(invalidUpdate);
+
+        adapter.receive(distributeEvent, session());
+
+        assertEquals(
+                String.valueOf(OpenADRResponseCode.INVALID_DATA),
+                capturedResponses().getFirst().getResponseCode()
+        );
+        verify(repository, never()).save(stored);
+    }
+
+    @Test
+    void internalProcessingFailureEscapesAndDoesNotSendAcknowledgement()
+            throws Oadr20bUnmarshalException {
+        when(repository.findByEventId("EVENT-1"))
+                .thenThrow(new IllegalStateException("Database unavailable"));
+
+        OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
+        distributeEvent.setRequestID("DIST-1");
+        distributeEvent.setVtnID("VTN-1");
+        distributeEvent.getOadrEvent().add(event("EVENT-1"));
+
+        assertThrows(IllegalStateException.class, () -> adapter.receive(distributeEvent, session()));
+
+        verify(transportService, never()).send(
+                eq(OpenAdrOperations.CREATED_EVENT),
+                any(OadrCreatedEventType.class),
+                any()
         );
     }
 

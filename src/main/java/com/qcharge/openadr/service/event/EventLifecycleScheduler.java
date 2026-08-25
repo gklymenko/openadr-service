@@ -18,10 +18,6 @@ public class EventLifecycleScheduler {
 
     @Scheduled(fixedDelayString = "${openadr.event.scheduler-delay-millis:1000}")
     public void processDueEvents() {
-        processAt(clock.instant());
-    }
-
-    void processAt(Instant now) {
-        coordinator.processAt(now);
+        coordinator.processAt(clock.instant());
     }
 }
