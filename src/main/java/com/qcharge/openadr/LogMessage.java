@@ -69,4 +69,6 @@ public class LogMessage {
 
     public static final String EVENT_ENTRY_REJECTED_UNEXPECTEDLY = "Unexpected OpenADR event mapping failure. eventId={}, modificationNumber={}";
 
+    public static final String EVENT_RESPONSE_SKIPPED_INVALID_IDENTITY = "Cannot create eventResponse for invalid OpenADR event without a valid qualifiedEventID. eventId={}, modificationNumber={}";
+
 }

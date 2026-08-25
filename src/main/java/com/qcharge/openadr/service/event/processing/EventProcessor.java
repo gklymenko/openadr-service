@@ -57,6 +57,7 @@ public class EventProcessor {
         String eventId = event.eventId();
         long modificationNumber = event.modificationNumber();
         DrEvent existing = eventService.findByEventId(eventId).orElse(null);
+
         boolean unknownCancellation = existing == null && event.status() == EventStatus.CANCELLED;
         EventVersionPolicy.State version = unknownCancellation
                 ? EventVersionPolicy.State.NEW

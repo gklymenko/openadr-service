@@ -85,7 +85,7 @@ class EventPerItemValidationTest extends AbstractOadrTest {
     }
 
     @Test
-    void missingEventDescriptorProducesPerEvent459() {
+    void missingEiEventDoesNotProduceFabricatedEventResponse() {
         OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
         distributeEvent.setRequestID("DIST-1");
         distributeEvent.setVtnID("VTN-1");
@@ -97,16 +97,15 @@ class EventPerItemValidationTest extends AbstractOadrTest {
 
         adapter.receive(distributeEvent, session());
 
-        List<EventResponse> responses = capturedResponses();
-        assertEquals(1, responses.size());
-        assertEquals(
-                String.valueOf(OpenADRResponseCode.COMPLIANCE_ERROR_OTHER),
-                responses.getFirst().getResponseCode()
+        verify(transportService, never()).send(
+                eq(OpenAdrOperations.CREATED_EVENT),
+                any(OadrCreatedEventType.class),
+                any()
         );
     }
 
     @Test
-    void invalidEventProducesPerEvent459AndDoesNotRejectValidSibling()
+    void invalidEventWithoutIdDoesNotRejectValidSiblingOrFabricateIdentity()
             throws Oadr20bUnmarshalException {
         OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
         distributeEvent.setRequestID("DIST-1");
@@ -117,16 +116,35 @@ class EventPerItemValidationTest extends AbstractOadrTest {
         adapter.receive(distributeEvent, session());
 
         List<EventResponse> responses = capturedResponses();
-        assertEquals(2, responses.size());
-        assertEquals(
-                String.valueOf(OpenADRResponseCode.COMPLIANCE_ERROR_OTHER),
-                responses.get(0).getResponseCode()
-        );
+        assertEquals(1, responses.size());
+        assertEquals("EVENT-1", responses.getFirst().getQualifiedEventID().getEventID());
         assertEquals(
                 String.valueOf(OpenADRResponseCode.SIGNAL_NOT_SUPPORTED),
-                responses.get(1).getResponseCode()
+                responses.getFirst().getResponseCode()
         );
         verify(repository).findByEventId("EVENT-1");
+    }
+
+    @Test
+    void invalidEventWithQualifiedIdProducesCorrelatedPerEvent454()
+            throws Oadr20bUnmarshalException {
+        OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
+        distributeEvent.setRequestID("DIST-1");
+        distributeEvent.setVtnID("VTN-1");
+
+        OadrDistributeEventType.OadrEvent invalid = event("EVENT-1");
+        invalid.getEiEvent().getEventDescriptor().setEventStatus(null);
+        distributeEvent.getOadrEvent().add(invalid);
+
+        adapter.receive(distributeEvent, session());
+
+        EventResponse response = capturedResponses().getFirst();
+        assertEquals("EVENT-1", response.getQualifiedEventID().getEventID());
+        assertEquals(0L, response.getQualifiedEventID().getModificationNumber());
+        assertEquals(
+                String.valueOf(OpenADRResponseCode.INVALID_DATA),
+                response.getResponseCode()
+        );
     }
 
     @Test

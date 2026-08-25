@@ -27,10 +27,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_DUPLICATED;
 import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_REJECTED_UNEXPECTEDLY;
+import static com.qcharge.openadr.LogMessage.EVENT_RESPONSE_SKIPPED_INVALID_IDENTITY;
 import static com.qcharge.openadr.LogMessage.IGNORE_EMPTY_EVENT_ENTRY;
 import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_REJECTED;
 
@@ -66,20 +68,22 @@ public class EventProtocolAdapter {
                 continue;
             }
 
-            EventProcessingResult result = processEvent(event, receivedEventIds, session.venId());
+            Optional<EventProcessingResult> result = processEvent(event, receivedEventIds, session.venId());
 
-            if (!requiresResponse(event)) {
+            if (!requiresResponse(event) || result.isEmpty()) {
                 continue;
             }
+
+            EventProcessingResult processedEvent = result.orElseThrow();
 
             EventResponse eventResponse =
                     Oadr20bEiEventBuilders
                             .newOadr20bCreatedEventEventResponseBuilder(
-                                    result.eventId(),
-                                    result.modificationNumber(),
+                                    processedEvent.eventId(),
+                                    processedEvent.modificationNumber(),
                                     requestId,
-                                    result.responseCode(),
-                                    protocolOptType(result.optType())
+                                    processedEvent.responseCode(),
+                                    protocolOptType(processedEvent.optType())
                             )
                             .build();
 
@@ -89,7 +93,7 @@ public class EventProtocolAdapter {
 
         cancellationService.reconcileSnapshot(receivedEventIds);
         if (responseCount == 0) {
-            log.info("No oadrCreatedEvent sent because no event required application response");
+            log.info("No oadrCreatedEvent sent because no correlatable event response was produced");
             return;
         }
 
@@ -102,7 +106,7 @@ public class EventProtocolAdapter {
         return ResponseRequiredType.ALWAYS == event.getOadrResponseRequired();
     }
 
-    private EventProcessingResult processEvent(
+    private Optional<EventProcessingResult> processEvent(
             OadrEvent source, Set<String> receivedEventIds, String venId
     ) {
         try {
@@ -114,26 +118,26 @@ public class EventProtocolAdapter {
 
             if (!receivedEventIds.add(eventId)) {
                 log.warn(EVENT_ENTRY_DUPLICATED, eventId);
-                return new EventProcessingResult(
+                return Optional.of(new EventProcessingResult(
                         eventId,
                         modificationNumber,
                         OpenADRResponseCode.INVALID_ID,
                         EventOptType.OPT_OUT
-                );
+                ));
             }
 
             ReceiveEventCommand eventCommand = commandMapper.map(source);
-            return eventProcessor.processSafely(eventCommand, venId);
+            return Optional.of(eventProcessor.processSafely(eventCommand, venId));
         } catch (EventValidationException exception) {
             return processingFailure(source, exception);
         }
     }
 
-    private EventProcessingResult processingFailure(
+    private Optional<EventProcessingResult> processingFailure(
             OadrEvent source, RuntimeException exception
     ) {
         String eventId = eventIdOf(source);
-        long modificationNumber = modificationNumberOf(source);
+        Long modificationNumber = modificationNumberOf(source);
         int responseCode;
 
         if (exception instanceof EventValidationException validationException) {
@@ -145,21 +149,24 @@ public class EventProtocolAdapter {
             log.error(EVENT_ENTRY_REJECTED_UNEXPECTEDLY, eventId, modificationNumber, exception);
         }
 
-        return new EventProcessingResult(
+        if (Strings.isBlank(eventId) || modificationNumber == null) {
+            log.warn(EVENT_RESPONSE_SKIPPED_INVALID_IDENTITY, eventId, modificationNumber);
+            return Optional.empty();
+        }
+
+        return Optional.of(new EventProcessingResult(
                 eventId, modificationNumber, responseCode, EventOptType.OPT_OUT
-        );
+        ));
     }
 
     private String eventIdOf(OadrEvent source) {
         EventDescriptorType descriptor = descriptorOf(source);
-        return descriptor != null && Strings.isNotBlank(descriptor.getEventID())
-                ? descriptor.getEventID()
-                : "unknown";
+        return descriptor != null ? descriptor.getEventID() : null;
     }
 
-    private long modificationNumberOf(OadrEvent source) {
+    private Long modificationNumberOf(OadrEvent source) {
         EventDescriptorType descriptor = descriptorOf(source);
-        return descriptor != null ? descriptor.getModificationNumber() : 0L;
+        return descriptor != null ? descriptor.getModificationNumber() : null;
     }
 
     private EventDescriptorType descriptorOf(OadrEvent source) {
