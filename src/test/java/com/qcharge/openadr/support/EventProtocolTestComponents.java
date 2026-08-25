@@ -12,6 +12,7 @@ import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
 import com.qcharge.openadr.service.event.store.EventService;
 import com.qcharge.openadr.service.resource.EventResourceResolver;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.service.validation.EventValidator;
 
 import java.time.Clock;
 
@@ -78,6 +79,7 @@ public final class EventProtocolTestComponents {
                 processor,
                 cancellationService,
                 transportService,
+                new EventValidator(),
                 commandMapper
         );
     }

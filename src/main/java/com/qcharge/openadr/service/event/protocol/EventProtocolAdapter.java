@@ -4,6 +4,7 @@ import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bResponseBuilders;
 import com.qcharge.openadr.model.oadr20b.ei.EventResponses.EventResponse;
+import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
 import com.qcharge.openadr.model.oadr20b.ei.OptTypeType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
@@ -11,21 +12,27 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
 import com.qcharge.openadr.model.oadr20b.oadr.ResponseRequiredType;
 import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.model.enums.event.EventOptType;
+import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
 import com.qcharge.openadr.service.event.processing.EventCancellationService;
 import com.qcharge.openadr.service.event.processing.EventProcessingResult;
 import com.qcharge.openadr.service.event.processing.EventProcessor;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.service.validation.EventValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.Set;
 
+import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_DUPLICATED;
+import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_REJECTED_UNEXPECTEDLY;
 import static com.qcharge.openadr.LogMessage.IGNORE_EMPTY_EVENT_ENTRY;
+import static com.qcharge.openadr.LogMessage.EVENT_ENTRY_REJECTED;
 
 /** OpenADR XML boundary: converts oadrDistributeEvent into application commands and responses. */
 @Slf4j
@@ -35,6 +42,7 @@ public class EventProtocolAdapter {
     private final EventProcessor eventProcessor;
     private final EventCancellationService cancellationService;
     private final VtnTransportService transportService;
+    private final EventValidator eventValidator;
     private final OpenAdrEventCommandMapper commandMapper;
 
     @Transactional
@@ -97,49 +105,67 @@ public class EventProtocolAdapter {
     private EventProcessingResult processEvent(
             OadrEvent source, Set<String> receivedEventIds, String venId
     ) {
-        String eventId = commandMapper.eventIdOf(source);
-        long modificationNumber = commandMapper.modificationNumberOf(source);
-        if (eventId != null && !eventId.isBlank() && !receivedEventIds.add(eventId)) {
-            return new EventProcessingResult(
-                    eventId,
-                    modificationNumber,
-                    OpenADRResponseCode.INVALID_ID,
-                    EventOptType.OPT_OUT
-            );
-        }
         try {
-            return eventProcessor.processSafely(commandMapper.map(source), venId);
+            eventValidator.validateEvent(source);
+
+            EventDescriptorType descriptor = source.getEiEvent().getEventDescriptor();
+            String eventId = descriptor.getEventID();
+            long modificationNumber = descriptor.getModificationNumber();
+
+            if (!receivedEventIds.add(eventId)) {
+                log.warn(EVENT_ENTRY_DUPLICATED, eventId);
+                return new EventProcessingResult(
+                        eventId,
+                        modificationNumber,
+                        OpenADRResponseCode.INVALID_ID,
+                        EventOptType.OPT_OUT
+                );
+            }
+
+            ReceiveEventCommand eventCommand = commandMapper.map(source);
+            return eventProcessor.processSafely(eventCommand, venId);
         } catch (EventValidationException exception) {
-            log.warn("OpenADR event mapping rejected. eventId={}, modificationNumber={}, "
-                            + "responseCode={}, reason={}",
-                    safeEventId(eventId), modificationNumber,
-                    exception.getResponseCode(), exception.getMessage());
-            return new EventProcessingResult(
-                    safeEventId(eventId), modificationNumber,
-                    exception.getResponseCode(), EventOptType.OPT_OUT);
-        } catch (IllegalArgumentException exception) {
-            return mappingFailure(eventId, modificationNumber, exception);
-        } catch (RuntimeException exception) {
-            log.error("Failed to map OpenADR event. eventId={}, modificationNumber={}",
-                    safeEventId(eventId), modificationNumber, exception);
-            return mappingFailure(eventId, modificationNumber, exception);
+            return processingFailure(source, exception);
         }
     }
 
-    private EventProcessingResult mappingFailure(
-            String eventId,
-            long modificationNumber,
-            RuntimeException exception
+    private EventProcessingResult processingFailure(
+            OadrEvent source, RuntimeException exception
     ) {
-        log.warn("Invalid OpenADR event mapping. eventId={}, modificationNumber={}, reason={}",
-                safeEventId(eventId), modificationNumber, exception.getMessage());
+        String eventId = eventIdOf(source);
+        long modificationNumber = modificationNumberOf(source);
+        int responseCode;
+
+        if (exception instanceof EventValidationException validationException) {
+            responseCode = validationException.getResponseCode();
+            log.warn(EVENT_ENTRY_REJECTED, eventId, modificationNumber, responseCode, exception.getMessage());
+
+        } else {
+            responseCode = OpenADRResponseCode.INVALID_DATA;
+            log.error(EVENT_ENTRY_REJECTED_UNEXPECTEDLY, eventId, modificationNumber, exception);
+        }
+
         return new EventProcessingResult(
-                safeEventId(eventId), modificationNumber,
-                OpenADRResponseCode.INVALID_DATA, EventOptType.OPT_OUT);
+                eventId, modificationNumber, responseCode, EventOptType.OPT_OUT
+        );
     }
 
-    private String safeEventId(String eventId) {
-        return eventId != null && !eventId.isBlank() ? eventId : "unknown";
+    private String eventIdOf(OadrEvent source) {
+        EventDescriptorType descriptor = descriptorOf(source);
+        return descriptor != null && Strings.isNotBlank(descriptor.getEventID())
+                ? descriptor.getEventID()
+                : "unknown";
+    }
+
+    private long modificationNumberOf(OadrEvent source) {
+        EventDescriptorType descriptor = descriptorOf(source);
+        return descriptor != null ? descriptor.getModificationNumber() : 0L;
+    }
+
+    private EventDescriptorType descriptorOf(OadrEvent source) {
+        return source != null && source.getEiEvent() != null
+                ? source.getEiEvent().getEventDescriptor()
+                : null;
     }
 
     private OptTypeType protocolOptType(EventOptType optType) {

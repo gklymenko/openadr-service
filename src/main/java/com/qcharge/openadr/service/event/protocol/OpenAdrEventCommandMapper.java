@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.event.protocol;
 
-import com.qcharge.openadr.exceptions.OpenADRResponseCode;
+import com.qcharge.openadr.model.enums.event.EventStatus;
+import com.qcharge.openadr.model.oadr20b.ei.EiEventType;
 import com.qcharge.openadr.model.oadr20b.ei.EiEventSignalType;
 import com.qcharge.openadr.model.oadr20b.ei.EiTargetType;
 import com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType;
@@ -10,20 +11,19 @@ import com.qcharge.openadr.model.oadr20b.ei.SignalPayloadType;
 import com.qcharge.openadr.model.oadr20b.emix.ItemBaseType;
 import com.qcharge.openadr.model.oadr20b.oadr.CurrencyType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType.OadrEvent;
+import com.qcharge.openadr.model.oadr20b.power.EndDeviceAssetType;
 import com.qcharge.openadr.model.oadr20b.power.PowerRealType;
-import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.command.EventIntervalCommand;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
-import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.service.event.command.EventTargetCommand;
 import com.qcharge.openadr.service.event.command.EventTimingCommand;
 import com.qcharge.openadr.service.event.command.ReceiveEventCommand;
 import com.qcharge.openadr.service.event.command.SignalTargetCommand;
 import com.qcharge.openadr.utility.OpenAdrTimeUtils;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,16 +31,17 @@ import java.util.List;
 @Component
 public class OpenAdrEventCommandMapper {
 
-    public ReceiveEventCommand map(OadrEvent source) {
-        var descriptor = requireDescriptor(source);
-        String eventId = requireEventId(descriptor.getEventID());
-        EventStatus status = status(descriptor.getEventStatus() != null
-                ? descriptor.getEventStatus().value() : null);
-        EventTimingCommand timing = timing(source);
-        List<EventSignalCommand> signals = signals(source);
+    public ReceiveEventCommand map(@NotNull OadrEvent source) {
+        EiEventType event = source.getEiEvent();
+        EventDescriptorType descriptor = event.getEventDescriptor();
+        EventStatus status = EventStatus.valueOf(
+                descriptor.getEventStatus().value().toUpperCase()
+        );
+        EventTimingCommand timing = timing(event);
+        List<EventSignalCommand> signals = signals(event);
 
         return new ReceiveEventCommand(
-                eventId,
+                descriptor.getEventID(),
                 descriptor.getModificationNumber(),
                 status,
                 descriptor.getPriority() != null ? descriptor.getPriority().intValue() : null,
@@ -48,52 +49,11 @@ public class OpenAdrEventCommandMapper {
                 marketContext(descriptor),
                 timing,
                 signals,
-                target(source.getEiEvent().getEiTarget())
+                target(event.getEiTarget())
         );
     }
 
-    public String eventIdOf(OadrEvent source) {
-        return source.getEiEvent() != null
-                && source.getEiEvent().getEventDescriptor() != null
-                ? source.getEiEvent().getEventDescriptor().getEventID()
-                : null;
-    }
-
-    public long modificationNumberOf(OadrEvent source) {
-        return source.getEiEvent() != null
-                && source.getEiEvent().getEventDescriptor() != null
-                ? source.getEiEvent().getEventDescriptor().getModificationNumber()
-                : 0L;
-    }
-
-    private EventDescriptorType requireDescriptor(OadrEvent source) {
-        if (source.getEiEvent() == null
-                || source.getEiEvent().getEventDescriptor() == null) {
-            throw complianceError("eventDescriptor is required");
-        }
-
-        return source.getEiEvent().getEventDescriptor();
-    }
-
-    private String requireEventId(String eventId) {
-        if (eventId == null || eventId.isBlank()) {
-            throw complianceError("eventID is required");
-        }
-        return eventId;
-    }
-
-    private EventStatus status(String value) {
-        if (value == null || value.isBlank()) {
-            throw invalidData("eventStatus is required");
-        }
-        try {
-            return EventStatus.valueOf(value.toUpperCase());
-        } catch (IllegalArgumentException exception) {
-            throw invalidData("Unsupported eventStatus: " + value);
-        }
-    }
-
-    private String marketContext(com.qcharge.openadr.model.oadr20b.ei.EventDescriptorType descriptor) {
+    private String marketContext(EventDescriptorType descriptor) {
         return descriptor.getEiMarketContext() != null
                 ? descriptor.getEiMarketContext().getMarketContext() : null;
     }
@@ -102,51 +62,31 @@ public class OpenAdrEventCommandMapper {
         return value != null && !"false".equals(value);
     }
 
-    private EventTimingCommand timing(OadrEvent source) {
-        try {
-            var properties = source.getEiEvent().getEiActivePeriod().getProperties();
-            if (properties.getDtstart() == null || properties.getDtstart().getDateTime() == null) {
-                throw complianceError("Event start time is required");
-            }
-            long startAfterSeconds = optionalDuration(
-                    properties.getTolerance() != null
-                            && properties.getTolerance().getTolerate() != null
-                            ? properties.getTolerance().getTolerate().getStartafter() : null,
-                    0L,
-                    "event startafter"
-            );
-            if (startAfterSeconds < 0L) {
-                throw invalidData("startafter must not be negative");
-            }
-            if (properties.getDuration() == null) {
-                throw complianceError("Event duration is required");
-            }
-            long durationSeconds = requiredDuration(
-                    properties.getDuration().getDuration(), "event");
-            return new EventTimingCommand(
-                    OpenAdrTimeUtils.fromXmlDateTime(properties.getDtstart().getDateTime()),
-                    startAfterSeconds,
-                    durationSeconds,
-                    nullableDuration(properties.getXEiRampUp() != null
-                            ? properties.getXEiRampUp().getDuration() : null, "event rampUp"),
-                    nullableDuration(properties.getXEiRecovery() != null
-                            ? properties.getXEiRecovery().getDuration() : null, "event recovery")
-            );
-        } catch (EventValidationException exception) {
-            throw exception;
-        } catch (NullPointerException exception) {
-            throw complianceError("eiActivePeriod is required");
-        } catch (RuntimeException exception) {
-            throw complianceError("Invalid eiActivePeriod: " + exception.getMessage());
-        }
+    private EventTimingCommand timing(EiEventType source) {
+        var properties = source.getEiActivePeriod().getProperties();
+        long startAfterSeconds = optionalDuration(
+                properties.getTolerance() != null
+                        && properties.getTolerance().getTolerate() != null
+                        ? properties.getTolerance().getTolerate().getStartafter() : null,
+                0L
+        );
+        return new EventTimingCommand(
+                OpenAdrTimeUtils.fromXmlDateTime(properties.getDtstart().getDateTime()),
+                startAfterSeconds,
+                durationSeconds(properties.getDuration().getDuration()),
+                nullableDuration(properties.getXEiRampUp() != null
+                        ? properties.getXEiRampUp().getDuration() : null),
+                nullableDuration(properties.getXEiRecovery() != null
+                        ? properties.getXEiRecovery().getDuration() : null)
+        );
     }
 
-    private List<EventSignalCommand> signals(OadrEvent source) {
-        if (source.getEiEvent().getEiEventSignals() == null
-                || source.getEiEvent().getEiEventSignals().getEiEventSignal().isEmpty()) {
+    private List<EventSignalCommand> signals(EiEventType source) {
+        if (source.getEiEventSignals() == null
+                || source.getEiEventSignals().getEiEventSignal().isEmpty()) {
             return List.of();
         }
-        return source.getEiEvent().getEiEventSignals().getEiEventSignal().stream()
+        return source.getEiEventSignals().getEiEventSignal().stream()
                 .map(this::signal)
                 .toList();
     }
@@ -157,15 +97,11 @@ public class OpenAdrEventCommandMapper {
                 ? decimal(source.getCurrentValue().getPayloadFloat().getValue()) : null;
         ItemBaseType itemBase = source.getItemBase() != null
                 ? source.getItemBase().getValue() : null;
-        List<IntervalType> sourceIntervals = source.getIntervals() != null
-                ? source.getIntervals().getInterval() : List.of();
-        if (sourceIntervals.isEmpty()) {
-            throw complianceError("At least one interval is required for signal " + source.getSignalID());
-        }
+        List<IntervalType> sourceIntervals = source.getIntervals().getInterval();
 
         List<EventIntervalCommand> intervals = new ArrayList<>();
         for (int sequence = 0; sequence < sourceIntervals.size(); sequence++) {
-            intervals.add(interval(source.getSignalID(), sourceIntervals.get(sequence), sequence));
+            intervals.add(interval(sourceIntervals.get(sequence), sequence));
         }
         return new EventSignalCommand(
                 source.getSignalID(),
@@ -181,24 +117,16 @@ public class OpenAdrEventCommandMapper {
         );
     }
 
-    private EventIntervalCommand interval(String signalId, IntervalType source, int sequence) {
+    private EventIntervalCommand interval(IntervalType source, int sequence) {
         String uid = source.getUid() != null ? source.getUid().getText() : null;
-        String duration = source.getDuration() != null ? source.getDuration().getDuration() : null;
-        var payloads = source.getStreamPayloadBase();
-        if (payloads.size() != 1
-                || !(payloads.getFirst().getValue() instanceof SignalPayloadType signalPayload)) {
-            throw complianceError("Exactly one signalPayload is required for signal %s, uid=%s"
-                    .formatted(signalId, uid));
-        }
-        if (signalPayload.getPayloadBase() == null
-                || !(signalPayload.getPayloadBase().getValue() instanceof PayloadFloatType payloadFloat)) {
-            throw complianceError("A numeric payloadFloat is required for signal %s, uid=%s"
-                    .formatted(signalId, uid));
-        }
+        SignalPayloadType signalPayload = (SignalPayloadType)
+                source.getStreamPayloadBase().getFirst().getValue();
+        PayloadFloatType payloadFloat = (PayloadFloatType)
+                signalPayload.getPayloadBase().getValue();
         return new EventIntervalCommand(
                 uid,
                 sequence,
-                requiredDuration(duration, "interval for signal %s, uid=%s".formatted(signalId, uid)),
+                durationSeconds(source.getDuration().getDuration()),
                 decimal(payloadFloat.getValue()),
                 source.getDtstart() != null
         );
@@ -217,7 +145,7 @@ public class OpenAdrEventCommandMapper {
         }
         return new SignalTargetCommand(
                 hasNonDeviceClassTarget(source),
-                source.getEndDeviceAsset().stream().map(asset -> asset.getMrid()).toList()
+                source.getEndDeviceAsset().stream().map(EndDeviceAssetType::getMrid).toList()
         );
     }
 
@@ -268,36 +196,24 @@ public class OpenAdrEventCommandMapper {
         return null;
     }
 
-    private long requiredDuration(String value, String subject) {
-        try {
-            return OpenAdrTimeUtils.parseOpenAdrDuration(value)
-                    .map(Duration::getSeconds)
-                    .orElseThrow(() -> complianceError("Duration is required for " + subject));
-        } catch (EventValidationException exception) {
-            throw exception;
-        } catch (RuntimeException exception) {
-            throw complianceError("Invalid duration for %s: %s".formatted(subject, value));
-        }
+    private long durationSeconds(String value) {
+        return OpenAdrTimeUtils.parseOpenAdrDuration(value)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Event duration must be validated before mapping"
+                ))
+                .getSeconds();
     }
 
-    private Long nullableDuration(String value, String subject) {
-        return value == null ? null : requiredDuration(value, subject);
+    private Long nullableDuration(String value) {
+        return value == null ? null : durationSeconds(value);
     }
 
-    private long optionalDuration(String value, long defaultValue, String subject) {
-        return value == null ? defaultValue : requiredDuration(value, subject);
+    private long optionalDuration(String value, long defaultValue) {
+        return value == null ? defaultValue : durationSeconds(value);
     }
 
     private BigDecimal decimal(float value) {
         return new BigDecimal(Float.toString(value));
     }
 
-    private EventValidationException complianceError(String message) {
-        return new EventValidationException(
-                message, OpenADRResponseCode.COMPLIANCE_ERROR_OTHER);
-    }
-
-    private EventValidationException invalidData(String message) {
-        return new EventValidationException(message, OpenADRResponseCode.INVALID_DATA);
-    }
 }

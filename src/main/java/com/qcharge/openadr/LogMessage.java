@@ -64,4 +64,9 @@ public class LogMessage {
 
     public static final String IGNORE_EMPTY_EVENT_ENTRY = "Ignoring null oadrEvent entry in oadrDistributeEvent. requestId={}";
 
+    public static final String EVENT_ENTRY_DUPLICATED = "Duplicated eventId in current oadrDistributedEvent {}";
+    public static final String EVENT_ENTRY_REJECTED = "OpenADR event rejected. eventId={}, modificationNumber={}, responseCode={}, reason={}";
+
+    public static final String EVENT_ENTRY_REJECTED_UNEXPECTEDLY = "Unexpected OpenADR event mapping failure. eventId={}, modificationNumber={}";
+
 }

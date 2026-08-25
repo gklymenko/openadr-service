@@ -10,6 +10,7 @@ import com.qcharge.openadr.service.event.EventValidationException;
 import com.qcharge.openadr.service.event.command.EventIntervalCommand;
 import com.qcharge.openadr.service.event.command.EventSignalCommand;
 import com.qcharge.openadr.service.event.protocol.OpenAdrEventCommandMapper;
+import com.qcharge.openadr.service.validation.EventValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +25,7 @@ class SignalParsingTest extends AbstractOadrTest {
 
     private EventValidationService service;
     private OpenAdrEventCommandMapper mapper;
+    private EventValidator eventValidator;
 
     @BeforeEach
     void setUp() {
@@ -32,6 +34,7 @@ class SignalParsingTest extends AbstractOadrTest {
         props.getReport().setResourceId("resource1");
         service = new EventValidationService(props);
         mapper = new OpenAdrEventCommandMapper();
+        eventValidator = new EventValidator();
     }
 
     @Test
@@ -277,6 +280,7 @@ class SignalParsingTest extends AbstractOadrTest {
     }
 
     private List<EventSignalCommand> parseSignals(OadrEvent event) {
+        eventValidator.validateEvent(event);
         return service.validateSignals(mapper.map(event));
     }
 

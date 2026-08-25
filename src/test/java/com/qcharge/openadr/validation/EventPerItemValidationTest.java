@@ -106,6 +106,30 @@ class EventPerItemValidationTest extends AbstractOadrTest {
     }
 
     @Test
+    void invalidEventProducesPerEvent459AndDoesNotRejectValidSibling()
+            throws Oadr20bUnmarshalException {
+        OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
+        distributeEvent.setRequestID("DIST-1");
+        distributeEvent.setVtnID("VTN-1");
+        distributeEvent.getOadrEvent().add(event(" "));
+        distributeEvent.getOadrEvent().add(event("EVENT-1"));
+
+        adapter.receive(distributeEvent, session());
+
+        List<EventResponse> responses = capturedResponses();
+        assertEquals(2, responses.size());
+        assertEquals(
+                String.valueOf(OpenADRResponseCode.COMPLIANCE_ERROR_OTHER),
+                responses.get(0).getResponseCode()
+        );
+        assertEquals(
+                String.valueOf(OpenADRResponseCode.SIGNAL_NOT_SUPPORTED),
+                responses.get(1).getResponseCode()
+        );
+        verify(repository).findByEventId("EVENT-1");
+    }
+
+    @Test
     void createdEventCorrelatesThroughEventResponseRequestId()
             throws Oadr20bUnmarshalException {
         OadrDistributeEventType distributeEvent = new OadrDistributeEventType();
