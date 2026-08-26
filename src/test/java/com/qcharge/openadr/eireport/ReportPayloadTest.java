@@ -62,7 +62,7 @@ class ReportPayloadTest extends AbstractOadrTest {
                 .build();
 
         // Marshal → XML
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertNotNull(xml);
         assertTrue(xml.contains("oadrRegisterReport"));
@@ -139,7 +139,7 @@ class ReportPayloadTest extends AbstractOadrTest {
                 .addOadrReport(oadrReport)
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         // Conformance: reportName TELEMETRY_USAGE для EV метрик
         assertTrue(xml.contains("TELEMETRY_USAGE"),
@@ -176,7 +176,7 @@ class ReportPayloadTest extends AbstractOadrTest {
                 .addOadrReport(metadataReport)
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertTrue(xml.contains("METADATA_TELEMETRY_USAGE"));
         assertTrue(xml.contains("ven-001"));
@@ -204,7 +204,7 @@ class ReportPayloadTest extends AbstractOadrTest {
                 .addOadrReport(statusReport)
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertTrue(xml.contains("METADATA_TELEMETRY_STATUS"));
         assertTrue(xml.contains("meta-status-001"));
@@ -238,7 +238,7 @@ class ReportPayloadTest extends AbstractOadrTest {
                 .addReportRequest(reportRequest)
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertTrue(xml.contains("oadrCreateReport"));
         assertTrue(xml.contains("rr-001"));
@@ -259,7 +259,7 @@ class ReportPayloadTest extends AbstractOadrTest {
                 .addPendingReportRequestId("rr-001")
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertTrue(xml.contains("oadrCreatedReport"));
         assertTrue(xml.contains("200"));

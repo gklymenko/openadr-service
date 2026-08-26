@@ -32,17 +32,7 @@ public class OpenAdrProperties {
     private Report report = new Report();
 
     @Valid
-    private Xml xml = new Xml();
-
-    @Valid
     private Event event = new Event();
-
-    @Getter
-    @Setter
-    public static class Xml {
-        private boolean validate = false;
-        private String xsdFolderPath;
-    }
 
     @Getter
     @Setter

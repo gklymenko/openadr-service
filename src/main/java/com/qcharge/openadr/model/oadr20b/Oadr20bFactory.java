@@ -5,9 +5,7 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Date;
 import java.util.GregorianCalendar;
-import java.util.List;
 import java.util.TimeZone;
-import java.util.stream.Collectors;
 
 import jakarta.xml.bind.JAXBElement;
 import javax.xml.datatype.DatatypeConfigurationException;
@@ -16,9 +14,6 @@ import javax.xml.datatype.Duration;
 import javax.xml.datatype.XMLGregorianCalendar;
 
 import com.qcharge.openadr.model.oadr20b.atom.FeedType;
-import com.qcharge.openadr.model.oadr20b.avob.KeyTokenType;
-import com.qcharge.openadr.model.oadr20b.avob.PayloadAvobVenServiceRequestType;
-import com.qcharge.openadr.model.oadr20b.avob.PayloadKeyTokenType;
 import com.qcharge.openadr.model.oadr20b.builders.eireport.PowerRealUnitType;
 import com.qcharge.openadr.model.oadr20b.ei.CurrentValueType;
 import com.qcharge.openadr.model.oadr20b.ei.EiActivePeriodType;
@@ -157,7 +152,6 @@ public class Oadr20bFactory {
 	private static final com.qcharge.openadr.model.oadr20b.power.ObjectFactory powerFactory = new com.qcharge.openadr.model.oadr20b.power.ObjectFactory();
 	private static final com.qcharge.openadr.model.oadr20b.pyld.ObjectFactory pyldFactory = new com.qcharge.openadr.model.oadr20b.pyld.ObjectFactory();
 	private static final com.qcharge.openadr.model.oadr20b.xmldsig.properties.ObjectFactory xmldsigPropertiesFactory = new com.qcharge.openadr.model.oadr20b.xmldsig.properties.ObjectFactory();
-	private static final com.qcharge.openadr.model.oadr20b.avob.ObjectFactory avobFactory = new com.qcharge.openadr.model.oadr20b.avob.ObjectFactory();
 
 	private Oadr20bFactory() {
 
@@ -920,39 +914,6 @@ public class Oadr20bFactory {
 		return createIntervalType;
 	}
 
-	public static IntervalType createKeyTokenReportIntervalType(String intervalId, Long start, String xmlDuration,
-			String rid, Long confidence, Float accuracy, PayloadKeyTokenType tokens) {
-		IntervalType createIntervalType = eiFactory.createIntervalType();
-		createIntervalType.setUid(Oadr20bFactory.createUidType(intervalId));
-		if (xmlDuration != null) {
-			createIntervalType.setDuration(Oadr20bFactory.createDurationPropType(xmlDuration));
-		}
-		if (start != null) {
-			createIntervalType.setDtstart(Oadr20bFactory.createDtstart(start));
-		}
-
-		OadrReportPayloadType createReportPayloadType = Oadr20bFactory.createReportPayloadType(rid, confidence,
-				accuracy, tokens);
-		createIntervalType.getStreamPayloadBase().add(Oadr20bFactory.createOadrReportPayload(createReportPayloadType));
-
-		return createIntervalType;
-	}
-
-	public static IntervalType createAvobVenServiceRequestReportIntervalType(String intervalId, Long start,
-			String xmlDuration, String rid, Long confidence, Float accuracy,
-			PayloadAvobVenServiceRequestType requests) {
-		IntervalType createIntervalType = eiFactory.createIntervalType();
-		createIntervalType.setUid(Oadr20bFactory.createUidType(intervalId));
-		createIntervalType.setDuration(Oadr20bFactory.createDurationPropType(xmlDuration));
-		createIntervalType.setDtstart(Oadr20bFactory.createDtstart(start));
-
-		OadrReportPayloadType createReportPayloadType = Oadr20bFactory.createReportPayloadType(rid, confidence,
-				accuracy, requests);
-		createIntervalType.getStreamPayloadBase().add(Oadr20bFactory.createOadrReportPayload(createReportPayloadType));
-
-		return createIntervalType;
-	}
-
 	public static IntervalType createReportIntervalType(String intervalId, Long start, String xmlDuration, String rid,
 			Long confidence, Float accuracy, OadrPayloadResourceStatusType value) {
 		IntervalType createIntervalType = eiFactory.createIntervalType();
@@ -1338,8 +1299,7 @@ public class Oadr20bFactory {
 			Collection<? extends Double> positions) {
 		LinearRing createFeatureCollectionLocationPolygonExteriorLinearRing = gmlFactory
 				.createFeatureCollectionLocationPolygonExteriorLinearRing();
-		List<String> collect = positions.stream().map(String::valueOf).collect(Collectors.toList());
-		createFeatureCollectionLocationPolygonExteriorLinearRing.getPosList().addAll(collect);
+		createFeatureCollectionLocationPolygonExteriorLinearRing.getPosList().addAll(positions);
 		return createFeatureCollectionLocationPolygonExteriorLinearRing;
 	}
 
@@ -1364,28 +1324,6 @@ public class Oadr20bFactory {
 		createReportPayloadType.setConfidence(confidence);
 		createReportPayloadType.setAccuracy(accuracy);
 		createReportPayloadType.setPayloadBase(Oadr20bFactory.createOadrPayloadResourceStatus(value));
-		return createReportPayloadType;
-	}
-
-	public static OadrReportPayloadType createReportPayloadType(String rid, Long confidence, Float accuracy,
-			PayloadKeyTokenType tokens) {
-		OadrReportPayloadType createReportPayloadType = factory.createOadrReportPayloadType();
-		createReportPayloadType.setRID(rid);
-		createReportPayloadType.setConfidence(confidence);
-		createReportPayloadType.setAccuracy(accuracy);
-
-		createReportPayloadType.setPayloadBase(Oadr20bFactory.createPayloadKeyToken(tokens));
-		return createReportPayloadType;
-	}
-
-	public static OadrReportPayloadType createReportPayloadType(String rid, Long confidence, Float accuracy,
-			PayloadAvobVenServiceRequestType requests) {
-		OadrReportPayloadType createReportPayloadType = factory.createOadrReportPayloadType();
-		createReportPayloadType.setRID(rid);
-		createReportPayloadType.setConfidence(confidence);
-		createReportPayloadType.setAccuracy(accuracy);
-
-		createReportPayloadType.setPayloadBase(Oadr20bFactory.createPayloadAvobVenServiceRequest(requests));
 		return createReportPayloadType;
 	}
 
@@ -1427,21 +1365,6 @@ public class Oadr20bFactory {
 		createOadrLoadControlStateTypeType.setOadrMin(min);
 		createOadrLoadControlStateTypeType.setOadrMax(max);
 		return createOadrLoadControlStateTypeType;
-	}
-
-	public static PayloadKeyTokenType createPayloadKeyTokenType(List<KeyTokenType> tokens) {
-		PayloadKeyTokenType createPayloadKeyTokenType = avobFactory.createPayloadKeyTokenType();
-		createPayloadKeyTokenType.getTokens().addAll(tokens);
-		return createPayloadKeyTokenType;
-	}
-
-	public static JAXBElement<PayloadKeyTokenType> createPayloadKeyToken(PayloadKeyTokenType value) {
-		return avobFactory.createPayloadKeyToken(value);
-	}
-
-	public static JAXBElement<PayloadAvobVenServiceRequestType> createPayloadAvobVenServiceRequest(
-			PayloadAvobVenServiceRequestType value) {
-		return avobFactory.createPayloadAvobVenServiceRequest(value);
 	}
 
 	public static JAXBElement<? extends ItemBaseType> createItemBase(ItemBaseType value) {

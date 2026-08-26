@@ -20,7 +20,7 @@ class PollPayloadTest extends AbstractOadrTest {
                 .build();
 
         // Marshal → XML
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertNotNull(xml);
         assertTrue(xml.contains("oadrPoll"));
@@ -43,7 +43,7 @@ class PollPayloadTest extends AbstractOadrTest {
                 .newOadr20bPollBuilder("ven-001")
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         // Conformance: venID must be present in oadrPoll
         assertTrue(xml.contains("venID") || xml.contains("venId"),

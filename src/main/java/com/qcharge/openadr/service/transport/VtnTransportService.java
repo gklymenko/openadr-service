@@ -7,7 +7,6 @@ import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
 import com.qcharge.openadr.exceptions.OpenAdrHttpException;
 import com.qcharge.openadr.exceptions.OpenAdrTransportException;
 import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
-import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.Oadr20bUrlPath;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bMarshalException;
 import com.qcharge.openadr.model.oadr20b.exception.Oadr20bUnmarshalException;
@@ -16,8 +15,8 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrPollType;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
+import com.qcharge.openadr.service.transport.xml.OpenAdrXmlCodec;
 import jakarta.xml.bind.JAXBElement;
-import jakarta.xml.bind.JAXBException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -44,6 +43,7 @@ public class VtnTransportService {
     private final OpenAdrApplicationErrorMapper applicationErrorMapper;
     private final OpenAdrReplyFactory replyFactory;
     private final OpenAdrSessionProvider sessionProvider;
+    private final OpenAdrXmlCodec xmlCodec;
 
     public <Q, R> R send(OpenAdrOperation<Q, R> operation, Q payload) {
         return send(operation, payload, sessionProvider.current());
@@ -55,17 +55,13 @@ public class VtnTransportService {
         operation.requireValidRequest(payload);
 
         try {
-            Oadr20bJAXBContext jaxb = properties.getXml().isValidate()
-                    ? Oadr20bJAXBContext.getInstance(properties.getXml().getXsdFolderPath())
-                    : Oadr20bJAXBContext.getInstance();
-
             OadrPayload oadrPayload = Oadr20bFactory.createOadrPayload("oadrSignedObject", payload);
             JAXBElement<OadrPayload> jaxbElement = new JAXBElement<>(
                     new QName("http://openadr.org/oadr-2.0b/2012/07", "oadrPayload"),
                     OadrPayload.class,
                     oadrPayload
             );
-            String xmlPayload = jaxb.marshal(jaxbElement, false);
+            String xmlPayload = xmlCodec.marshal(jaxbElement);
 
             log.debug(
                     "Sending OpenADR payload. operation={}, endpoint={}", operation.name(), operation.endpoint()
@@ -100,7 +96,7 @@ public class VtnTransportService {
                 );
             }
 
-            Object rawResponse = jaxb.unmarshal(xmlResponse, properties.getXml().isValidate());
+            Object rawResponse = xmlCodec.unmarshal(xmlResponse);
             Object response = unwrapIfNeeded(rawResponse);
 
             // Application errors are valid OpenADR payloads and must not be
@@ -115,12 +111,10 @@ public class VtnTransportService {
             validateExchange(context);
 
             return typedResponse;
-        } catch (JAXBException e) {
-            throw new OpenAdrTransportException("Failed to initialize JAXB context", e);
         } catch (Oadr20bMarshalException e) {
-            throw new OpenAdrTransportException("Failed to marshal OpenADR payload", e);
+            throw new OpenAdrTransportException("OpenADR request is not valid against the 2.0b schema", e);
         } catch (Oadr20bUnmarshalException e) {
-            throw new OpenAdrTransportException("Failed to unmarshal VTN response", e);
+            throw new OpenAdrTransportException("VTN response is not valid OpenADR 2.0b XML", e);
         }
     }
 

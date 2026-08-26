@@ -5,11 +5,11 @@ import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 public class TimeConfiguration {
 
     @Bean
-    Clock openAdrClock() {
+    public Clock openAdrClock() {
         return Clock.systemUTC();
     }
 }

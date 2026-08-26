@@ -112,7 +112,11 @@ class SignalParsingTest extends AbstractOadrTest {
 
     @Test
     void parseSignal_unknownSignal_returnsEmpty() throws Oadr20bUnmarshalException {
-        OadrEvent event = loadFirstEvent("oadrDistributeEvent_unknownSignal.xml");
+        OadrEvent event = loadFirstEvent("oadrDistributeEvent.xml");
+        event.getEiEvent()
+                .getEiEventSignals()
+                .getEiEventSignal()
+                .forEach(signal -> signal.setSignalName("UNKNOWN_SIGNAL_TYPE"));
 
         Optional<EventSignalCommand> result = parseSignal(event);
 

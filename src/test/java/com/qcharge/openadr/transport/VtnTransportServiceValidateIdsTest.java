@@ -1,9 +1,9 @@
 package com.qcharge.openadr.transport;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.config.OpenAdrXmlConfiguration;
 import com.qcharge.openadr.exceptions.OpenADRResponseCode;
 import com.qcharge.openadr.exceptions.OpenAdrApplicationException;
-import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiEventBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiRegisterPartyBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
@@ -14,6 +14,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRequestEventType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrResponseType;
+import com.qcharge.openadr.model.oadr20b.oadr.OadrTransportType;
 import com.qcharge.openadr.service.transport.OpenAdrHttpStatusPolicy;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
@@ -22,11 +23,11 @@ import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorPolicy;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationResponseEvaluator;
 import com.qcharge.openadr.service.transport.RetryHandler;
 import com.qcharge.openadr.service.transport.VtnTransportService;
+import com.qcharge.openadr.service.transport.xml.OpenAdrXmlCodec;
 import com.qcharge.openadr.service.session.OpenAdrSessionProvider;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrExchangeContext;
 import com.qcharge.openadr.service.validation.OpenAdrExchangeValidationService;
-import jakarta.xml.bind.JAXBException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,17 +50,20 @@ import static com.qcharge.openadr.TestSessionFixtures.registeredSession;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class VtnTransportServiceValidateIdsTest {
 
-    private static Oadr20bJAXBContext jaxbContext;
+    private static OpenAdrXmlCodec jaxbContext;
 
     @BeforeAll
-    static void initJaxb() throws JAXBException {
-        jaxbContext = Oadr20bJAXBContext.getInstance();
+    static void initJaxb() throws Exception {
+        OpenAdrXmlConfiguration configuration = new OpenAdrXmlConfiguration();
+        jaxbContext = new OpenAdrXmlCodec(
+                configuration.openAdrSchema(),
+                configuration.openAdrJaxbContext()
+        );
     }
 
     @Mock RestClient restClient;
     @Mock RetryHandler retryHandler;
     @Mock OpenAdrProperties properties;
-    @Mock OpenAdrProperties.Xml xmlProps;
     @Mock OpenAdrProperties.Vtn vtnProps;
     @Mock OpenAdrExchangeValidationService exchangeValidationService;
     @Mock OpenAdrSessionProvider sessionProvider;
@@ -68,8 +72,6 @@ class VtnTransportServiceValidateIdsTest {
 
     @BeforeEach
     void setUp() {
-        when(properties.getXml()).thenReturn(xmlProps);
-        when(xmlProps.isValidate()).thenReturn(false);
         when(properties.getVtn()).thenReturn(vtnProps);
         when(vtnProps.getId()).thenReturn(null); // skip vtnId validation
         service = new VtnTransportService(
@@ -83,7 +85,8 @@ class VtnTransportServiceValidateIdsTest {
                 ),
                 new OpenAdrApplicationErrorMapper(),
                 new OpenAdrReplyFactory(),
-                sessionProvider
+                sessionProvider,
+                jaxbContext
         );
         when(sessionProvider.current())
                 .thenReturn(com.qcharge.openadr.TestSessionFixtures.bootstrapSession());
@@ -100,11 +103,9 @@ class VtnTransportServiceValidateIdsTest {
                 .newOadr20bEiResponseBuilder("req-001", OpenADRResponseCode.OK)
                 .build();
 
-        OadrCreatedPartyRegistrationType created = Oadr20bEiRegisterPartyBuilders
-                .newOadr20bCreatedPartyRegistrationBuilder(eiResponse, "VEN_DIFFERENT", "test-vtn")
-                .build();
+        OadrCreatedPartyRegistrationType created = registrationResponse(eiResponse, "VEN_DIFFERENT");
 
-        String responseXml = jaxbContext.marshalRoot(created, false);
+        String responseXml = jaxbContext.marshalRoot(created);
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         Object result = assertDoesNotThrow(
@@ -124,11 +125,9 @@ class VtnTransportServiceValidateIdsTest {
                 .withDescription("Not Registered/Authorized")
                 .build();
 
-        OadrCreatedPartyRegistrationType created = Oadr20bEiRegisterPartyBuilders
-                .newOadr20bCreatedPartyRegistrationBuilder(eiResponse, "TH_VEN", "test-vtn")
-                .build();
+        OadrCreatedPartyRegistrationType created = registrationResponse(eiResponse, "TH_VEN");
 
-        String responseXml = jaxbContext.marshalRoot(created, false);
+        String responseXml = jaxbContext.marshalRoot(created);
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         OpenAdrApplicationException exception = assertThrows(
@@ -160,7 +159,7 @@ class VtnTransportServiceValidateIdsTest {
                 )
                 .build();
 
-        String responseXml = jaxbContext.marshalRoot(registeredReport, false);
+        String responseXml = jaxbContext.marshalRoot(registeredReport);
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         OpenAdrApplicationException exception = assertThrows(
@@ -190,7 +189,7 @@ class VtnTransportServiceValidateIdsTest {
                 )
                 .build();
 
-        String responseXml = jaxbContext.marshalRoot(registeredReport, false);
+        String responseXml = jaxbContext.marshalRoot(registeredReport);
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         OpenAdrApplicationException exception = assertThrows(
@@ -216,7 +215,7 @@ class VtnTransportServiceValidateIdsTest {
                 )
                 .build();
 
-        String responseXml = jaxbContext.marshalRoot(response, false);
+        String responseXml = jaxbContext.marshalRoot(response);
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         service.send(OpenAdrOperations.REQUEST_EVENT, buildRequestEventPayload());
@@ -233,15 +232,9 @@ class VtnTransportServiceValidateIdsTest {
                 .newOadr20bEiResponseBuilder("req-001", OpenADRResponseCode.OK)
                 .build();
 
-        OadrCreatedPartyRegistrationType created = Oadr20bEiRegisterPartyBuilders
-                .newOadr20bCreatedPartyRegistrationBuilder(
-                        eiResponse,
-                        "TH_VEN",
-                        "test-vtn"
-                )
-                .build();
+        OadrCreatedPartyRegistrationType created = registrationResponse(eiResponse, "TH_VEN");
 
-        String responseXml = jaxbContext.marshalRoot(created, false);
+        String responseXml = jaxbContext.marshalRoot(created);
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         service.send(OpenAdrOperations.QUERY_REGISTRATION, buildOutgoingPayload());
@@ -262,7 +255,7 @@ class VtnTransportServiceValidateIdsTest {
                 )
                 .build();
 
-        String responseXml = jaxbContext.marshalRoot(registeredReport, false);
+        String responseXml = jaxbContext.marshalRoot(registeredReport);
         doReturn(responseXml).when(retryHandler).executeWithRetry(any(), any());
 
         OpenAdrSessionSnapshot capturedSession =
@@ -296,6 +289,18 @@ class VtnTransportServiceValidateIdsTest {
     private OadrRequestEventType buildRequestEventPayload() {
         return Oadr20bEiEventBuilders
                 .newOadrRequestEventBuilder("TH_VEN", "request-event-001")
+                .build();
+    }
+
+    private OadrCreatedPartyRegistrationType registrationResponse(EiResponseType eiResponse, String venId) {
+        return Oadr20bEiRegisterPartyBuilders
+                .newOadr20bCreatedPartyRegistrationBuilder(eiResponse, venId, "test-vtn")
+                .addOadrProfile(
+                        Oadr20bEiRegisterPartyBuilders
+                                .newOadr20bOadrProfileBuilder("2.0b")
+                                .addTransport(OadrTransportType.SIMPLE_HTTP)
+                                .build()
+                )
                 .build();
     }
 }

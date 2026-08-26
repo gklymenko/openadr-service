@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jaxb:bindings
+        xmlns:jaxb="https://jakarta.ee/xml/ns/jaxb"
+        xmlns:xs="http://www.w3.org/2001/XMLSchema"
+        version="3.0">
+
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.oadr"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_atom.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.atom"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_ei_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.ei"/></jaxb:schemaBindings>
+        <jaxb:bindings node="xs:simpleType[@name='schemaVersionEnumeratedType']">
+            <jaxb:typesafeEnumClass name="SchemaVersionEnumeratedType">
+                <jaxb:typesafeEnumMember value="2.0a" name="OADR_20A"/>
+                <jaxb:typesafeEnumMember value="2.0b" name="OADR_20B"/>
+            </jaxb:typesafeEnumClass>
+        </jaxb:bindings>
+        <jaxb:bindings node="xs:simpleType[@name='SignalNameEnumeratedType']">
+            <jaxb:typesafeEnumClass name="SignalNameEnumeratedType">
+                <jaxb:typesafeEnumMember value="SIMPLE" name="SIMPLE"/>
+                <jaxb:typesafeEnumMember value="simple" name="DEPRECATED_OADR20A_SIMPLE"/>
+                <jaxb:typesafeEnumMember value="ELECTRICITY_PRICE" name="ELECTRICITY_PRICE"/>
+                <jaxb:typesafeEnumMember value="ENERGY_PRICE" name="ENERGY_PRICE"/>
+                <jaxb:typesafeEnumMember value="DEMAND_CHARGE" name="DEMAND_CHARGE"/>
+                <jaxb:typesafeEnumMember value="BID_PRICE" name="BID_PRICE"/>
+                <jaxb:typesafeEnumMember value="BID_LOAD" name="BID_LOAD"/>
+                <jaxb:typesafeEnumMember value="BID_ENERGY" name="BID_ENERGY"/>
+                <jaxb:typesafeEnumMember value="CHARGE_STATE" name="CHARGE_STATE"/>
+                <jaxb:typesafeEnumMember value="LOAD_DISPATCH" name="LOAD_DISPATCH"/>
+                <jaxb:typesafeEnumMember value="LOAD_CONTROL" name="LOAD_CONTROL"/>
+            </jaxb:typesafeEnumClass>
+        </jaxb:bindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_emix_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.emix"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_gml_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.gml"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_greenbutton.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.greenbutton"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_ISO_ISO3AlphaCurrencyCode_20100407.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.iso"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_power_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.power"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_pyld_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.pyld"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_siscale_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.siscale"/></jaxb:schemaBindings>
+        <jaxb:bindings node="xs:simpleType[@name='SiScaleCodeType']">
+            <jaxb:typesafeEnumClass name="SiScaleCodeType">
+                <jaxb:typesafeEnumMember value="p" name="PICO"/>
+                <jaxb:typesafeEnumMember value="n" name="NANO"/>
+                <jaxb:typesafeEnumMember value="micro" name="MICRO"/>
+                <jaxb:typesafeEnumMember value="m" name="MILLI"/>
+                <jaxb:typesafeEnumMember value="c" name="CENTI"/>
+                <jaxb:typesafeEnumMember value="d" name="DECI"/>
+                <jaxb:typesafeEnumMember value="k" name="KILO"/>
+                <jaxb:typesafeEnumMember value="M" name="MEGA"/>
+                <jaxb:typesafeEnumMember value="G" name="GIGA"/>
+                <jaxb:typesafeEnumMember value="T" name="TERA"/>
+                <jaxb:typesafeEnumMember value="none" name="NONE"/>
+            </jaxb:typesafeEnumClass>
+        </jaxb:bindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_strm_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.strm"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_xcal_20b.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.xcal"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_xmldsig.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.xmldsig"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_xmldsig11.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.xmldsig11"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+    <jaxb:bindings schemaLocation="../resources/openadr/schema/2.0b/20130701/oadr_xmldsig-properties-schema.xsd" node="/xs:schema">
+        <jaxb:schemaBindings><jaxb:package name="com.qcharge.openadr.model.oadr20b.xmldsig.properties"/></jaxb:schemaBindings>
+    </jaxb:bindings>
+</jaxb:bindings>

@@ -1,15 +1,12 @@
 package com.qcharge.openadr;
 
-import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
-import jakarta.xml.bind.JAXBException;
+import com.qcharge.openadr.config.OpenAdrXmlConfiguration;
+import com.qcharge.openadr.service.transport.xml.OpenAdrXmlCodec;
 import org.junit.jupiter.api.BeforeAll;
 
 public abstract class AbstractOadrTest {
 
-    protected static Oadr20bJAXBContext jaxbContext;
-
-    // XSD path відносно кореня проекту
-    protected static final String XSD_PATH = "src/main/resources/xsd";
+    protected static OpenAdrXmlCodec jaxbContext;
 
     // XML test resources
     protected static final String EIEVENT_PATH =
@@ -24,7 +21,11 @@ public abstract class AbstractOadrTest {
             "src/test/resources/openadr/poll/";
 
     @BeforeAll
-    static void initJaxb() throws JAXBException {
-        jaxbContext = Oadr20bJAXBContext.getInstance(XSD_PATH);
+    static void initJaxb() throws Exception {
+        OpenAdrXmlConfiguration configuration = new OpenAdrXmlConfiguration();
+        jaxbContext = new OpenAdrXmlCodec(
+                configuration.openAdrSchema(),
+                configuration.openAdrJaxbContext()
+        );
     }
 }

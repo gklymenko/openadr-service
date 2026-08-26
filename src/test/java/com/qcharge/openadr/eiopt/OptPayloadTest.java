@@ -35,7 +35,7 @@ class OptPayloadTest extends AbstractOadrTest {
                 .build();
 
         // Marshal → XML
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertNotNull(xml);
         assertTrue(xml.contains("oadrCreateOpt"));
@@ -72,7 +72,7 @@ class OptPayloadTest extends AbstractOadrTest {
                 )
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertNotNull(xml);
         assertTrue(xml.contains("optOut"));
@@ -91,7 +91,7 @@ class OptPayloadTest extends AbstractOadrTest {
                 .newOadr20bCancelOptBuilder("req-003", "opt-001", "ven-001")
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertNotNull(xml);
         assertTrue(xml.contains("oadrCancelOpt"));
@@ -156,7 +156,7 @@ class OptPayloadTest extends AbstractOadrTest {
                 )
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertTrue(xml.contains("2.0b"),
                 "schemaVersion must be 2.0b per conformance rule");

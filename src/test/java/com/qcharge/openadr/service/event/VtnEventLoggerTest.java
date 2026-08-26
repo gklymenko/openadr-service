@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.event;
 
-import com.qcharge.openadr.model.oadr20b.Oadr20bJAXBContext;
+import com.qcharge.openadr.config.OpenAdrXmlConfiguration;
+import com.qcharge.openadr.service.transport.xml.OpenAdrXmlCodec;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrDistributeEventType;
 import com.qcharge.openadr.service.event.protocol.VtnEventLogger;
 import org.junit.jupiter.api.Test;
@@ -17,9 +18,12 @@ class VtnEventLoggerTest {
 
     @Test
     void logReceivedEvents_logsEventSignalsAndIntervals(CapturedOutput output) throws Exception {
-        OadrDistributeEventType distributeEvent = Oadr20bJAXBContext
-                .getInstance()
-                .unmarshal(
+        OpenAdrXmlConfiguration configuration = new OpenAdrXmlConfiguration();
+        OpenAdrXmlCodec xmlCodec = new OpenAdrXmlCodec(
+                configuration.openAdrSchema(),
+                configuration.openAdrJaxbContext()
+        );
+        OadrDistributeEventType distributeEvent = xmlCodec.unmarshal(
                         new File("src/test/resources/openadr/eievent/oadrDistributeEvent.xml"),
                         OadrDistributeEventType.class
                 );

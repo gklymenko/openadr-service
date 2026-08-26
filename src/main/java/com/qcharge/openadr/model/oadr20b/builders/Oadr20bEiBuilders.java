@@ -1,6 +1,5 @@
 package com.qcharge.openadr.model.oadr20b.builders;
 
-import com.qcharge.openadr.model.oadr20b.avob.PayloadKeyTokenType;
 import com.qcharge.openadr.model.oadr20b.builders.eipayload.Oadr20bEiTargetTypeBuilder;
 import com.qcharge.openadr.model.oadr20b.builders.eipayload.Oadr20bReportIntervalTypeBuilder;
 import com.qcharge.openadr.model.oadr20b.builders.eipayload.Oadr20bSignalIntervalTypeBuilder;
@@ -20,11 +19,6 @@ public class Oadr20bEiBuilders {
 	public static Oadr20bReportIntervalTypeBuilder newOadr20bReportIntervalTypeBuilder(String intervalId, Long start,
 			String xmlDuration, String rid, Long confidence, Float accuracy, Float value) {
 		return new Oadr20bReportIntervalTypeBuilder(intervalId, start, xmlDuration, rid, confidence, accuracy, value);
-	}
-
-	public static Oadr20bReportIntervalTypeBuilder newOadr20bReportIntervalTypeBuilder(String intervalId, Long start,
-			String xmlDuration, String rid, Long confidence, Float accuracy, PayloadKeyTokenType tokens) {
-		return new Oadr20bReportIntervalTypeBuilder(intervalId, start, xmlDuration, rid, confidence, accuracy, tokens);
 	}
 
 	public static Oadr20bReportIntervalTypeBuilder newOadr20bReportIntervalTypeBuilder(String intervalId, Long start,

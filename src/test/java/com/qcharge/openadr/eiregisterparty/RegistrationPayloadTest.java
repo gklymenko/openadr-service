@@ -36,7 +36,7 @@ class RegistrationPayloadTest extends AbstractOadrTest {
                         .build();
 
         // Marshal → XML
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertNotNull(xml);
         assertTrue(xml.contains("oadrCreatePartyRegistration"));
@@ -90,7 +90,7 @@ class RegistrationPayloadTest extends AbstractOadrTest {
                         .withOadrHttpPullModel(true)
                         .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         // Conformance rule: schemaVersion MUST be "2.0b"
         assertTrue(xml.contains("2.0b"),

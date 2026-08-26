@@ -34,7 +34,7 @@ class EventPayloadTest extends AbstractOadrTest {
                 .build();
 
         // Marshal → XML
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         assertNotNull(xml);
         assertTrue(xml.contains("oadrCreatedEvent"));
@@ -97,7 +97,7 @@ class EventPayloadTest extends AbstractOadrTest {
                 .addEventResponse(eventResponse)
                 .build();
 
-        String xml = jaxbContext.marshalRoot(payload, true);
+        String xml = jaxbContext.marshalRoot(payload);
 
         // Conformance: optType must be present
         assertTrue(xml.contains("optIn") || xml.contains("optOut"),

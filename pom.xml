@@ -202,15 +202,22 @@
 
                             <schemaIncludes>
                                 <include>oadr_20b.xsd</include>
+                                <include>oadr_xmldsig-properties-schema.xsd</include>
                             </schemaIncludes>
 
                             <bindingDirectory>
                                 ${project.basedir}/src/main/xjb
                             </bindingDirectory>
 
+                            <bindingIncludes>
+                                <include>openadr-20b-bindings.xjb</include>
+                            </bindingIncludes>
+
                             <generateDirectory>
                                 ${project.build.directory}/generated-sources/xjc
                             </generateDirectory>
+
+                            <removeOldOutput>true</removeOldOutput>
                         </configuration>
                     </execution>
                 </executions>
