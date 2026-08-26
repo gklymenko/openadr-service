@@ -3,7 +3,7 @@ package com.qcharge.openadr.service.event;
 import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.registration.RegistrationMessageHandler;
-import com.qcharge.openadr.service.report.ReportRequestHandler;
+import com.qcharge.openadr.service.report.ReportCommandQueue;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.transport.OpenAdrApplicationErrorMapper;
 import com.qcharge.openadr.service.transport.OpenAdrReplyFactory;
@@ -39,7 +39,7 @@ class EventPollerSchedulingTest {
     @Mock OpenAdrProperties.Transport transportProperties;
     @Mock VtnTransportService transportService;
     @Mock EventProtocolAdapter eventProtocolAdapter;
-    @Mock ReportRequestHandler reportRequestHandler;
+    @Mock ReportCommandQueue reportCommandQueue;
     @Mock TaskScheduler taskScheduler;
     @Mock OpenAdrApplicationErrorMapper applicationErrorMapper;
     @Mock OpenAdrReplyFactory replyFactory;
@@ -57,7 +57,7 @@ class EventPollerSchedulingTest {
                 properties,
                 transportService,
                 eventProtocolAdapter,
-                reportRequestHandler,
+                reportCommandQueue,
                 taskScheduler,
                 applicationErrorMapper,
                 replyFactory,

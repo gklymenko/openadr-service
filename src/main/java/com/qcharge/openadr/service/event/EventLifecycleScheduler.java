@@ -38,6 +38,7 @@ public class EventLifecycleScheduler {
         events.forEach(event -> processSafely(event, clock.instant()));
     }
 
+
     public void processSafely(DrEvent event, Instant now) {
         try {
             coordinator.process(event, now);

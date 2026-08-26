@@ -33,6 +33,7 @@ class PollPayloadTest extends AbstractOadrTest {
 
         OadrPollType result = (OadrPollType) unmarshalled;
         assertEquals("test-ven-001", result.getVenID());
+        assertEquals("2.0b", result.getSchemaVersion());
     }
 
     @Test

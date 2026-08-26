@@ -15,7 +15,8 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.service.event.protocol.EventProtocolAdapter;
 import com.qcharge.openadr.service.registration.RemoteCancellationDecision;
 import com.qcharge.openadr.service.registration.RegistrationMessageHandler;
-import com.qcharge.openadr.service.report.ReportRequestHandler;
+import com.qcharge.openadr.service.report.PulledReportCommand;
+import com.qcharge.openadr.service.report.ReportCommandQueue;
 import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.ApplicationErrorAction;
@@ -32,6 +33,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
@@ -57,7 +60,7 @@ public class EventPoller {
     private final OpenAdrProperties properties;
     private final VtnTransportService transportService;
     private final EventProtocolAdapter eventProtocolAdapter;
-    private final ReportRequestHandler reportRequestHandler;
+    private final ReportCommandQueue reportCommandQueue;
     private final TaskScheduler openAdrTaskScheduler;
     private final OpenAdrApplicationErrorMapper applicationErrorMapper;
     private final OpenAdrReplyFactory replyFactory;
@@ -164,28 +167,32 @@ public class EventPoller {
      */
     private void pollUntilQueueEmpty(OpenAdrSessionSnapshot session) {
         int maxIterations = maxQueueDrainPolls();
+        List<PulledReportCommand> reportCommands = new ArrayList<>();
 
-        for (int iteration = 1; iteration <= maxIterations; iteration++) {
-            PollExchange exchange = sendPoll(session);
-            PollResult result = handlePollResponse(exchange);
+        try {
+            for (int iteration = 1; iteration <= maxIterations; iteration++) {
+                PollExchange exchange = sendPoll(session);
+                PollResult result = handlePollResponse(exchange, reportCommands);
 
-            if (result == PollResult.QUEUE_EMPTY) {
-                log.debug(VTN_QUEUE_EMPTY, iteration);
-                return;
+                if (result == PollResult.QUEUE_EMPTY) {
+                    log.debug(VTN_QUEUE_EMPTY, iteration);
+                    return;
+                }
+
+                if (result == PollResult.ABORT_CYCLE) {
+                    return;
+                }
             }
 
-            if (result == PollResult.ABORT_CYCLE) {
-                return;
-            }
+            log.warn(POLLING_STOPPED_ON_MAX_LIMIT, maxIterations);
+        } finally {
+            reportCommandQueue.enqueueAll(reportCommands);
         }
-
-        log.warn(POLLING_STOPPED_ON_MAX_LIMIT, maxIterations);
     }
 
     private PollExchange sendPoll(OpenAdrSessionSnapshot session) {
         OadrPollType pollPayload = Oadr20bPollBuilders
                 .newOadr20bPollBuilder(session.venId())
-                .withSchemaVersion(properties.getVen().getProfile())
                 .build();
 
         log.debug(SENDING_OADR_POLL, session.venId());
@@ -196,9 +203,12 @@ public class EventPoller {
         );
     }
 
-    private PollResult handlePollResponse(PollExchange exchange) {
+    private PollResult handlePollResponse(
+            PollExchange exchange,
+            List<PulledReportCommand> reportCommands
+    ) {
         return lifecycleCoordinator.executeIfActive(
-                exchange.session(), () -> handleActivePollResponse(exchange)
+                exchange.session(), () -> handleActivePollResponse(exchange, reportCommands)
         ).orElseGet(() -> {
             log.info(
                     "Ignoring poll response from inactive OpenADR session. generation={}",
@@ -208,10 +218,12 @@ public class EventPoller {
         });
     }
 
-    private PollResult handleActivePollResponse(PollExchange exchange) {
+    private PollResult handleActivePollResponse(
+            PollExchange exchange,
+            List<PulledReportCommand> reportCommands
+    ) {
         try {
-
-            return dispatchPollResponse(exchange.session(), exchange.response());
+            return dispatchPollResponse(exchange.session(), exchange.response(), reportCommands);
 
         } catch (RuntimeException failure) {
             return handleApplicationFailure(exchange.session(), exchange.response(), failure);
@@ -219,7 +231,9 @@ public class EventPoller {
     }
 
     private PollResult dispatchPollResponse(
-            OpenAdrSessionSnapshot session, Object response
+            OpenAdrSessionSnapshot session,
+            Object response,
+            List<PulledReportCommand> reportCommands
     ) {
         return switch (response) {
             case OadrResponseType ignored -> PollResult.QUEUE_EMPTY;
@@ -232,25 +246,25 @@ public class EventPoller {
 
             case OadrCreateReportType createReport -> {
                 log.info("Received oadrCreateReport. requests={}", createReport.getOadrReportRequest().size());
-                reportRequestHandler.handle(createReport, session);
+                reportCommands.add(PulledReportCommand.create(createReport, session));
                 yield PollResult.CONTINUE;
             }
 
             case OadrRegisterReportType registerReport -> {
                 log.info("Received oadrRegisterReport. reports={}", registerReport.getOadrReport().size());
-                reportRequestHandler.handleRegisterReport(registerReport, session);
+                reportCommands.add(PulledReportCommand.register(registerReport, session));
                 yield PollResult.CONTINUE;
             }
 
             case OadrCancelReportType cancelReport -> {
                 log.info("Received oadrCancelReport");
-                reportRequestHandler.handleCancelReport(cancelReport, session);
+                reportCommands.add(PulledReportCommand.cancel(cancelReport, session));
                 yield PollResult.CONTINUE;
             }
 
             case OadrUpdateReportType updateReport -> {
                 log.info("Received oadrUpdateReport. reports={}", updateReport.getOadrReport().size());
-                reportRequestHandler.handleUpdateReport(updateReport, session);
+                reportCommands.add(PulledReportCommand.update(updateReport, session));
                 yield PollResult.CONTINUE;
             }
 

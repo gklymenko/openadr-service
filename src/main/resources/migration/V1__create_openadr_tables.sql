@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS ven_registration (
         CHECK (CHAR_LENGTH(TRIM(ven_id)) > 0),
     CONSTRAINT chk_ven_registration_registration_id_not_blank
         CHECK (CHAR_LENGTH(TRIM(registration_id)) > 0),
-    CONSTRAINT chk_ven_registration_poll_frequency_not_blank CHECK (CHAR_LENGTH(TRIM(requested_poll_frequency)) > 0)
+    CONSTRAINT chk_ven_registration_poll_frequency_not_blank CHECK (CHAR_LENGTH(TRIM(requested_poll_frequency)) > 0),
     INDEX idx_ven_id (ven_id)
     );
 
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS dr_event (
     created_at DATETIME(3) NOT NULL,
     updated_at DATETIME(3) NOT NULL,
     INDEX idx_event_id (event_id),
-    INDEX idx_status (status),
+    INDEX idx_status (ven_status),
     INDEX idx_dr_event_cancellation_effective (execution_status, cancellation_effective_at),
     INDEX idx_dr_event_execution_status (execution_status)
     );
