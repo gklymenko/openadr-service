@@ -14,7 +14,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -65,6 +67,24 @@ class ReportServiceMetadataBehaviorTest {
         );
         order.verify(requestStore).cancelNonMetadataRequests();
         order.verify(capabilityRegistry).replaceAll(any());
+    }
+
+    @Test
+    void metadataDescriptionsIdentifyConfiguredResource() {
+        var metadata = reportService.buildMetadataRegisterReport(
+                "METADATA-REQUEST",
+                session()
+        );
+
+        List<String> resourceIds = metadata.getOadrReport().stream()
+                .flatMap(report -> report.getOadrReportDescription().stream())
+                .flatMap(description -> description.getReportDataSource()
+                        .getResourceID().stream())
+                .toList();
+
+        assertThat(resourceIds)
+                .hasSize(3)
+                .containsOnly("RESOURCE-1");
     }
 
     private OpenAdrSessionSnapshot session() {

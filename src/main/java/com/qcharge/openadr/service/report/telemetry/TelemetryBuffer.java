@@ -11,9 +11,11 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-/** Thread-safe, time-bounded telemetry buffer used by one-shot and periodic reports. */
+/** Thread-safe telemetry buffer retaining the configured window and at least 100 points. */
 @Component
 public class TelemetryBuffer {
+
+    static final int MINIMUM_RETAINED_SAMPLES = 100;
 
     private final ConcurrentNavigableMap<Instant, TelemetrySample> samples =
             new ConcurrentSkipListMap<>();
@@ -23,9 +25,9 @@ public class TelemetryBuffer {
         retention = Duration.ofSeconds(properties.getReport().getTelemetryRetentionSeconds());
     }
 
-    public void add(TelemetrySample sample) {
+    public synchronized void add(TelemetrySample sample) {
         samples.put(sample.capturedAt(), sample);
-        samples.headMap(sample.capturedAt().minus(retention), false).clear();
+        evictExpiredSamples();
     }
 
     public Optional<TelemetrySample> latest() {
@@ -43,5 +45,16 @@ public class TelemetryBuffer {
         return List.copyOf(
                 samples.subMap(range.start(), true, range.endExclusive(), false).values()
         );
+    }
+
+    private void evictExpiredSamples() {
+        Instant retentionFloor = samples.lastKey().minus(retention);
+        while (samples.size() > MINIMUM_RETAINED_SAMPLES) {
+            var oldest = samples.firstEntry();
+            if (!oldest.getKey().isBefore(retentionFloor)) {
+                return;
+            }
+            samples.pollFirstEntry();
+        }
     }
 }

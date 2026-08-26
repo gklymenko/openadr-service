@@ -7,6 +7,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.service.report.model.ReportDataInterval;
 import com.qcharge.openadr.service.report.model.ReportDataQuality;
 import com.qcharge.openadr.service.report.model.ReportRidCodec;
+import com.qcharge.openadr.service.report.model.ReportSchedule;
 import com.qcharge.openadr.service.report.telemetry.TelemetrySample;
 import com.qcharge.openadr.utility.TimeRange;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,12 +51,42 @@ class TelemetryReportXmlBehaviorTest {
         var interval = report.getIntervals().getInterval().getFirst();
         assertThat(interval.getDtstart()).isNull();
         assertThat(interval.getDuration()).isNull();
-        assertThat(interval.getUid()).isNull();
+        assertThat(interval.getUid()).isNotNull();
+        assertThat(interval.getUid().getText()).isEqualTo("0");
 
         OadrPayloadResourceStatusType status = statusPayload(report);
         assertThat(status.isOadrOnline()).isTrue();
         assertThat(status.isOadrManualOverride()).isFalse();
         assertThat(status.getOadrLoadControlState()).isNull();
+    }
+
+    @Test
+    void periodicStatusUsesZeroBasedIntervalUids() {
+        ReportRequest request = request(
+                "STATUS-REQUEST",
+                ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                ReportService.RID_RESOURCE_STATUS
+        );
+        var schedule = new ReportSchedule(
+                NOW,
+                NOW.plus(Duration.ofMinutes(2)),
+                Duration.ofMinutes(1),
+                Duration.ofMinutes(2)
+        );
+
+        OadrReportType report = statusFactory.periodic(
+                request,
+                schedule,
+                List.of(
+                        interval(NOW, Duration.ofMinutes(1)),
+                        interval(NOW.plus(Duration.ofMinutes(1)), Duration.ofMinutes(1))
+                ),
+                NOW.plus(Duration.ofMinutes(2))
+        );
+
+        assertThat(report.getIntervals().getInterval())
+                .extracting(interval -> interval.getUid().getText())
+                .containsExactly("0", "1");
     }
 
     @Test

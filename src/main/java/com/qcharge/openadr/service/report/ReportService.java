@@ -1,8 +1,10 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.eireport.PowerRealUnitType;
+import com.qcharge.openadr.model.oadr20b.ei.EiTargetType;
 import com.qcharge.openadr.model.oadr20b.ei.ReadingTypeEnumeratedType;
 import com.qcharge.openadr.model.oadr20b.ei.ReportEnumeratedType;
 import com.qcharge.openadr.model.oadr20b.ei.ReportNameEnumeratedType;
@@ -111,6 +113,7 @@ public class ReportService {
                         true
                 )
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
+                .withDataSource(reportDataSource())
                 .build();
 
         OadrReportDescriptionType energyDescriptor = Oadr20bEiReportBuilders
@@ -121,6 +124,7 @@ public class ReportService {
                 )
                 .withEnergyRealBase(SiScaleCodeType.KILO)
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
+                .withDataSource(reportDataSource())
                 .build();
 
         return Oadr20bEiReportBuilders
@@ -143,6 +147,7 @@ public class ReportService {
                         ReadingTypeEnumeratedType.X_NOT_APPLICABLE
                 )
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
+                .withDataSource(reportDataSource())
                 .build();
 
         return Oadr20bEiReportBuilders
@@ -190,6 +195,12 @@ public class ReportService {
 
     private Duration availableDuration() {
         return Duration.ofSeconds(properties.getReport().getTelemetryRetentionSeconds());
+    }
+
+    private EiTargetType reportDataSource() {
+        return Oadr20bEiBuilders.newOadr20bEiTargetTypeBuilder()
+                .addResourceId(properties.getReport().getResourceId())
+                .build();
     }
 
 }

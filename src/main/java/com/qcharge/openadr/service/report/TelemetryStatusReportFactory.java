@@ -15,7 +15,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-/** Builds TELEMETRY_STATUS XML without usage-only duration and UID properties. */
+/** Builds TELEMETRY_STATUS XML without usage-only duration properties. */
 @Component
 @RequiredArgsConstructor
 public class TelemetryStatusReportFactory {
@@ -66,17 +66,25 @@ public class TelemetryStatusReportFactory {
                         overallStart.toEpochMilli(),
                         null
                 );
-        dataIntervals.forEach(data -> builder.addInterval(
-                interval(data, includeIntervalTiming)
-        ));
+        for (int index = 0; index < dataIntervals.size(); index++) {
+            builder.addInterval(interval(
+                    dataIntervals.get(index),
+                    includeIntervalTiming,
+                    index
+            ));
+        }
         return builder.build();
     }
 
     private IntervalType interval(
             ReportDataInterval data,
-            boolean includeIntervalTiming
+            boolean includeIntervalTiming,
+            int sequenceNumber
     ) {
         IntervalType interval = new IntervalType();
+        interval.setUid(Oadr20bFactory.createUidType(
+                Integer.toString(sequenceNumber)
+        ));
         if (includeIntervalTiming) {
             interval.setDtstart(Oadr20bFactory.createDtstart(
                     data.period().start().toEpochMilli()

@@ -16,28 +16,28 @@ public sealed interface PulledReportCommand permits
 
     OpenAdrSessionSnapshot session();
 
-    public static PulledReportCommand create(
+    static PulledReportCommand create(
             OadrCreateReportType payload,
             OpenAdrSessionSnapshot session
     ) {
         return new Create(payload, session);
     }
 
-    public static PulledReportCommand register(
+    static PulledReportCommand register(
             OadrRegisterReportType payload,
             OpenAdrSessionSnapshot session
     ) {
         return new Register(payload, session);
     }
 
-    public static PulledReportCommand cancel(
+    static PulledReportCommand cancel(
             OadrCancelReportType payload,
             OpenAdrSessionSnapshot session
     ) {
         return new Cancel(payload, session);
     }
 
-    public static PulledReportCommand update(
+    static PulledReportCommand update(
             OadrUpdateReportType payload,
             OpenAdrSessionSnapshot session
     ) {

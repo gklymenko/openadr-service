@@ -191,11 +191,11 @@ public class EventPoller {
     }
 
     private PollExchange sendPoll(OpenAdrSessionSnapshot session) {
+        log.debug(SENDING_OADR_POLL, session.venId());
+
         OadrPollType pollPayload = Oadr20bPollBuilders
                 .newOadr20bPollBuilder(session.venId())
                 .build();
-
-        log.debug(SENDING_OADR_POLL, session.venId());
 
         return new PollExchange(
                 session,
