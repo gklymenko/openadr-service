@@ -81,6 +81,7 @@ public class ReportRequest {
 
     public enum Status {
         ACTIVE,
+        FINAL_REPORT_PENDING,
         CANCELLED,
         COMPLETED
     }

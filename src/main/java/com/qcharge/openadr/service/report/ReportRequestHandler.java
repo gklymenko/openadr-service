@@ -147,17 +147,11 @@ public class ReportRequestHandler {
                 .forEach(report -> persistedById.put(report.getReportRequestId(), report));
 
         List<ReportRequest> immediateReports = new ArrayList<>();
-        List<String> pendingRequestIds = new ArrayList<>();
-
         for (ValidatedReportRequest request : validatedRequests) {
             ReportRequestResult result = processReportRequest(
                     request,
                     persistedById.get(request.reportRequestId())
             );
-
-            if (result.pending()) {
-                pendingRequestIds.add(request.reportRequestId());
-            }
 
             if (result.immediateReport() != null) {
                 immediateReports.add(result.immediateReport());
@@ -166,7 +160,7 @@ public class ReportRequestHandler {
 
         sendCreatedReport(
                 requestId,
-                pendingRequestIds,
+                requestStore.findAllPendingReportRequestIds(),
                 session
         );
 
@@ -215,14 +209,14 @@ public class ReportRequestHandler {
     }
 
     private record ReportRequestResult(
-            boolean pending, ReportRequest immediateReport
+            ReportRequest immediateReport
     ) {
         static ReportRequestResult accepted() {
-            return new ReportRequestResult(true, null);
+            return new ReportRequestResult(null);
         }
 
         static ReportRequestResult immediate(ReportRequest report) {
-            return new ReportRequestResult(false, report);
+            return new ReportRequestResult(report);
         }
 
     }

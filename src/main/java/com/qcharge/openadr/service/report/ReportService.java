@@ -40,6 +40,7 @@ public class ReportService {
 
     private final OpenAdrProperties properties;
     private final ReportCapabilityRegistry capabilityRegistry;
+    private final ReportRequestStore requestStore;
     private final VtnTransportService transportService;
     private final Clock clock;
 
@@ -66,6 +67,7 @@ public class ReportService {
                 registerReport,
                 session
         );
+        requestStore.cancelNonMetadataRequests();
         capabilityRegistry.replaceAll(capabilityDefinitions());
 
         log.info("Reporting capabilities registered successfully");

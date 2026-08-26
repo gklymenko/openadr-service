@@ -36,7 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -95,14 +95,13 @@ class EventPollerQueueDrainTest {
         eventPoller.start(Duration.ofSeconds(10));
         pollTask.getValue().run();
 
+        ArgumentCaptor<Collection<PulledReportCommand>> commands =
+                ArgumentCaptor.forClass(Collection.class);
         InOrder order = inOrder(transportService, reportCommandQueue);
-        order.verify(transportService).send(eq(OpenAdrOperations.POLL), any(), eq(session));
-        order.verify(transportService).send(eq(OpenAdrOperations.POLL), any(), eq(session));
-        order.verify(transportService).send(eq(OpenAdrOperations.POLL), any(), eq(session));
-        order.verify(reportCommandQueue).enqueueAll(any());
+        order.verify(transportService, times(3))
+                .send(eq(OpenAdrOperations.POLL), any(), eq(session));
+        order.verify(reportCommandQueue).enqueueAll(commands.capture());
 
-        ArgumentCaptor<Collection<PulledReportCommand>> commands = ArgumentCaptor.forClass(Collection.class);
-        verify(reportCommandQueue).enqueueAll(commands.capture());
         assertThat(commands.getValue())
                 .extracting(PulledReportCommand::payload)
                 .containsExactly(first, second);
