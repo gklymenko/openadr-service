@@ -108,7 +108,7 @@ public class ReportRequestHandler {
                 cancelReport.getReportRequestID()
         );
 
-        deliveryCoordinator.handleCancellation(cancelReport, session);
+        deliveryCoordinator.handleStandaloneCancellation(cancelReport, session);
     }
 
     public void handleUpdateReport(

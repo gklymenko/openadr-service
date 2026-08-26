@@ -1,5 +1,6 @@
 package com.qcharge.openadr.service.report;
 
+import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.ReportRequest;
 import com.qcharge.openadr.repository.ReportRequestRepository;
 import com.qcharge.openadr.service.report.model.ReportSchedule;
@@ -14,16 +15,21 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
+import static com.qcharge.openadr.model.entity.ReportRequest.DeliveryState.IDLE;
+import static com.qcharge.openadr.model.entity.ReportRequest.DeliveryState.IN_PROGRESS;
 import static com.qcharge.openadr.model.entity.ReportRequest.Status.ACTIVE;
 import static com.qcharge.openadr.model.entity.ReportRequest.Status.CANCELLED;
 import static com.qcharge.openadr.model.entity.ReportRequest.Status.FINAL_REPORT_PENDING;
 
+/** Transactional state machine for report lifecycle and cross-process delivery leases. */
 @Service
 @RequiredArgsConstructor
 public class ReportRequestStore {
 
     private final ReportRequestRepository repository;
+    private final OpenAdrProperties properties;
 
     @Transactional
     public List<ReportRequest> activateAll(
@@ -54,13 +60,14 @@ public class ReportRequestStore {
         );
         entity.setNextReportAt(schedule.oneShot() ? null : schedule.firstDeliveryAt(acceptedAt));
         entity.setStatus(ReportRequest.Status.ACTIVE);
+        entity.setDeliveryState(IDLE);
         return entity;
     }
 
     @Transactional
     public boolean cancel(String reportRequestId) {
-        return repository.findByReportRequestId(reportRequestId)
-                .filter(request -> request.getStatus() == ReportRequest.Status.ACTIVE)
+        return repository.lockByReportRequestId(reportRequestId)
+                .filter(request -> cancellableStatuses().contains(request.getStatus()))
                 .map(request -> {
                     request.setStatus(ReportRequest.Status.CANCELLED);
                     request.setNextReportAt(null);
@@ -104,13 +111,19 @@ public class ReportRequestStore {
     }
 
     @Transactional
-    public void completeFinalCancellation(String reportRequestId) {
-        repository.findByReportRequestId(reportRequestId)
-                .filter(request -> request.getStatus() == FINAL_REPORT_PENDING)
-                .ifPresent(request -> {
+    public boolean completeFinalCancellation(DeliveryClaim claim) {
+        return lockOwnedClaim(claim)
+                .map(request -> {
+                    if (request.getStatus() != FINAL_REPORT_PENDING) {
+                        clearDeliveryClaim(request);
+                        return false;
+                    }
                     request.setStatus(CANCELLED);
                     request.setNextReportAt(null);
-                });
+                    clearDeliveryClaim(request);
+                    return true;
+                })
+                .orElse(false);
     }
 
     @Transactional
@@ -126,35 +139,90 @@ public class ReportRequestStore {
     }
 
     @Transactional
-    public void complete(String reportRequestId) {
-        repository.findByReportRequestId(reportRequestId)
-                .filter(request -> request.getStatus() == ReportRequest.Status.ACTIVE)
-                .ifPresent(request -> {
-                    request.setStatus(ReportRequest.Status.COMPLETED);
-                    request.setNextReportAt(null);
-                });
+    public boolean completeDelivery(DeliveryClaim claim) {
+        return lockOwnedClaim(claim)
+                .map(request -> {
+                    if (request.getStatus() == ACTIVE) {
+                        request.setStatus(ReportRequest.Status.COMPLETED);
+                        request.setNextReportAt(null);
+                    }
+                    clearDeliveryClaim(request);
+                    return true;
+                })
+                .orElse(false);
     }
 
     @Transactional
-    public void recordDelivery(
-            String reportRequestId,
+    public boolean recordDelivery(
+            DeliveryClaim claim,
             Instant deliveredThrough,
             Optional<Instant> nextReportAt
     ) {
-        repository.findByReportRequestId(reportRequestId)
-                .filter(request -> request.getStatus() == ReportRequest.Status.ACTIVE)
-                .ifPresent(request -> {
+        return lockOwnedClaim(claim)
+                .map(request -> {
                     request.setLastReportedAt(deliveredThrough);
-                    request.setNextReportAt(nextReportAt.orElse(null));
-                    if (nextReportAt.isEmpty()) {
-                        request.setStatus(ReportRequest.Status.COMPLETED);
+                    if (request.getStatus() == ACTIVE) {
+                        request.setNextReportAt(nextReportAt.orElse(null));
+                        if (nextReportAt.isEmpty()) {
+                            request.setStatus(ReportRequest.Status.COMPLETED);
+                        }
                     }
-                });
+                    clearDeliveryClaim(request);
+                    return true;
+                })
+                .orElse(false);
+    }
+
+    @Transactional
+    public boolean releaseDelivery(DeliveryClaim claim) {
+        return lockOwnedClaim(claim)
+                .map(request -> {
+                    clearDeliveryClaim(request);
+                    return true;
+                })
+                .orElse(false);
+    }
+
+    @Transactional
+    public Optional<DeliveryClaim> claimActive(
+            String reportRequestId,
+            Instant claimedAt
+    ) {
+        return claim(reportRequestId, ACTIVE, claimedAt);
+    }
+
+    @Transactional
+    public Optional<DeliveryClaim> claimFinal(
+            String reportRequestId,
+            Instant claimedAt
+    ) {
+        return claim(reportRequestId, FINAL_REPORT_PENDING, claimedAt);
+    }
+
+    @Transactional
+    public Optional<DeliveryClaim> claimDue(
+            String reportRequestId,
+            Instant dueAt
+    ) {
+        String token = UUID.randomUUID().toString();
+        int claimed = repository.claimDue(
+                reportRequestId,
+                ACTIVE,
+                IDLE,
+                IN_PROGRESS,
+                token,
+                dueAt,
+                leaseExpiredBefore(dueAt),
+                dueAt
+        );
+        return claimed == 1
+                ? Optional.of(requireLoadedClaim(reportRequestId, token))
+                : Optional.empty();
     }
 
     @Transactional
     public void cancelAll() {
-        repository.findAllByStatus(ReportRequest.Status.ACTIVE)
+        repository.lockAllByStatusIn(cancellableStatuses())
                 .forEach(request -> {
                     request.setStatus(ReportRequest.Status.CANCELLED);
                     request.setNextReportAt(null);
@@ -225,6 +293,56 @@ public class ReportRequestStore {
         return List.of(ACTIVE, FINAL_REPORT_PENDING);
     }
 
+    private Optional<DeliveryClaim> claim(
+            String reportRequestId,
+            ReportRequest.Status requiredStatus,
+            Instant claimedAt
+    ) {
+        String token = UUID.randomUUID().toString();
+        int claimed = repository.claim(
+                reportRequestId,
+                requiredStatus,
+                IDLE,
+                IN_PROGRESS,
+                token,
+                claimedAt,
+                leaseExpiredBefore(claimedAt)
+        );
+        return claimed == 1
+                ? Optional.of(requireLoadedClaim(reportRequestId, token))
+                : Optional.empty();
+    }
+
+    private Instant leaseExpiredBefore(Instant claimedAt) {
+        return claimedAt.minusSeconds(
+                properties.getReport().getDeliveryLeaseSeconds()
+        );
+    }
+
+    private DeliveryClaim requireLoadedClaim(
+            String reportRequestId,
+            String token
+    ) {
+        return repository.findByReportRequestId(reportRequestId)
+                .filter(request -> token.equals(request.getDeliveryToken()))
+                .map(request -> new DeliveryClaim(request, token))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Claimed report could not be reloaded: " + reportRequestId
+                ));
+    }
+
+    private Optional<ReportRequest> lockOwnedClaim(DeliveryClaim claim) {
+        return repository.lockByReportRequestId(claim.reportRequestId())
+                .filter(request -> request.getDeliveryState() == IN_PROGRESS)
+                .filter(request -> claim.token().equals(request.getDeliveryToken()));
+    }
+
+    private void clearDeliveryClaim(ReportRequest request) {
+        request.setDeliveryState(IDLE);
+        request.setDeliveryToken(null);
+        request.setDeliveryClaimedAt(null);
+    }
+
     public record CancellationBatch(
             List<ReportRequest> requests,
             List<String> invalidReportRequestIds
@@ -244,6 +362,20 @@ public class ReportRequestStore {
 
         public boolean accepted() {
             return invalidReportRequestIds.isEmpty();
+        }
+    }
+
+    public record DeliveryClaim(
+            ReportRequest request,
+            String token
+    ) {
+        public DeliveryClaim {
+            java.util.Objects.requireNonNull(request, "request");
+            java.util.Objects.requireNonNull(token, "token");
+        }
+
+        public String reportRequestId() {
+            return request.getReportRequestId();
         }
     }
 }

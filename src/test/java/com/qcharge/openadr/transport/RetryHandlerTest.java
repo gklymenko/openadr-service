@@ -143,9 +143,10 @@ class RetryHandlerTest {
 
         long elapsed = System.currentTimeMillis() - start;
 
-        // Should sleep 500ms (capped), not 1000ms
+        // Base delay is capped at 500ms before symmetric ±25% jitter is applied.
+        // Allow scheduling/timer tolerance below the theoretical 375ms minimum.
         assertTrue(elapsed < 800, "Delay should be capped at maxDelayMillis=500ms, got " + elapsed + "ms");
-        assertTrue(elapsed >= 450, "Expected at least ~500ms elapsed, got " + elapsed + "ms");
+        assertTrue(elapsed >= 350, "Expected capped jittered delay, got " + elapsed + "ms");
         assertEquals(2, calls.get());
     }
 

@@ -165,5 +165,9 @@ public class OpenAdrProperties {
 
         @Min(100)
         private long schedulerDelayMillis = 1000;
+
+        /** Maximum age of an unfinished delivery claim before another worker may retry it. */
+        @Min(10)
+        private long deliveryLeaseSeconds = 120;
     }
 }

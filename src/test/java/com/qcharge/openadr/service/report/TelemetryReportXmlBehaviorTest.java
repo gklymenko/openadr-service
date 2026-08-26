@@ -90,6 +90,68 @@ class TelemetryReportXmlBehaviorTest {
     }
 
     @Test
+    void r1_3020_periodicStatusUsesOverallTimingForSinglePointDelivery() {
+        ReportRequest request = request(
+                "STATUS-REQUEST",
+                ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                ReportService.RID_RESOURCE_STATUS
+        );
+        var schedule = new ReportSchedule(
+                NOW,
+                null,
+                Duration.ofMinutes(1),
+                Duration.ofMinutes(1)
+        );
+
+        OadrReportType report = statusFactory.periodic(
+                request,
+                schedule,
+                List.of(interval(NOW, Duration.ofMinutes(1))),
+                NOW.plus(Duration.ofMinutes(1))
+        );
+
+        assertThat(report.getDtstart()).isNotNull();
+        assertThat(report.getDuration()).isNull();
+        var interval = report.getIntervals().getInterval().getFirst();
+        assertThat(interval.getDtstart()).isNull();
+        assertThat(interval.getDuration()).isNull();
+        assertThat(statusPayload(report).getOadrLoadControlState()).isNull();
+    }
+
+    @Test
+    void r1_3025_delayedOnChangeStatusContainsIntervalTimeAndFullLoadControlState() {
+        ReportRequest request = request(
+                "DELAYED-STATUS-REQUEST",
+                ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                ReportService.RID_RESOURCE_STATUS
+        );
+        var schedule = new ReportSchedule(
+                NOW,
+                null,
+                Duration.ZERO,
+                Duration.ofMinutes(1)
+        );
+
+        OadrReportType report = statusFactory.periodic(
+                request,
+                schedule,
+                List.of(interval(NOW, Duration.ofMinutes(1))),
+                NOW.plus(Duration.ofMinutes(1))
+        );
+
+        assertThat(report.getDtstart()).isNotNull();
+        var interval = report.getIntervals().getInterval().getFirst();
+        assertThat(interval.getDtstart()).isNotNull();
+        assertThat(interval.getDuration()).isNull();
+        var loadControlState = statusPayload(report).getOadrLoadControlState();
+        assertThat(loadControlState).isNotNull();
+        assertThat(loadControlState.getOadrCapacity()).isNotNull();
+        assertThat(loadControlState.getOadrLevelOffset()).isNotNull();
+        assertThat(loadControlState.getOadrPercentOffset()).isNotNull();
+        assertThat(loadControlState.getOadrSetPoint()).isNotNull();
+    }
+
+    @Test
     void r1_3150_oneShotUsagePlacesPowerAndEnergyInOneInterval() {
         ReportRequest request = request(
                 "USAGE-REQUEST",

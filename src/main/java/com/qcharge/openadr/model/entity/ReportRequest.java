@@ -61,6 +61,17 @@ public class ReportRequest {
     @Enumerated(EnumType.STRING)
     private Status status = Status.ACTIVE;
 
+    /** Delivery lease is orthogonal to lifecycle so cancellation cannot hide in-flight I/O. */
+    @Column(name = "delivery_state", nullable = false)
+    @Enumerated(EnumType.STRING)
+    private DeliveryState deliveryState = DeliveryState.IDLE;
+
+    @Column(name = "delivery_token", length = 36)
+    private String deliveryToken;
+
+    @Column(name = "delivery_claimed_at")
+    private Instant deliveryClaimedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -84,5 +95,10 @@ public class ReportRequest {
         FINAL_REPORT_PENDING,
         CANCELLED,
         COMPLETED
+    }
+
+    public enum DeliveryState {
+        IDLE,
+        IN_PROGRESS
     }
 }

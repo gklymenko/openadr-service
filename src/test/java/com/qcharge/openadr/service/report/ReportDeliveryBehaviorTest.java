@@ -24,10 +24,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -72,7 +74,7 @@ class ReportDeliveryBehaviorTest {
         ArgumentCaptor<OadrCanceledReportType> response =
                 ArgumentCaptor.forClass(OadrCanceledReportType.class);
 
-        coordinator.handleCancellation(
+        coordinator.handleStandaloneCancellation(
                 Oadr20bEiReportBuilders
                         .newOadr20bCancelReportBuilder("CANCEL", "VEN-1", false)
                         .addReportRequestId("CANCELLED-REQUEST")
@@ -95,6 +97,7 @@ class ReportDeliveryBehaviorTest {
     void r1_3045_acknowledgesPendingBeforeDeliveringFinalReport() {
         ReportRequest request = periodicRequest("FINAL-REQUEST");
         request.setStatus(ReportRequest.Status.FINAL_REPORT_PENDING);
+        ReportRequestStore.DeliveryClaim claim = claim(request);
         when(requestStore.beginCancellation(List.of("FINAL-REQUEST"), true))
                 .thenReturn(new ReportRequestStore.CancellationBatch(
                         List.of(request),
@@ -102,23 +105,22 @@ class ReportDeliveryBehaviorTest {
                 ));
         when(requestStore.findAllPendingReportRequestIds())
                 .thenReturn(List.of("FINAL-REQUEST"));
+        when(requestStore.claimFinal("FINAL-REQUEST", NOW))
+                .thenReturn(Optional.of(claim));
         when(telemetryReportFactory.periodic(any(), any(), any(), eq(NOW)))
                 .thenReturn(new OadrReportType());
         OadrUpdatedReportType updated = Oadr20bEiReportBuilders
                 .newOadr20bUpdatedReportBuilder("UPDATE", 200, "VEN-1")
                 .build();
-        doReturn(null).when(transportService).send(
-                eq(OpenAdrOperations.CANCELED_REPORT_RESPONSE),
-                any(OadrCanceledReportType.class),
-                eq(session())
-        );
-        doReturn(updated).when(transportService).send(
-                eq(OpenAdrOperations.UPDATE_REPORT),
-                any(OadrUpdateReportType.class),
+        doAnswer(invocation -> OpenAdrOperations.UPDATE_REPORT.equals(
+                invocation.getArgument(0)
+        ) ? updated : null).when(transportService).send(
+                any(),
+                any(),
                 eq(session())
         );
 
-        coordinator.handleCancellation(
+        coordinator.handleStandaloneCancellation(
                 Oadr20bEiReportBuilders
                         .newOadr20bCancelReportBuilder("CANCEL", "VEN-1", true)
                         .addReportRequestId("FINAL-REQUEST")
@@ -137,7 +139,57 @@ class ReportDeliveryBehaviorTest {
                 any(),
                 eq(session())
         );
-        order.verify(requestStore).completeFinalCancellation("FINAL-REQUEST");
+        order.verify(requestStore).completeFinalCancellation(claim);
+    }
+
+    @Test
+    void r1_3050_appliesPiggybackCancellationWithoutCanceledReportResponse() {
+        ReportRequest request = periodicRequest("PIGGYBACK-REQUEST");
+        ReportRequest cancelledRequest = periodicRequest("CANCELLED-BY-PIGGYBACK");
+        ReportRequestStore.DeliveryClaim claim = claim(request);
+        when(requestStore.claimActive("PIGGYBACK-REQUEST", NOW))
+                .thenReturn(Optional.of(claim));
+        when(telemetryReportFactory.oneShot(request))
+                .thenReturn(new OadrReportType());
+        var cancellation = Oadr20bEiReportBuilders
+                .newOadr20bCancelReportBuilder("PIGGYBACK-CANCEL", "VEN-1", false)
+                .addReportRequestId("CANCELLED-BY-PIGGYBACK")
+                .build();
+        OadrUpdatedReportType updated = Oadr20bEiReportBuilders
+                .newOadr20bUpdatedReportBuilder("UPDATE", 200, "VEN-1")
+                .withOadrCancelReport(cancellation)
+                .build();
+        doReturn(updated).when(transportService).send(
+                eq(OpenAdrOperations.UPDATE_REPORT),
+                any(OadrUpdateReportType.class),
+                eq(session())
+        );
+        when(requestStore.beginCancellation(
+                List.of("CANCELLED-BY-PIGGYBACK"),
+                false
+        )).thenReturn(new ReportRequestStore.CancellationBatch(
+                List.of(cancelledRequest),
+                List.of()
+        ));
+
+        coordinator.deliverOneShot(request, session());
+
+        InOrder order = inOrder(transportService, requestStore);
+        order.verify(transportService).send(
+                eq(OpenAdrOperations.UPDATE_REPORT),
+                any(OadrUpdateReportType.class),
+                eq(session())
+        );
+        order.verify(requestStore).completeDelivery(claim);
+        order.verify(requestStore).beginCancellation(
+                List.of("CANCELLED-BY-PIGGYBACK"),
+                false
+        );
+        verify(transportService, never()).send(
+                eq(OpenAdrOperations.CANCELED_REPORT_RESPONSE),
+                any(OadrCanceledReportType.class),
+                eq(session())
+        );
     }
 
     @Test
@@ -145,6 +197,9 @@ class ReportDeliveryBehaviorTest {
         ReportRequest metadata = new ReportRequest();
         metadata.setReportRequestId("METADATA-REQUEST");
         metadata.setReportSpecifierId(ReportService.REPORT_SPECIFIER_ID_METADATA);
+        ReportRequestStore.DeliveryClaim claim = claim(metadata);
+        when(requestStore.claimActive("METADATA-REQUEST", NOW))
+                .thenReturn(Optional.of(claim));
         OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportBuilder("REGISTER", "VEN-1")
                 .build();
@@ -160,7 +215,7 @@ class ReportDeliveryBehaviorTest {
                 session()
         );
         order.verify(requestStore).cancelNonMetadataRequests();
-        order.verify(requestStore).complete("METADATA-REQUEST");
+        order.verify(requestStore).completeDelivery(claim);
     }
 
     private ReportRequest periodicRequest(String requestId) {
@@ -186,5 +241,9 @@ class ReportDeliveryBehaviorTest {
                 "REGISTRATION-1",
                 Duration.ofSeconds(10)
         );
+    }
+
+    private ReportRequestStore.DeliveryClaim claim(ReportRequest request) {
+        return new ReportRequestStore.DeliveryClaim(request, "DELIVERY-TOKEN");
     }
 }

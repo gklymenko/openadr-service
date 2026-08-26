@@ -1,5 +1,6 @@
 package com.qcharge.openadr.service.report;
 
+import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.model.entity.ReportRequest;
 import com.qcharge.openadr.repository.ReportRequestRepository;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,10 @@ import static org.mockito.Mockito.when;
 class ReportRequestStoreCancellationTest {
 
     private final ReportRequestRepository repository = mock(ReportRequestRepository.class);
-    private final ReportRequestStore store = new ReportRequestStore(repository);
+    private final ReportRequestStore store = new ReportRequestStore(
+            repository,
+            new OpenAdrProperties()
+    );
 
     @Test
     void r1_3040_rejectsWholeBatchWithoutMutatingValidRequest() {

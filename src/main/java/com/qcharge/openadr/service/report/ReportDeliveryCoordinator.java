@@ -22,10 +22,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
-/** Coordinates due-report delivery without holding a database transaction during transport I/O. */
+/** Coordinates transport I/O between short persisted delivery-lease transactions. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -38,32 +36,37 @@ public class ReportDeliveryCoordinator {
     private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
     private final Clock clock;
 
-    private final Set<String> deliveriesInProgress = ConcurrentHashMap.newKeySet();
-
     public void deliverOneShot(
             ReportRequest request,
             OpenAdrSessionSnapshot session
     ) {
-        if (!beginDelivery(request.getReportRequestId())) {
+        var claimed = requestStore.claimActive(
+                request.getReportRequestId(),
+                clock.instant()
+        );
+        if (claimed.isEmpty()) {
             return;
         }
+        ReportRequestStore.DeliveryClaim claim = claimed.orElseThrow();
+        ReportRequest claimedRequest = claim.request();
         OadrCancelReportType cancellation = null;
         try {
-            if (isMetadata(request)) {
-                sendMetadata(request, session);
+            if (isMetadata(claimedRequest)) {
+                sendMetadata(claimedRequest, session);
             } else {
                 cancellation = sendTelemetry(
-                        request,
-                        telemetryReportFactory.oneShot(request),
+                        claimedRequest,
+                        telemetryReportFactory.oneShot(claimedRequest),
                         session
                 );
             }
-            requestStore.complete(request.getReportRequestId());
-        } finally {
-            endDelivery(request.getReportRequestId());
+            requestStore.completeDelivery(claim);
+        } catch (RuntimeException exception) {
+            requestStore.releaseDelivery(claim);
+            throw exception;
         }
         if (cancellation != null) {
-            handleCancellation(cancellation, session);
+            handlePiggybackCancellation(cancellation, session);
         }
     }
 
@@ -74,14 +77,11 @@ public class ReportDeliveryCoordinator {
         requestStore.findDue(now).forEach(request -> deliverDue(request, session, now));
     }
 
-    public void handleCancellation(
+    public void handleStandaloneCancellation(
             OadrCancelReportType cancellation,
             OpenAdrSessionSnapshot session
     ) {
-        ReportRequestStore.CancellationBatch batch = requestStore.beginCancellation(
-                cancellation.getReportRequestID(),
-                cancellation.isReportToFollow()
-        );
+        ReportRequestStore.CancellationBatch batch = beginCancellation(cancellation);
         var responseBuilder = Oadr20bEiReportBuilders
                 .newOadr20bCanceledReportBuilder(
                         cancellation.getRequestID(),
@@ -100,9 +100,7 @@ public class ReportDeliveryCoordinator {
         OadrCanceledReportType response = responseBuilder.build();
         transportService.send(OpenAdrOperations.CANCELED_REPORT_RESPONSE, response, session);
 
-        if (batch.accepted() && cancellation.isReportToFollow()) {
-            batch.requests().forEach(request -> deliverFinal(request, session));
-        }
+        deliverFinalReportsIfRequested(cancellation, batch, session);
     }
 
     private void deliverDue(
@@ -110,49 +108,92 @@ public class ReportDeliveryCoordinator {
             OpenAdrSessionSnapshot session,
             Instant now
     ) {
-        if (!beginDelivery(request.getReportRequestId())) {
+        var claimed = requestStore.claimDue(request.getReportRequestId(), now);
+        if (claimed.isEmpty()) {
             return;
         }
+        ReportRequestStore.DeliveryClaim claim = claimed.orElseThrow();
+        ReportRequest claimedRequest = claim.request();
         OadrCancelReportType cancellation = null;
         try {
-            ReportSchedule schedule = ReportSchedule.restore(request);
-            Instant dueAt = request.getNextReportAt();
+            ReportSchedule schedule = ReportSchedule.restore(claimedRequest);
+            Instant dueAt = claimedRequest.getNextReportAt();
             if (dueAt == null || dueAt.isAfter(now)) {
+                requestStore.releaseDelivery(claim);
                 return;
             }
 
             Instant deliveredThrough;
-            if (isMetadata(request)) {
-                sendMetadata(request, session);
+            if (isMetadata(claimedRequest)) {
+                sendMetadata(claimedRequest, session);
                 deliveredThrough = dueAt;
             } else {
-                TimeRange window = schedule.deliveryWindow(dueAt, request.getLastReportedAt());
+                TimeRange window = schedule.deliveryWindow(
+                        dueAt,
+                        claimedRequest.getLastReportedAt()
+                );
                 OadrReportType payload = telemetryReportFactory.periodic(
-                        request,
+                        claimedRequest,
                         schedule,
                         window,
                         now
                 );
-                cancellation = sendTelemetry(request, payload, session);
+                cancellation = sendTelemetry(claimedRequest, payload, session);
                 deliveredThrough = window.endExclusive();
             }
 
             requestStore.recordDelivery(
-                    request.getReportRequestId(),
+                    claim,
                     deliveredThrough,
                     schedule.nextDeliveryAfter(deliveredThrough)
             );
         } catch (RuntimeException exception) {
+            requestStore.releaseDelivery(claim);
             log.error(
                     "Failed to deliver scheduled report. reportRequestId={}",
-                    request.getReportRequestId(),
+                    claimedRequest.getReportRequestId(),
                     exception
             );
-        } finally {
-            endDelivery(request.getReportRequestId());
         }
         if (cancellation != null) {
-            handleCancellation(cancellation, session);
+            handlePiggybackCancellation(cancellation, session);
+        }
+    }
+
+    private void handlePiggybackCancellation(
+            OadrCancelReportType cancellation,
+            OpenAdrSessionSnapshot session
+    ) {
+        ReportRequestStore.CancellationBatch batch = beginCancellation(cancellation);
+        if (!batch.accepted()) {
+            log.warn(
+                    "Ignoring invalid piggyback report cancellation. requestId={}, "
+                            + "invalidReportRequestIds={}",
+                    cancellation.getRequestID(),
+                    batch.invalidReportRequestIds()
+            );
+            return;
+        }
+
+        deliverFinalReportsIfRequested(cancellation, batch, session);
+    }
+
+    private ReportRequestStore.CancellationBatch beginCancellation(
+            OadrCancelReportType cancellation
+    ) {
+        return requestStore.beginCancellation(
+                cancellation.getReportRequestID(),
+                cancellation.isReportToFollow()
+        );
+    }
+
+    private void deliverFinalReportsIfRequested(
+            OadrCancelReportType cancellation,
+            ReportRequestStore.CancellationBatch batch,
+            OpenAdrSessionSnapshot session
+    ) {
+        if (batch.accepted() && cancellation.isReportToFollow()) {
+            batch.requests().forEach(request -> deliverFinal(request, session));
         }
     }
 
@@ -160,47 +201,60 @@ public class ReportDeliveryCoordinator {
             ReportRequest request,
             OpenAdrSessionSnapshot session
     ) {
-        if (!beginDelivery(request.getReportRequestId())) {
+        var claimed = requestStore.claimFinal(
+                request.getReportRequestId(),
+                clock.instant()
+        );
+        if (claimed.isEmpty()) {
             return;
         }
+        ReportRequestStore.DeliveryClaim claim = claimed.orElseThrow();
+        ReportRequest claimedRequest = claim.request();
         try {
-            if (isMetadata(request)) {
-                sendMetadata(request, session);
-                requestStore.completeFinalCancellation(request.getReportRequestId());
+            if (isMetadata(claimedRequest)) {
+                sendMetadata(claimedRequest, session);
+                requestStore.completeFinalCancellation(claim);
                 return;
             }
 
-            ReportSchedule schedule = ReportSchedule.restore(request);
+            ReportSchedule schedule = ReportSchedule.restore(claimedRequest);
             Instant now = clock.instant();
             Instant effectiveEnd = schedule.endExclusive() == null
                     || now.isBefore(schedule.endExclusive())
                     ? now
                     : schedule.endExclusive();
-            if (request.getLastReportedAt() != null
-                    && !request.getLastReportedAt().isBefore(effectiveEnd)) {
+            if (claimedRequest.getLastReportedAt() != null
+                    && !claimedRequest.getLastReportedAt().isBefore(effectiveEnd)) {
                 sendTelemetry(
-                        request,
-                        telemetryReportFactory.oneShot(request),
+                        claimedRequest,
+                        telemetryReportFactory.oneShot(claimedRequest),
                         session
                 );
-                requestStore.completeFinalCancellation(request.getReportRequestId());
+                requestStore.completeFinalCancellation(claim);
                 return;
             }
-            TimeRange window = schedule.deliveryWindow(effectiveEnd, request.getLastReportedAt());
+            TimeRange window = schedule.deliveryWindow(
+                    effectiveEnd,
+                    claimedRequest.getLastReportedAt()
+            );
             sendTelemetry(
-                    request,
-                    telemetryReportFactory.periodic(request, schedule, window, now),
+                    claimedRequest,
+                    telemetryReportFactory.periodic(
+                            claimedRequest,
+                            schedule,
+                            window,
+                            now
+                    ),
                     session
             );
-            requestStore.completeFinalCancellation(request.getReportRequestId());
+            requestStore.completeFinalCancellation(claim);
         } catch (RuntimeException exception) {
+            requestStore.releaseDelivery(claim);
             log.error(
                     "Final report delivery failed and remains pending. reportRequestId={}",
-                    request.getReportRequestId(),
+                    claimedRequest.getReportRequestId(),
                     exception
             );
-        } finally {
-            endDelivery(request.getReportRequestId());
         }
     }
 
@@ -244,11 +298,4 @@ public class ReportDeliveryCoordinator {
         );
     }
 
-    private boolean beginDelivery(String reportRequestId) {
-        return deliveriesInProgress.add(reportRequestId);
-    }
-
-    private void endDelivery(String reportRequestId) {
-        deliveriesInProgress.remove(reportRequestId);
-    }
 }

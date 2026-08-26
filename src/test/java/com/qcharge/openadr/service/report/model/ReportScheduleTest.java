@@ -27,7 +27,7 @@ class ReportScheduleTest {
     }
 
     @Test
-    void futureDtstartControlsFirstDelivery() {
+    void r1_3025_futureDtstartControlsFirstDelivery() {
         Instant delayedStart = START.plusSeconds(15);
         ReportSchedule schedule = schedule(delayedStart, Duration.ofMinutes(5));
 
@@ -35,6 +35,20 @@ class ReportScheduleTest {
                 delayedStart.plus(Duration.ofMinutes(2)),
                 schedule.firstDeliveryAt(START)
         );
+    }
+
+    @Test
+    void r1_3027_shortDurationEndsAtRequestedBoundary() {
+        ReportSchedule schedule = schedule(START, Duration.ofSeconds(90));
+
+        Instant onlyDue = schedule.firstDeliveryAt(START);
+        assertEquals(START.plusSeconds(90), onlyDue);
+
+        TimeRange onlyWindow = schedule.deliveryWindow(onlyDue, null);
+        assertEquals(START, onlyWindow.start());
+        assertEquals(Duration.ofSeconds(90), onlyWindow.duration());
+        assertTrue(schedule.hasCompletedThrough(onlyWindow.endExclusive()));
+        assertTrue(schedule.nextDeliveryAfter(onlyWindow.endExclusive()).isEmpty());
     }
 
     @Test
