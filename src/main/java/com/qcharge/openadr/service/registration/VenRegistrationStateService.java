@@ -3,8 +3,9 @@ package com.qcharge.openadr.service.registration;
 import com.qcharge.openadr.model.entity.VenRegistration;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.repository.OptScheduleRepository;
+import com.qcharge.openadr.repository.ReportCapabilityRepository;
+import com.qcharge.openadr.repository.ReportRequestRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
-import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +26,8 @@ public class VenRegistrationStateService {
 
     private final VenRegistrationRepository registrationRepository;
     private final DrEventRepository eventRepository;
-    private final VenReportRepository venReportRepository;
+    private final ReportRequestRepository reportRequestRepository;
+    private final ReportCapabilityRepository reportCapabilityRepository;
     private final OptScheduleRepository optScheduleRepository;
 
     @Transactional
@@ -119,7 +121,8 @@ public class VenRegistrationStateService {
     }
 
     private void deleteDependentRegistrationData() {
-        venReportRepository.deleteAll();
+        reportRequestRepository.deleteAll();
+        reportCapabilityRepository.deleteAll();
         optScheduleRepository.deleteAll();
 
         log.info("Cleared VEN report and opt schedule state");

@@ -4,9 +4,11 @@ import com.qcharge.openadr.model.enums.event.EventStatus;
 import com.qcharge.openadr.model.entity.DrEvent;
 import com.qcharge.openadr.model.entity.DrEventInterval;
 import com.qcharge.openadr.model.entity.DrEventSignal;
+import com.qcharge.openadr.utility.TimeRange;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,8 +31,8 @@ public class EventTimelineCalculator {
         if (durationSeconds == null || durationSeconds == 0L) {
             return EventStatus.ACTIVE;
         }
-        return now.isBefore(actualStart.plusSeconds(durationSeconds))
-                ? EventStatus.ACTIVE : EventStatus.COMPLETED;
+        TimeRange activePeriod = TimeRange.of(actualStart, Duration.ofSeconds(durationSeconds));
+        return activePeriod.hasEndedAt(now) ? EventStatus.COMPLETED : EventStatus.ACTIVE;
     }
 
     public DrEventSignal selectedSignal(DrEvent event) {

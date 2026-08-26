@@ -20,31 +20,46 @@ import java.time.Instant;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "ven_report")
-public class VenReport {
+@Table(name = "report_request")
+public class ReportRequest {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "report_spec_id")
-    private String reportSpecId;
-
-    @Column(name = "report_request_id")
+    @Column(name = "report_request_id", nullable = false, unique = true)
     private String reportRequestId;
 
-    @Column(name = "report_name")
+    @Column(name = "report_specifier_id", nullable = false)
+    private String reportSpecifierId;
+
+    @Column(name = "report_name", nullable = false)
     private String reportName;
+
+    @Column(name = "requested_rids", nullable = false)
+    private String requestedRids;
+
+    @Column(name = "granularity_seconds", nullable = false)
+    private long granularitySeconds;
+
+    @Column(name = "report_back_duration_seconds", nullable = false)
+    private long reportBackDurationSeconds;
+
+    @Column(name = "requested_start")
+    private Instant requestedStart;
+
+    @Column(name = "requested_duration_seconds")
+    private Long requestedDurationSeconds;
+
+    @Column(name = "next_report_at")
+    private Instant nextReportAt;
+
+    @Column(name = "last_reported_at")
+    private Instant lastReportedAt;
 
     @Column(name = "status", nullable = false)
     @Enumerated(EnumType.STRING)
-    private ReportStatus status = ReportStatus.REGISTERED;
-
-    @Column(name = "granularity_seconds")
-    private Integer granularitySeconds;
-
-    @Column(name = "requested_rids")
-    private String requestedRids;
+    private Status status = Status.ACTIVE;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -64,7 +79,9 @@ public class VenReport {
         updatedAt = Instant.now();
     }
 
-    public enum ReportStatus {
-        REGISTERED, ACTIVE, CANCELLED
+    public enum Status {
+        ACTIVE,
+        CANCELLED,
+        COMPLETED
     }
 }

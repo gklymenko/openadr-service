@@ -1,74 +1,44 @@
 package com.qcharge.openadr.service.report;
 
-import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.OpenADRResponseCode;
-import com.qcharge.openadr.model.entity.VenReport;
+import com.qcharge.openadr.model.entity.ReportRequest;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
-import com.qcharge.openadr.model.oadr20b.ei.SpecifierPayloadType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCancelReportType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrCanceledReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrCreatedReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisterReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportRequestType;
-import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdateReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrUpdatedReportType;
-import com.qcharge.openadr.repository.VenReportRepository;
-import com.qcharge.openadr.service.session.OpenAdrSessionLifecycleCoordinator;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
-import com.qcharge.openadr.service.transport.VtnTransportService;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
-import com.qcharge.openadr.utility.OpenAdrTimeUtils;
-import com.qcharge.openadr.utility.RequestUtils;
+import com.qcharge.openadr.service.transport.VtnTransportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
-import java.time.Instant;
+import java.time.Clock;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledFuture;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ReportRequestHandler {
 
-    private static final String RESPONSE_OK = String.valueOf(OpenADRResponseCode.OK);
-    private static final String METADATA_REPORT_SPECIFIER_ID = "METADATA";
-
-    private final OpenAdrProperties properties;
-    private final VenReportRepository reportRepository;
+    private final ReportRequestStore requestStore;
+    private final ReportRequestValidator requestValidator;
+    private final ReportDeliveryCoordinator deliveryCoordinator;
     private final VtnTransportService transportService;
-    private final ReportService reportService;
-    private final TaskScheduler openAdrTaskScheduler;
-    private final OpenAdrSessionLifecycleCoordinator lifecycleCoordinator;
+    private final Clock clock;
 
-    private final Map<String, ScheduledFuture<?>> activeReportTasks = new ConcurrentHashMap<>();
-
-    @Transactional
     public void handleRegisteredReport(
             OadrRegisteredReportType registeredReport,
             OpenAdrSessionSnapshot session
     ) {
-        String responseCode = registeredReport.getEiResponse().getResponseCode();
-
-        if (!RESPONSE_OK.equals(responseCode)) {
-            throw new IllegalStateException(
-                    "oadrRegisteredReport failed. code=%s, description=%s"
-                            .formatted(responseCode, registeredReport.getEiResponse().getResponseDescription())
-            );
-        }
-
         if (registeredReport.getOadrReportRequest().isEmpty()) {
             log.info("oadrRegisteredReport accepted without immediate report requests");
             return;
@@ -86,7 +56,6 @@ public class ReportRequestHandler {
         );
     }
 
-    @Transactional
     public void handle(
             OadrCreateReportType createReport,
             OpenAdrSessionSnapshot session
@@ -129,7 +98,6 @@ public class ReportRequestHandler {
         );
     }
 
-    @Transactional
     public void handleCancelReport(
             OadrCancelReportType cancelReport,
             OpenAdrSessionSnapshot session
@@ -140,46 +108,7 @@ public class ReportRequestHandler {
                 cancelReport.getReportRequestID()
         );
 
-        if (cancelReport.isReportToFollow()) {
-            log.info("reportToFollow=true, sending final oadrUpdateReport before cancellation");
-
-            if (cancelReport.getReportRequestID().isEmpty()) {
-                reportRepository.findAll().stream()
-                        .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
-                        .forEach(report -> sendUpdateReport(report, session));
-            } else {
-                cancelReport.getReportRequestID().forEach(reportRequestId ->
-                        reportRepository.findByReportRequestId(reportRequestId)
-                                .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
-                                .ifPresent(report -> sendUpdateReport(report, session))
-                );
-            }
-        }
-
-        boolean allCancelled = true;
-
-        if (cancelReport.getReportRequestID().isEmpty()) {
-            cancelAllReports();
-        } else {
-            for (String reportRequestId : cancelReport.getReportRequestID()) {
-                boolean cancelled = cancelReportRequest(reportRequestId);
-                allCancelled = allCancelled && cancelled;
-            }
-        }
-
-        OadrCanceledReportType response = Oadr20bEiReportBuilders
-                .newOadr20bCanceledReportBuilder(
-                        cancelReport.getRequestID(),
-                        allCancelled ? OpenADRResponseCode.OK : OpenADRResponseCode.REPORT_NOT_SUPPORTED,
-                        session.venId()
-                )
-                .build();
-
-        transportService.send(
-                OpenAdrOperations.CANCELED_REPORT_RESPONSE,
-                response,
-                session
-        );
+        deliveryCoordinator.handleCancellation(cancelReport, session);
     }
 
     public void handleUpdateReport(
@@ -212,20 +141,22 @@ public class ReportRequestHandler {
             List<OadrReportRequestType> requests,
             OpenAdrSessionSnapshot session
     ) {
-        List<VenReport> immediateReports = new ArrayList<>();
+        List<ValidatedReportRequest> validatedRequests = requestValidator.validateAll(requests, requestId);
+        Map<String, ReportRequest> persistedById = new HashMap<>();
+        requestStore.activateAll(validatedRequests, clock.instant())
+                .forEach(report -> persistedById.put(report.getReportRequestId(), report));
+
+        List<ReportRequest> immediateReports = new ArrayList<>();
         List<String> pendingRequestIds = new ArrayList<>();
 
-        boolean allSupported = true;
+        for (ValidatedReportRequest request : validatedRequests) {
+            ReportRequestResult result = processReportRequest(
+                    request,
+                    persistedById.get(request.reportRequestId())
+            );
 
-        for (OadrReportRequestType request : requests) {
-            ReportRequestResult result = processReportRequest(request, session);
-
-            if (result.supported() && result.pending()) {
-                pendingRequestIds.add(request.getReportRequestID());
-            }
-
-            if (!result.supported()) {
-                allSupported = false;
+            if (result.pending()) {
+                pendingRequestIds.add(request.reportRequestId());
             }
 
             if (result.immediateReport() != null) {
@@ -234,101 +165,34 @@ public class ReportRequestHandler {
         }
 
         sendCreatedReport(
-                requestId, pendingRequestIds,
-                allSupported ? OpenADRResponseCode.OK : OpenADRResponseCode.REPORT_NOT_SUPPORTED,
+                requestId,
+                pendingRequestIds,
                 session
         );
 
-        immediateReports.forEach(report -> sendUpdateReport(report, session));
+        immediateReports.forEach(report -> deliveryCoordinator.deliverOneShot(report, session));
     }
 
     private ReportRequestResult processReportRequest(
-            OadrReportRequestType request,
-            OpenAdrSessionSnapshot session
+            ValidatedReportRequest request,
+            ReportRequest persistedRequest
     ) {
-        String reportRequestId = request.getReportRequestID();
-        String reportSpecifierId = request.getReportSpecifier().getReportSpecifierID();
-
-        if (METADATA_REPORT_SPECIFIER_ID.equalsIgnoreCase(reportSpecifierId)) {
-            sendMetadataReportResponse(reportRequestId, session);
-            return ReportRequestResult.acceptedNotPending();
+        if (request.reportBackDuration().isZero()) {
+            return ReportRequestResult.immediate(persistedRequest);
         }
 
-        VenReport report = reportRepository
-                .findByReportSpecId(reportSpecifierId)
-                .orElse(null);
-
-        if (report == null) {
-            log.warn(
-                    "Unsupported reportSpecifierId requested. reportSpecifierId={}, reportRequestId={}",
-                    reportSpecifierId,
-                    reportRequestId
-            );
-            return ReportRequestResult.unsupported();
-        }
-
-        Set<String> requestedRids = requestedRids(request);
-        Set<String> supportedRids = reportService.supportedRidsFor(reportSpecifierId);
-
-        if (requestedRids.isEmpty()) {
-            log.warn(
-                    "Report request has no requested rIDs. reportSpecifierId={}, reportRequestId={}",
-                    reportSpecifierId,
-                    reportRequestId
-            );
-            return ReportRequestResult.unsupported();
-        }
-
-        if (!supportedRids.containsAll(requestedRids)) {
-            log.warn(
-                    "Unsupported rID requested. reportSpecifierId={}, reportRequestId={}, requestedRids={}, supportedRids={}",
-                    reportSpecifierId,
-                    reportRequestId,
-                    requestedRids,
-                    supportedRids
-            );
-            return ReportRequestResult.unsupported();
-        }
-
-        activateReport(report, request, requestedRids);
-
-        Duration reportBackDuration = parseDuration(
-                request.getReportSpecifier().getReportBackDuration() != null
-                        ? request.getReportSpecifier().getReportBackDuration().getDuration()
-                        : null,
-                Duration.ZERO
-        );
-
-        if (reportBackDuration.isZero()) {
-            return ReportRequestResult.immediate(report);
-        }
-
-        scheduleRecurringReport(report, reportBackDuration);
         return ReportRequestResult.accepted();
-    }
-
-    private void sendMetadataReportResponse(
-            String reportRequestId,
-            OpenAdrSessionSnapshot session
-    ) {
-        log.info("Sending METADATA oadrRegisterReport. reportRequestId={}", reportRequestId);
-
-        OadrRegisterReportType metadataResponse =
-                reportService.buildMetadataRegisterReport(reportRequestId, session);
-
-        transportService.send(OpenAdrOperations.REGISTER_REPORT, metadataResponse, session);
     }
 
     private void sendCreatedReport(
             String requestId,
             List<String> pendingRequestIds,
-            int responseCode,
             OpenAdrSessionSnapshot session
     ) {
         var builder = Oadr20bEiReportBuilders
                 .newOadr20bCreatedReportBuilder(
                         requestId,
-                        responseCode,
+                        OpenADRResponseCode.OK,
                         session.venId()
                 );
 
@@ -346,243 +210,20 @@ public class ReportRequestHandler {
                 "Sent oadrCreatedReport. requestId={}, pendingRequests={}, responseCode={}",
                 requestId,
                 pendingRequestIds.size(),
-                responseCode
+                OpenADRResponseCode.OK
         );
-    }
-
-    private void activateReport(VenReport report, OadrReportRequestType request, Set<String> requestedRids) {
-        report.setRequestedRids(String.join(",", requestedRids));
-
-        Duration granularity = parseDuration(
-                request.getReportSpecifier().getGranularity() != null
-                        ? request.getReportSpecifier().getGranularity().getDuration()
-                        : null,
-                Duration.ofSeconds(properties.getReport().getTelemetryIntervalSeconds())
-        );
-
-        report.setReportRequestId(request.getReportRequestID());
-        report.setGranularitySeconds((int) granularity.toSeconds());
-        report.setStatus(VenReport.ReportStatus.ACTIVE);
-        report.setUpdatedAt(nowUtc());
-
-        reportRepository.save(report);
-
-        log.info(
-                "Activated report. reportSpecifierId={}, reportRequestId={}, granularity={}",
-                report.getReportSpecId(),
-                report.getReportRequestId(),
-                granularity
-        );
-    }
-
-    private void scheduleRecurringReport(VenReport report, Duration reportBackDuration) {
-        cancelTask(report.getReportRequestId());
-
-        ScheduledFuture<?> task = openAdrTaskScheduler.scheduleWithFixedDelay(
-                () -> safeSendUpdateReport(report.getReportRequestId()),
-                Instant.now().plus(reportBackDuration),
-                reportBackDuration
-        );
-
-        activeReportTasks.put(report.getReportRequestId(), task);
-
-        log.info(
-                "Scheduled recurring report. reportSpecifierId={}, reportRequestId={}, reportBackDuration={}",
-                report.getReportSpecId(),
-                report.getReportRequestId(),
-                reportBackDuration
-        );
-    }
-
-    private void safeSendUpdateReport(String reportRequestId) {
-        try {
-            reportRepository.findByReportRequestId(reportRequestId)
-                    .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
-                    .ifPresent(this::sendUpdateReport);
-        } catch (Exception e) {
-            log.error("Failed to send scheduled oadrUpdateReport. reportRequestId={}", reportRequestId, e);
-        }
-    }
-
-    private void sendUpdateReport(VenReport report) {
-        sendUpdateReport(
-                report,
-                lifecycleCoordinator.requireRegisteredSession()
-        );
-    }
-
-    private void sendUpdateReport(
-            VenReport report,
-            OpenAdrSessionSnapshot session
-    ) {
-        OadrUpdateReportType updateReport = Oadr20bEiReportBuilders
-                .newOadr20bUpdateReportBuilder(
-                        RequestUtils.newRequestId(),
-                        session.venId()
-                )
-                .addReport(buildReportPayload(report))
-                .build();
-
-        Object response = transportService.send(
-                OpenAdrOperations.UPDATE_REPORT,
-                updateReport,
-                session
-        );
-
-        if (response instanceof OadrUpdatedReportType updatedReport) {
-            log.info(
-                    "oadrUpdateReport acknowledged. reportRequestId={}, responseCode={}",
-                    report.getReportRequestId(),
-                    updatedReport.getEiResponse().getResponseCode()
-            );
-
-            if (updatedReport.getOadrCancelReport() != null) {
-                handleCancelReport(updatedReport.getOadrCancelReport(), session);
-            }
-
-            return;
-        }
-
-        log.warn(
-                "Unexpected response to oadrUpdateReport. reportRequestId={}, responseType={}",
-                report.getReportRequestId(),
-                response == null ? "null" : response.getClass().getName()
-        );
-    }
-
-    private OadrReportType buildReportPayload(VenReport report) {
-        int intervalSeconds = report.getGranularitySeconds() != null
-                ? report.getGranularitySeconds()
-                : properties.getReport().getTelemetryIntervalSeconds();
-
-        Set<String> requestedRids = parseRequestedRids(report.getRequestedRids());
-
-        if (requestedRids.isEmpty()) {
-            requestedRids = reportService.supportedRidsFor(report.getReportSpecId());
-        }
-
-        if (ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS.equals(report.getReportSpecId())) {
-            return reportService.buildTelemetryStatusUpdateReport(
-                    report.getReportSpecId(),
-                    report.getReportRequestId(),
-                    intervalSeconds,
-                    requestedRids
-            );
-        }
-
-        return reportService.buildTelemetryUsageUpdateReport(
-                report.getReportSpecId(),
-                report.getReportRequestId(),
-                intervalSeconds,
-                requestedRids
-        );
-    }
-
-    private boolean cancelReportRequest(String reportRequestId) {
-        cancelTask(reportRequestId);
-
-        return reportRepository.findByReportRequestId(reportRequestId)
-                .map(report -> {
-                    report.setStatus(VenReport.ReportStatus.CANCELLED);
-                    report.setUpdatedAt(nowUtc());
-                    reportRepository.save(report);
-
-                    log.info(
-                            "Cancelled report. reportSpecifierId={}, reportRequestId={}",
-                            report.getReportSpecId(),
-                            reportRequestId
-                    );
-
-                    return true;
-                })
-                .orElseGet(() -> {
-                    log.warn("Could not cancel unknown reportRequestId={}", reportRequestId);
-                    return false;
-                });
-    }
-
-    private void cancelAllReports() {
-        activeReportTasks.keySet().forEach(this::cancelTask);
-
-        reportRepository.findAll().stream()
-                .filter(report -> report.getStatus() == VenReport.ReportStatus.ACTIVE)
-                .forEach(report -> {
-                    report.setStatus(VenReport.ReportStatus.CANCELLED);
-                    report.setUpdatedAt(nowUtc());
-                    reportRepository.save(report);
-                });
-
-        log.info("Cancelled all active reports");
-    }
-
-    private void cancelTask(String reportRequestId) {
-        ScheduledFuture<?> task = activeReportTasks.remove(reportRequestId);
-
-        if (task != null) {
-            task.cancel(false);
-        }
-    }
-
-    private Duration parseDuration(String rawValue, Duration fallback) {
-        try {
-            return OpenAdrTimeUtils.parseOpenAdrDuration(rawValue)
-                    .orElse(fallback);
-        } catch (RuntimeException e) {
-            log.warn("Invalid OpenADR duration={}. Using fallback={}", rawValue, fallback);
-            return fallback;
-        }
-    }
-
-    private Instant nowUtc() {
-        return Instant.now();
     }
 
     private record ReportRequestResult(
-            boolean supported, boolean pending, VenReport immediateReport
+            boolean pending, ReportRequest immediateReport
     ) {
         static ReportRequestResult accepted() {
-            return new ReportRequestResult(true, true, null);
+            return new ReportRequestResult(true, null);
         }
 
-        static ReportRequestResult unsupported() {
-            return new ReportRequestResult(false, false, null);
+        static ReportRequestResult immediate(ReportRequest report) {
+            return new ReportRequestResult(false, report);
         }
 
-        static ReportRequestResult immediate(VenReport report) {
-            return new ReportRequestResult(true, false, report);
-        }
-
-        static ReportRequestResult acceptedNotPending() {
-            return new ReportRequestResult(true, false, null);
-        }
-    }
-
-    private Set<String> requestedRids(OadrReportRequestType request) {
-        if (request == null
-                || request.getReportSpecifier() == null
-                || request.getReportSpecifier().getSpecifierPayload().isEmpty()) {
-            return Set.of();
-        }
-
-        Set<String> rids = new LinkedHashSet<>();
-
-        for (SpecifierPayloadType payload : request.getReportSpecifier().getSpecifierPayload()) {
-            if (payload.getRID() != null && !payload.getRID().isBlank()) {
-                rids.add(payload.getRID());
-            }
-        }
-
-        return rids;
-    }
-
-    private Set<String> parseRequestedRids(String requestedRids) {
-        if (requestedRids == null || requestedRids.isBlank()) {
-            return Set.of();
-        }
-
-        return java.util.Arrays.stream(requestedRids.split(","))
-                .map(String::trim)
-                .filter(value -> !value.isBlank())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 }

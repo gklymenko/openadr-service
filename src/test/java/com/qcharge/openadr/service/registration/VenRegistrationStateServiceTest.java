@@ -4,8 +4,9 @@ import com.qcharge.openadr.model.entity.VenRegistration;
 import com.qcharge.openadr.model.enums.VenRegistrationStatus;
 import com.qcharge.openadr.repository.DrEventRepository;
 import com.qcharge.openadr.repository.OptScheduleRepository;
+import com.qcharge.openadr.repository.ReportCapabilityRepository;
+import com.qcharge.openadr.repository.ReportRequestRepository;
 import com.qcharge.openadr.repository.VenRegistrationRepository;
-import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,8 @@ class VenRegistrationStateServiceTest {
 
     @Mock VenRegistrationRepository registrationRepository;
     @Mock DrEventRepository eventRepository;
-    @Mock VenReportRepository venReportRepository;
+    @Mock ReportRequestRepository reportRequestRepository;
+    @Mock ReportCapabilityRepository reportCapabilityRepository;
     @Mock OptScheduleRepository optScheduleRepository;
 
     private VenRegistrationStateService service;
@@ -46,7 +48,8 @@ class VenRegistrationStateServiceTest {
         service = new VenRegistrationStateService(
                 registrationRepository,
                 eventRepository,
-                venReportRepository,
+                reportRequestRepository,
+                reportCapabilityRepository,
                 optScheduleRepository
         );
     }
@@ -142,7 +145,8 @@ class VenRegistrationStateServiceTest {
         service.completeCancellation(session);
 
         assertEquals(CANCELLED, registration.getStatus());
-        verify(venReportRepository).deleteAll();
+        verify(reportRequestRepository).deleteAll();
+        verify(reportCapabilityRepository).deleteAll();
         verify(optScheduleRepository).deleteAll();
         verify(eventRepository).deleteAll();
         verify(registrationRepository, never()).save(registration);
@@ -160,7 +164,8 @@ class VenRegistrationStateServiceTest {
                 () -> service.completeCancellation(session)
         );
 
-        verify(venReportRepository, never()).deleteAll();
+        verify(reportRequestRepository, never()).deleteAll();
+        verify(reportCapabilityRepository, never()).deleteAll();
         verify(optScheduleRepository, never()).deleteAll();
         verify(eventRepository, never()).deleteAll();
     }
@@ -174,7 +179,8 @@ class VenRegistrationStateServiceTest {
         service.completeCancellation(session);
 
         assertEquals(CANCELLED, registration.getStatus());
-        verify(venReportRepository).deleteAll();
+        verify(reportRequestRepository).deleteAll();
+        verify(reportCapabilityRepository).deleteAll();
         verify(optScheduleRepository).deleteAll();
         verify(eventRepository).deleteAll();
     }

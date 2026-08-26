@@ -23,7 +23,6 @@ import java.util.stream.Collectors;
 
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.hasText;
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.invalidId;
-import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.isSuccess;
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.require;
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.requireEiResponse;
 import static com.qcharge.openadr.service.validation.OpenAdrValidationSupport.requireText;
@@ -63,10 +62,6 @@ public class ReportValidator implements OpenAdrExchangeValidator {
         }
 
         validateResponseVenId(context, requestId);
-
-        if (!isSuccess(eiResponse)) {
-            return;
-        }
 
         if (context.request() instanceof OadrRegisterReportType request
                 && context.response() instanceof OadrRegisteredReportType response) {

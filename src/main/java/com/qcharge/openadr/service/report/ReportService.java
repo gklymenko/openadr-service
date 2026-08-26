@@ -1,8 +1,6 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
-import com.qcharge.openadr.model.entity.VenReport;
-import com.qcharge.openadr.model.oadr20b.Oadr20bFactory;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.eireport.PowerRealUnitType;
 import com.qcharge.openadr.model.oadr20b.ei.ReadingTypeEnumeratedType;
@@ -13,7 +11,6 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportDescriptionType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.siscale.SiScaleCodeType;
-import com.qcharge.openadr.repository.VenReportRepository;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -21,18 +18,19 @@ import com.qcharge.openadr.utility.RequestUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Instant;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReportService {
 
+    public static final String REPORT_SPECIFIER_ID_METADATA = "METADATA";
     public static final String REPORT_SPECIFIER_ID_TELEMETRY_USAGE = "qcharge_telemetry_usage";
     public static final String REPORT_SPECIFIER_ID_TELEMETRY_STATUS = "qcharge_telemetry_status";
 
@@ -40,13 +38,11 @@ public class ReportService {
     public static final String RID_ENERGY = "qcharge_energy";
     public static final String RID_RESOURCE_STATUS = "qcharge_resource_status";
 
-    private static final String RESPONSE_OK = "200";
-
     private final OpenAdrProperties properties;
-    private final VenReportRepository reportRepository;
+    private final ReportCapabilityRegistry capabilityRegistry;
     private final VtnTransportService transportService;
+    private final Clock clock;
 
-    @Transactional
     public OadrRegisteredReportType registerReportingCapabilities(
             OpenAdrSessionSnapshot session
     ) {
@@ -54,9 +50,6 @@ public class ReportService {
         String requestId = RequestUtils.newRequestId();
 
         log.info("Registering reporting capabilities. venId={}", venId);
-
-        reportRepository.deleteAll();
-        log.info("Remove all reports, venId={}", venId);
 
         OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportBuilder(requestId, venId)
@@ -68,23 +61,12 @@ public class ReportService {
         // for metadata-only oadrRegisterReport (only present per-report, not at root)
         registerReport.setReportRequestID(null);
 
-        saveCapability(REPORT_SPECIFIER_ID_TELEMETRY_USAGE, ReportNameEnumeratedType.TELEMETRY_USAGE.value());
-        saveCapability(REPORT_SPECIFIER_ID_TELEMETRY_STATUS, ReportNameEnumeratedType.TELEMETRY_STATUS.value());
-
-        Object response = transportService.send(
+        OadrRegisteredReportType registeredReport = transportService.send(
                 OpenAdrOperations.REGISTER_REPORT,
                 registerReport,
                 session
         );
-
-        if (!(response instanceof OadrRegisteredReportType registeredReport)) {
-            throw new IllegalStateException(
-                    "Unexpected response to oadrRegisterReport: "
-                            + (response == null ? "null" : response.getClass().getName())
-            );
-        }
-
-        validateRegisteredReportResponse(registeredReport);
+        capabilityRegistry.replaceAll(capabilityDefinitions());
 
         log.info("Reporting capabilities registered successfully");
 
@@ -112,116 +94,6 @@ public class ReportService {
         return registerReport;
     }
 
-    public OadrReportType buildTelemetryUsageUpdateReport(
-            String reportSpecifierId, String reportRequestId, int intervalSeconds, Set<String> requestedRids
-    ) {
-        long now = System.currentTimeMillis();
-        String duration = toXmlDuration(intervalSeconds);
-
-        var builder = Oadr20bEiReportBuilders
-                .newOadr20bUpdateReportOadrReportBuilder(
-                        UUID.randomUUID().toString(),
-                        reportSpecifierId,
-                        reportRequestId,
-                        ReportNameEnumeratedType.TELEMETRY_USAGE,
-                        now,
-                        now,
-                        duration
-                );
-
-        if (requestedRids.contains(RID_POWER)) {
-            builder.addInterval(Oadr20bFactory.createReportIntervalType(
-                    "power-" + UUID.randomUUID(),
-                    now,
-                    duration,
-                    RID_POWER,
-                    null,
-                    null,
-                    currentPowerKw()
-            ));
-        }
-
-        if (requestedRids.contains(RID_ENERGY)) {
-            builder.addInterval(Oadr20bFactory.createReportIntervalType(
-                    "energy-" + UUID.randomUUID(),
-                    now,
-                    duration,
-                    RID_ENERGY,
-                    null,
-                    null,
-                    currentEnergyKwh()
-            ));
-        }
-
-        return builder.build();
-    }
-
-    public OadrReportType buildTelemetryStatusUpdateReport(
-            String reportSpecifierId, String reportRequestId, int intervalSeconds, Set<String> requestedRids
-    ) {
-        long now = System.currentTimeMillis();
-        String duration = toXmlDuration(intervalSeconds);
-
-        var builder = Oadr20bEiReportBuilders
-                .newOadr20bUpdateReportOadrReportBuilder(
-                        UUID.randomUUID().toString(),
-                        reportSpecifierId,
-                        reportRequestId,
-                        ReportNameEnumeratedType.TELEMETRY_STATUS,
-                        now,
-                        now,
-                        duration
-                );
-
-        if (!requestedRids.contains(RID_RESOURCE_STATUS)) {
-            return builder.build();
-        }
-
-        var capacity = Oadr20bFactory.createOadrLoadControlStateTypeType(
-                1.0f,
-                1.0f,
-                0.0f,
-                1.0f
-        );
-
-        var loadControlState = Oadr20bFactory.createOadrLoadControlStateType(
-                capacity,
-                null,
-                null,
-                null
-        );
-
-        var resourceStatus = Oadr20bFactory.createOadrPayloadResourceStatusType(
-                loadControlState,
-                false,
-                true
-        );
-
-        builder.addInterval(Oadr20bFactory.createReportIntervalType(
-                "status-" + UUID.randomUUID(),
-                now,
-                duration,
-                RID_RESOURCE_STATUS,
-                null,
-                null,
-                resourceStatus
-        ));
-
-        return builder.build();
-    }
-
-    public Set<String> supportedRidsFor(String reportSpecifierId) {
-        if (REPORT_SPECIFIER_ID_TELEMETRY_USAGE.equals(reportSpecifierId)) {
-            return Set.of(RID_POWER, RID_ENERGY);
-        }
-
-        if (REPORT_SPECIFIER_ID_TELEMETRY_STATUS.equals(reportSpecifierId)) {
-            return Set.of(RID_RESOURCE_STATUS);
-        }
-
-        return Set.of();
-    }
-
     private OadrReportType buildTelemetryUsageMetadataReport() {
         OadrReportDescriptionType powerDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
@@ -236,7 +108,7 @@ public class ReportService {
                         BigDecimal.valueOf(230.0),
                         true
                 )
-                .withOadrSamplingRate("PT10S", "PT60S", false)
+                .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
                 .build();
 
         OadrReportDescriptionType energyDescriptor = Oadr20bEiReportBuilders
@@ -246,16 +118,16 @@ public class ReportService {
                         ReadingTypeEnumeratedType.DIRECT_READ
                 )
                 .withEnergyRealBase(SiScaleCodeType.KILO)
-                .withOadrSamplingRate("PT60S", "PT60S", false)
+                .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
                 .build();
 
         return Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportOadrReportBuilder(
                         REPORT_SPECIFIER_ID_TELEMETRY_USAGE,
                         ReportNameEnumeratedType.METADATA_TELEMETRY_USAGE,
-                        System.currentTimeMillis()
+                        clock.instant().toEpochMilli()
                 )
-                .withDuration(toXmlDuration(properties.getReport().getTelemetryIntervalSeconds()))
+                .withDuration(availableDuration().toString())
                 .addReportDescription(powerDescriptor)
                 .addReportDescription(energyDescriptor)
                 .build();
@@ -268,63 +140,54 @@ public class ReportService {
                         ReportEnumeratedType.X_RESOURCE_STATUS,
                         ReadingTypeEnumeratedType.X_NOT_APPLICABLE
                 )
-                .withOadrSamplingRate("PT10S", "PT60S", false)
+                .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
                 .build();
 
         return Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportOadrReportBuilder(
                         REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
                         ReportNameEnumeratedType.METADATA_TELEMETRY_STATUS,
-                        System.currentTimeMillis()
+                        clock.instant().toEpochMilli()
                 )
-                .withDuration(toXmlDuration(properties.getReport().getTelemetryIntervalSeconds()))
+                .withDuration(availableDuration().toString())
                 .addReportDescription(statusDescriptor)
                 .build();
     }
 
-    private void validateRegisteredReportResponse(OadrRegisteredReportType response) {
-        String responseCode = response.getEiResponse().getResponseCode();
-
-        if (!RESPONSE_OK.equals(responseCode)) {
-            throw new IllegalStateException(
-                    "oadrRegisterReport failed. code=%s, description=%s"
-                            .formatted(responseCode, response.getEiResponse().getResponseDescription())
-            );
-        }
+    private List<ReportCapabilityRegistry.Definition> capabilityDefinitions() {
+        return List.of(
+                new ReportCapabilityRegistry.Definition(
+                        REPORT_SPECIFIER_ID_TELEMETRY_USAGE,
+                        ReportNameEnumeratedType.TELEMETRY_USAGE.value(),
+                        Set.of(RID_POWER, RID_ENERGY),
+                        minSamplingPeriod(),
+                        maxSamplingPeriod(),
+                        availableDuration()
+                ),
+                new ReportCapabilityRegistry.Definition(
+                        REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                        ReportNameEnumeratedType.TELEMETRY_STATUS.value(),
+                        Set.of(RID_RESOURCE_STATUS),
+                        minSamplingPeriod(),
+                        maxSamplingPeriod(),
+                        availableDuration()
+                )
+        );
     }
 
-    private void saveCapability(String reportSpecifierId, String reportName) {
-        VenReport report = reportRepository.findByReportSpecId(reportSpecifierId)
-                .orElseGet(VenReport::new);
-
-        report.setReportSpecId(reportSpecifierId);
-        report.setReportName(reportName);
-        report.setStatus(VenReport.ReportStatus.REGISTERED);
-        report.setGranularitySeconds(properties.getReport().getTelemetryIntervalSeconds());
-
-        if (report.getCreatedAt() == null) {
-            report.setCreatedAt(nowUtc());
-        }
-        report.setUpdatedAt(nowUtc());
-
-        reportRepository.save(report);
+    private Duration minSamplingPeriod() {
+        return Duration.ofSeconds(properties.getReport().getTelemetryIntervalSeconds());
     }
 
-    private String toXmlDuration(int seconds) {
-        return "PT" + Math.max(1, seconds) + "S";
+    private Duration maxSamplingPeriod() {
+        return Duration.ofSeconds(Math.max(
+                60,
+                properties.getReport().getTelemetryIntervalSeconds()
+        ));
     }
 
-    private float currentPowerKw() {
-        // TODO: replace with real OCPP telemetry.
-        return 0.0f;
+    private Duration availableDuration() {
+        return Duration.ofSeconds(properties.getReport().getTelemetryRetentionSeconds());
     }
 
-    private float currentEnergyKwh() {
-        // TODO: replace with real OCPP telemetry.
-        return 0.0f;
-    }
-
-    private Instant nowUtc() {
-        return Instant.now();
-    }
 }

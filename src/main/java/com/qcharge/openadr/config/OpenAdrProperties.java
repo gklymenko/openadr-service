@@ -158,6 +158,12 @@ public class OpenAdrProperties {
         private String resourceId;
 
         @Min(1)
-        private int telemetryIntervalSeconds = 60;
+        private int telemetryIntervalSeconds = 10;
+
+        @Min(60)
+        private int telemetryRetentionSeconds = 60 * 60;
+
+        @Min(100)
+        private long schedulerDelayMillis = 1000;
     }
 }
