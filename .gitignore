@@ -36,9 +36,10 @@ logs/
 /mvnw.cmd
 /mvnw
 
-# OpenADR certificates - never commit real certs
-src/main/resources/eonti_test_certs/test/keystore.p12
-src/main/resources/eonti_test_certs/prod/
+# OpenADR certificates - never commit newly generated certificate material.
+# Existing local test PKCS#12 files are excluded from packaged JARs in pom.xml.
+src/main/resources/eonti_test_certs/*.p12
+src/main/resources/eonti_test_certs/*.pfx
+src/main/resources/eonti_test_certs/*.txt
 *.pem
 *.key
-EOF

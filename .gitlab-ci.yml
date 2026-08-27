@@ -1,0 +1,153 @@
+stages:
+  - build
+  - image
+  - deploy
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  CONTAINER_NAME: openadr-service
+  CONTAINER_PORT: "8081"
+  HOST_PORT: "8081"
+
+cache:
+  key: maven-$CI_COMMIT_REF_SLUG
+  paths:
+    - .m2/repository
+
+build jar:
+  image: maven:3.9.9-eclipse-temurin-21
+  stage: build
+  script:
+    - mvn --batch-mode --no-transfer-progress clean verify
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - target/openadr-service-*.jar
+
+build image:
+  image: docker:27.5.1-cli
+  stage: image
+  services:
+    - name: docker:27.5.1-dind
+  needs:
+    - job: build jar
+      artifacts: true
+  before_script:
+    - printf '%s' "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
+  script:
+    - docker build --pull --file docker/Dockerfile --tag "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+.deploy:
+  image: alpine:3.21
+  stage: deploy
+  needs:
+    - job: build image
+  before_script:
+    - apk add --no-cache openssh-client openssl
+    - test -f "$DEPLOY_SSH_PRIVATE_KEY"
+    - test -f "$DEPLOY_SSH_KNOWN_HOSTS"
+    - install -d -m 0700 "$HOME/.ssh"
+    - install -m 0600 "$DEPLOY_SSH_PRIVATE_KEY" "$HOME/.ssh/id_deploy"
+    - install -m 0644 "$DEPLOY_SSH_KNOWN_HOSTS" "$HOME/.ssh/known_hosts"
+  script:
+    - |
+      set -eu
+
+      DEPLOY_PORT="${DEPLOY_PORT:-22}"
+      : "${DEPLOY_HOST:?DEPLOY_HOST is required}"
+      : "${DEPLOY_USER:?DEPLOY_USER is required}"
+      : "${DB_ADDRESS:?DB_ADDRESS is required}"
+      : "${DB_USERNAME:?DB_USERNAME is required}"
+      : "${DB_PASSWORD:?DB_PASSWORD is required}"
+      : "${CHARGE_KEY:?CHARGE_KEY is required}"
+      : "${DATA_SERVICE_INNER_DOMAIN:?DATA_SERVICE_INNER_DOMAIN is required}"
+      : "${OPENADR_VTN_URL:?OPENADR_VTN_URL is required}"
+      : "${OPENADR_VEN_ID:?OPENADR_VEN_ID is required}"
+      : "${OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD:?OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD is required}"
+      : "${OPENADR_TRUSTSTORE_PASSWORD:?OPENADR_TRUSTSTORE_PASSWORD is required}"
+
+      test -f "$OPENADR_VEN_PRIMARY_IDENTITY_P12_B64"
+      test -f "$OPENADR_TRUSTSTORE_P12_B64"
+
+      DEPLOY_FILES="$(mktemp -d)"
+      trap 'rm -f "$DEPLOY_FILES/ven-identity.p12" "$DEPLOY_FILES/truststore.p12" "$DEPLOY_FILES/runtime.env"; rmdir "$DEPLOY_FILES"' EXIT
+
+      base64 -d "$OPENADR_VEN_PRIMARY_IDENTITY_P12_B64" > "$DEPLOY_FILES/ven-identity.p12"
+      base64 -d "$OPENADR_TRUSTSTORE_P12_B64" > "$DEPLOY_FILES/truststore.p12"
+      chmod 0600 "$DEPLOY_FILES/ven-identity.p12" "$DEPLOY_FILES/truststore.p12"
+
+      openssl pkcs12 -in "$DEPLOY_FILES/ven-identity.p12" -noout -passin env:OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD
+      openssl pkcs12 -in "$DEPLOY_FILES/truststore.p12" -noout -passin env:OPENADR_TRUSTSTORE_PASSWORD
+
+      {
+        printf 'SPRING_PROFILES_ACTIVE=%s\n' "$DEPLOY_PROFILE"
+        printf 'DB_ADDRESS=%s\n' "$DB_ADDRESS"
+        printf 'DB_USERNAME=%s\n' "$DB_USERNAME"
+        printf 'DB_PASSWORD=%s\n' "$DB_PASSWORD"
+        printf 'CHARGE_KEY=%s\n' "$CHARGE_KEY"
+        printf 'DATA_SERVICE_INNER_DOMAIN=%s\n' "$DATA_SERVICE_INNER_DOMAIN"
+        printf 'AWS_S3_STATIC_URL=%s\n' "${AWS_S3_STATIC_URL:-}"
+        printf 'OPENADR_VTN_URL=%s\n' "$OPENADR_VTN_URL"
+        printf 'OPENADR_VTN_ID=%s\n' "${OPENADR_VTN_ID:-}"
+        printf 'OPENADR_VEN_ID=%s\n' "$OPENADR_VEN_ID"
+        printf 'OPENADR_VEN_NAME=%s\n' "${OPENADR_VEN_NAME:-QCharge EV Management VEN}"
+        printf 'OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD=%s\n' "$OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD"
+        printf 'OPENADR_TRUSTSTORE_PASSWORD=%s\n' "$OPENADR_TRUSTSTORE_PASSWORD"
+      } > "$DEPLOY_FILES/runtime.env"
+      chmod 0600 "$DEPLOY_FILES/runtime.env"
+
+      SSH_TARGET="$DEPLOY_USER@$DEPLOY_HOST"
+      SSH="ssh -i $HOME/.ssh/id_deploy -p $DEPLOY_PORT"
+      SCP="scp -i $HOME/.ssh/id_deploy -P $DEPLOY_PORT"
+      REMOTE_STAGE="/tmp/openadr-service-$CI_PIPELINE_ID"
+      IMAGE="$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+      $SSH "$SSH_TARGET" "install -d -m 0700 '$REMOTE_STAGE'"
+      $SCP "$DEPLOY_FILES/ven-identity.p12" "$DEPLOY_FILES/truststore.p12" "$DEPLOY_FILES/runtime.env" "$SSH_TARGET:$REMOTE_STAGE/"
+
+      printf '%s' "$CI_REGISTRY_PASSWORD" \
+        | $SSH "$SSH_TARGET" "sudo docker login '$CI_REGISTRY' --username '$CI_REGISTRY_USER' --password-stdin"
+
+      $SSH "$SSH_TARGET" "
+        set -eu
+        sudo install -d -m 0750 -o 10001 -g 10001 /opt/qcharge/openadr-service/certs
+        sudo install -d -m 0750 -o 10001 -g 10001 /var/log/openadr-service
+        sudo install -m 0400 -o 10001 -g 10001 '$REMOTE_STAGE/ven-identity.p12' /opt/qcharge/openadr-service/certs/ven-identity.p12
+        sudo install -m 0400 -o 10001 -g 10001 '$REMOTE_STAGE/truststore.p12' /opt/qcharge/openadr-service/certs/truststore.p12
+        sudo install -m 0600 -o root -g root '$REMOTE_STAGE/runtime.env' /opt/qcharge/openadr-service/runtime.env
+        sudo docker pull '$IMAGE'
+        sudo docker rm --force '$CONTAINER_NAME' >/dev/null 2>&1 || true
+        sudo docker run --detach \
+          --name '$CONTAINER_NAME' \
+          --restart unless-stopped \
+          --env-file /opt/qcharge/openadr-service/runtime.env \
+          --publish '$HOST_PORT:$CONTAINER_PORT' \
+          --volume /opt/qcharge/openadr-service/certs:/run/secrets/openadr:ro \
+          --volume /var/log/openadr-service:/srv/logs \
+          '$IMAGE'
+        rm -f '$REMOTE_STAGE/ven-identity.p12' '$REMOTE_STAGE/truststore.p12' '$REMOTE_STAGE/runtime.env'
+        rmdir '$REMOTE_STAGE'
+      "
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+
+deploy certification:
+  extends: .deploy
+  environment:
+    name: certification
+  variables:
+    DEPLOY_PROFILE: certification
+
+deploy production:
+  extends: .deploy
+  environment:
+    name: prod
+  variables:
+    DEPLOY_PROFILE: prod

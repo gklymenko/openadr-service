@@ -1,0 +1,10 @@
+.git
+.gitignore
+.gitlab-ci.yml
+.idea
+docs
+logs
+project_sources
+src
+target/*
+!target/openadr-service-*.jar

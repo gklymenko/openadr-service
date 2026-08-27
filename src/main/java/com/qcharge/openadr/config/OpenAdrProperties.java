@@ -103,9 +103,16 @@ public class OpenAdrProperties {
     @Getter
     @Setter
     public static class Security {
+        @NotBlank
         private String keystorePath;
+
+        @NotBlank
         private String keystorePassword;
+
+        @NotBlank
         private String truststorePath;
+
+        @NotBlank
         private String truststorePassword;
 
         /**

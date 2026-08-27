@@ -1,51 +1,115 @@
 # openadr-service
 
-OpenADR 2.0b uses XML-based messaging with a PUSH/PULL model and requires Mutual TLS for security.
+OpenADR 2.0b VEN implementation using HTTP Pull, TLS 1.2, and mutual TLS.
 
+## Runtime environments
 
-cd src/main/resources/certs
+The same JAR and Docker image are used for every deployed environment. Spring profiles provide only environment-specific configuration.
 
-# Add Root CA
-keytool -import -alias openadr-root-ca \
--file root-ca.cer \
--keystore truststore.p12 \
--storetype PKCS12 \
--storepass openadr-trust \
--noprompt
+| Environment | Spring profile | Certificates | Hostname verification |
+|---|---|---|---|
+| Developer machine with local Test Harness | `local` | Files under `src/main/resources/eonti_test_certs` | Disabled for the Test Harness certificate |
+| EC2 used for OpenADR certification | `certification` | Eonti test PKCS#12 files from GitLab Variables | Disabled for the Test Harness certificate |
+| Real production VTN | `prod` | Production PKCS#12 files from GitLab Variables | Enabled |
 
-# Add VTN CA
-keytool -import -alias openadr-vtn-ca \
--file vtn-ca.cer \
--keystore truststore.p12 \
--storetype PKCS12 \
--storepass openadr-trust \
--noprompt
+The hostname-verification exception must never be copied to the production profile.
 
-# Add VEN CA
-keytool -import -alias openadr-ven-ca \
--file ven-ca.cer \
--keystore truststore.p12 \
--storetype PKCS12 \
--storepass openadr-trust \
--noprompt
+## Local Test Harness
 
+Expected files:
 
-# dev KeyStore (self-signed, поки немає реального VEN cert з https://www.eonti.com/openadrcerts#anchors-lf75qjxw1)
-keytool -genkeypair \
--alias ven-identity \
--keyalg RSA \
--keysize 2048 \
--sigalg SHA256withRSA \
--validity 365 \
--keystore keystore.p12 \
--storetype PKCS12 \
--storepass openadr-ven \
--dname "CN=ven-dev-001, OU=EV-Management, O=QCharge, L=Kyiv, C=UA"
+```text
+src/main/resources/eonti_test_certs/
+├── ven-identity-certification.p12
+└── truststore-certification.p12
+```
 
-On eonti request DNS was fullfilled like "ds-prod-backend.qchargeapp.com"
+Set the local passwords without committing them:
 
+```bash
+export OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD='<identity-password>'
+export OPENADR_TRUSTSTORE_PASSWORD='<truststore-password>'
+```
 
-Registration is implemented on bootstrap. Rules: 401, 405, 402, 406.
+Configure the Test Harness with `HTTP_SHA256_Security`, start it as the VTN on port `8080`, and run:
 
-![bootsrap.png](bootsrap.png)
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=local
+```
 
+The local VEN connects to `https://127.0.0.1:8080`. The Test Harness configuration file still uses an `http://` base URL because the tool changes the scheme automatically when security is enabled.
+
+## Certification and production deployment
+
+GitLab stores each PKCS#12 as single-line Base64. Create these variables twice, using the same names and different environment scopes:
+
+| Variable | Type | Scopes |
+|---|---|---|
+| `OPENADR_VEN_PRIMARY_IDENTITY_P12_B64` | File, masked, hidden, protected | `certification`, `prod` |
+| `OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD` | Variable, masked, hidden, protected | `certification`, `prod` |
+| `OPENADR_TRUSTSTORE_P12_B64` | File, masked, hidden, protected | `certification`, `prod` |
+| `OPENADR_TRUSTSTORE_PASSWORD` | Variable, masked, hidden, protected | `certification`, `prod` |
+
+The `certification` scope contains Eonti demo/test credentials. The `prod` scope must contain a production VEN identity and production truststore.
+
+Additional environment-scoped GitLab Variables required by deployment jobs:
+
+```text
+DEPLOY_HOST
+DEPLOY_PORT                 # optional; defaults to 22
+DEPLOY_USER
+DEPLOY_SSH_PRIVATE_KEY      # File variable
+DEPLOY_SSH_KNOWN_HOSTS      # File variable
+
+DB_ADDRESS
+DB_USERNAME
+DB_PASSWORD
+CHARGE_KEY
+DATA_SERVICE_INNER_DOMAIN
+AWS_S3_STATIC_URL           # optional
+
+OPENADR_VTN_URL
+OPENADR_VTN_ID              # optional until known
+OPENADR_VEN_ID
+OPENADR_VEN_NAME            # optional
+```
+
+Generate the `DEPLOY_SSH_KNOWN_HOSTS` value from a trusted workstation and verify the fingerprint before saving it in GitLab:
+
+```bash
+ssh-keyscan -H <ec2-host>
+```
+
+The pipeline decodes certificate variables, copies them to the EC2 host, and mounts them read-only into the container:
+
+```text
+/run/secrets/openadr/ven-identity.p12
+/run/secrets/openadr/truststore.p12
+```
+
+Deployments are manual jobs on the default branch:
+
+- `deploy certification`
+- `deploy production`
+
+Docker images are stored in the GitLab Container Registry under the immutable commit SHA tag.
+
+## Certificate handling
+
+Local Eonti test certificate files are excluded from the deployable JAR by Maven. No certificate file is copied into the Docker image.
+
+For each future logical VEN, use a separate identity PKCS#12 and certificate fingerprint. The truststore may be shared when the VENs trust the same VTN PKI.
+
+The application logs the OpenADR fingerprint and certificate expiration metadata during startup without logging private keys or passwords.
+
+## Build
+
+```bash
+mvn clean verify
+```
+
+Build the image after Maven creates the JAR:
+
+```bash
+docker build -f docker/Dockerfile -t openadr-service:local .
+```
