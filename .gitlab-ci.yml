@@ -98,6 +98,7 @@ build image:
         printf 'OPENADR_VEN_ID=%s\n' "$OPENADR_VEN_ID"
         printf 'OPENADR_VEN_NAME=%s\n' "${OPENADR_VEN_NAME:-QCharge EV Management VEN}"
         printf 'OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD=%s\n' "$OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD"
+        printf 'OPENADR_VEN_PRIMARY_IDENTITY_ALIAS=%s\n' "${OPENADR_VEN_PRIMARY_IDENTITY_ALIAS:-openadr-ven}"
         printf 'OPENADR_TRUSTSTORE_PASSWORD=%s\n' "$OPENADR_TRUSTSTORE_PASSWORD"
       } > "$DEPLOY_FILES/runtime.env"
       chmod 0600 "$DEPLOY_FILES/runtime.env"

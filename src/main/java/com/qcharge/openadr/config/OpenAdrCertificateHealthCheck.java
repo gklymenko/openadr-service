@@ -2,6 +2,7 @@ package com.qcharge.openadr.config;
 
 import com.qcharge.openadr.utility.OpenAdrCertificateUtils;
 import com.qcharge.openadr.utility.OpenAdrCertificateUtils.CertificateInfo;
+import com.qcharge.openadr.utility.OpenAdrCertificateUtils.IdentityCertificateChain;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -10,6 +11,8 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
 import java.security.KeyStore;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 
 @Slf4j
@@ -19,6 +22,8 @@ public class OpenAdrCertificateHealthCheck {
 
     private final OpenAdrProperties properties;
     private final ResourceLoader resourceLoader;
+    private final OpenAdrCertificatePolicyValidator certificatePolicyValidator;
+    private final Clock clock;
 
     @EventListener(ApplicationReadyEvent.class)
     public void checkOpenAdrCertificates() {
@@ -34,9 +39,16 @@ public class OpenAdrCertificateHealthCheck {
                     properties.getSecurity().getKeystorePassword()
             );
 
-            CertificateInfo clientCertificate = OpenAdrCertificateUtils.findClientCertificate(
+            IdentityCertificateChain identity = OpenAdrCertificateUtils.findClientIdentity(
                     keyStore,
                     properties.getSecurity().getKeystoreAlias()
+            );
+            certificatePolicyValidator.validateRsaIdentity(identity);
+
+            CertificateInfo clientCertificate = OpenAdrCertificateUtils.certificateInfo(
+                    identity.alias(),
+                    identity.clientCertificate(),
+                    clock
             );
 
             log.info(
@@ -50,7 +62,16 @@ public class OpenAdrCertificateHealthCheck {
                     clientCertificate.openAdrFingerprint()
             );
 
-            validateExpiry("OpenADR VEN client certificate", clientCertificate);
+            validateValidity("OpenADR VEN client certificate", clientCertificate);
+
+            for (int index = 1; index < identity.certificates().size(); index++) {
+                CertificateInfo issuerCertificate = OpenAdrCertificateUtils.certificateInfo(
+                        identity.alias() + "#chain-" + index,
+                        identity.certificates().get(index),
+                        clock
+                );
+                validateValidity("OpenADR VEN certificate chain", issuerCertificate);
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to inspect OpenADR VEN client certificate", e);
         }
@@ -64,11 +85,15 @@ public class OpenAdrCertificateHealthCheck {
                     properties.getSecurity().getTruststorePassword()
             );
 
-            List<CertificateInfo> certificates = OpenAdrCertificateUtils.listX509Certificates(trustStore);
+            List<CertificateInfo> certificates = OpenAdrCertificateUtils.listX509Certificates(
+                    trustStore,
+                    clock
+            );
 
             if (certificates.isEmpty()) {
-                log.warn("OpenADR truststore does not contain X.509 certificates");
-                return;
+                throw new IllegalStateException(
+                        "OpenADR truststore does not contain X.509 trust anchors"
+                );
             }
 
             log.info("OpenADR truststore loaded. certificates={}", certificates.size());
@@ -83,15 +108,24 @@ public class OpenAdrCertificateHealthCheck {
                         certificate.daysUntilExpiry()
                 );
 
-                validateExpiry("OpenADR trusted certificate alias=" + certificate.alias(), certificate);
+                validateValidity("OpenADR trusted certificate alias=" + certificate.alias(), certificate);
             }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to inspect OpenADR truststore certificates", e);
         }
     }
 
-    void validateExpiry(String label, CertificateInfo certificate) {
-        if (certificate.expired()) {
+    void validateValidity(String label, CertificateInfo certificate) {
+        Instant now = clock.instant();
+
+        if (certificate.notYetValid(now)) {
+            throw new IllegalStateException(
+                    "%s is not yet valid. alias=%s, validFrom=%s"
+                            .formatted(label, certificate.alias(), certificate.validFrom())
+            );
+        }
+
+        if (certificate.expired(now)) {
             throw new IllegalStateException(
                     "%s is expired. alias=%s, expiresAt=%s"
                             .formatted(label, certificate.alias(), certificate.expiresAt())

@@ -47,6 +47,7 @@ GitLab stores each PKCS#12 as single-line Base64. Create these variables twice, 
 |---|---|---|
 | `OPENADR_VEN_PRIMARY_IDENTITY_P12_B64` | File, masked, hidden, protected | `certification`, `prod` |
 | `OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD` | Variable, masked, hidden, protected | `certification`, `prod` |
+| `OPENADR_VEN_PRIMARY_IDENTITY_ALIAS` | Variable; optional, defaults to `openadr-ven` | `certification`, `prod` |
 | `OPENADR_TRUSTSTORE_P12_B64` | File, masked, hidden, protected | `certification`, `prod` |
 | `OPENADR_TRUSTSTORE_PASSWORD` | Variable, masked, hidden, protected | `certification`, `prod` |
 
@@ -97,6 +98,15 @@ Docker images are stored in the GitLab Container Registry under the immutable co
 ## Certificate handling
 
 Local Eonti test certificate files are excluded from the deployable JAR by Maven. No certificate file is copied into the Docker image.
+
+The VEN is certified with RSA security. At startup the certificate health check requires:
+
+- `ven-identity-certification.p12`: one RSA private-key entry, the matching Eonti device certificate, and its intermediate certificate chain;
+- `truststore-certification.p12`: at least one trusted Eonti root certificate used to validate the Test Harness VTN certificate;
+- the identity and truststore passwords;
+- `OPENADR_VEN_PRIMARY_IDENTITY_ALIAS` when the private-key alias is not `openadr-ven`.
+
+The identity certificate chain must use X.509v3, RSA keys of at least 2048 bits, and SHA-2 certificate signatures. Every identity-chain and truststore certificate must be currently valid. The TLS client uses the same alias that the health check validates and logs.
 
 For each future logical VEN, use a separate identity PKCS#12 and certificate fingerprint. The truststore may be shared when the VENs trust the same VTN PKI.
 

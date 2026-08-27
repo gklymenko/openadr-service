@@ -16,7 +16,6 @@ import javax.net.ssl.TrustManagerFactory;
 import java.net.http.HttpClient;
 import java.security.KeyStore;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.Set;
 
 @Slf4j
@@ -27,9 +26,8 @@ public class HttpClientConfig {
     private final OpenAdrProperties properties;
     private final ResourceLoader resourceLoader;
 
-    private static final String[] OPENADR_TLS_CIPHER_SUITES = {
-            "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256"
-    };
+    private static final String OPENADR_RSA_TLS_CIPHER_SUITE =
+            "TLS_RSA_WITH_AES_128_CBC_SHA256";
 
     @Bean
     public RestClient restClient() throws Exception {
@@ -37,7 +35,7 @@ public class HttpClientConfig {
 
         // Rule 67: VEN MUST offer TLS_RSA_WITH_AES_128_CBC_SHA256 over TLS 1.2
         SSLParameters sslParams = new SSLParameters();
-        sslParams.setCipherSuites(supportedOpenAdrCipherSuites(sslContext));
+        sslParams.setCipherSuites(supportedOpenAdrRsaCipherSuite(sslContext));
         sslParams.setProtocols(new String[]{"TLSv1.2"});
 
         if (properties.getSecurity().isDisableHostnameVerification()) {
@@ -75,11 +73,21 @@ public class HttpClientConfig {
                 properties.getSecurity().getKeystorePath(),
                 properties.getSecurity().getKeystorePassword()
         );
+        String selectedAlias = OpenAdrCertificateUtils.resolvePrivateKeyAlias(
+                keyStore,
+                properties.getSecurity().getKeystoreAlias()
+        );
+        KeyStore selectedIdentity = OpenAdrCertificateUtils.selectClientIdentity(
+                keyStore,
+                selectedAlias,
+                properties.getSecurity().getKeystorePassword()
+        );
 
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(
                 KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keyStore,
+        kmf.init(selectedIdentity,
                 properties.getSecurity().getKeystorePassword().toCharArray());
+        log.info("OpenADR TLS client identity selected. alias={}", selectedAlias);
 
         KeyStore trustStore = loadKeyStore(
                 properties.getSecurity().getTruststorePath(),
@@ -103,20 +111,17 @@ public class HttpClientConfig {
         return keyStore;
     }
 
-    private String[] supportedOpenAdrCipherSuites(SSLContext sslContext) {
+    private String[] supportedOpenAdrRsaCipherSuite(SSLContext sslContext) {
         Set<String> supported = Set.of(sslContext.getSupportedSSLParameters().getCipherSuites());
 
-        String[] selected = Arrays.stream(OPENADR_TLS_CIPHER_SUITES)
-                .filter(supported::contains)
-                .toArray(String[]::new);
-
-        if (selected.length == 0) {
+        if (!supported.contains(OPENADR_RSA_TLS_CIPHER_SUITE)) {
             throw new IllegalStateException(
-                    "No OpenADR mandatory TLS 1.2 cipher suites are supported by current JDK/security policy"
+                    "OpenADR RSA TLS 1.2 cipher suite is not supported by current JDK/security policy: "
+                            + OPENADR_RSA_TLS_CIPHER_SUITE
             );
         }
 
-        log.info("OpenADR TLS cipher suites enabled: {}", Arrays.toString(selected));
-        return selected;
+        log.info("OpenADR RSA TLS cipher suite enabled: {}", OPENADR_RSA_TLS_CIPHER_SUITE);
+        return new String[]{OPENADR_RSA_TLS_CIPHER_SUITE};
     }
 }
