@@ -1,13 +1,8 @@
 package com.qcharge.openadr.utility;
 
-import org.springframework.core.io.ResourceLoader;
-
-import java.io.IOException;
-import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.MessageDigest;
-import java.security.PrivateKey;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.time.Clock;
@@ -23,20 +18,6 @@ public final class OpenAdrCertificateUtils {
     private static final int OPENADR_FINGERPRINT_BYTES = 10;
 
     private OpenAdrCertificateUtils() {
-    }
-
-    public static KeyStore loadPkcs12(
-            ResourceLoader resourceLoader, String path, String password
-    ) throws GeneralSecurityException, IOException {
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-
-        char[] passwordChars = password != null ? password.toCharArray() : new char[0];
-
-        try (InputStream inputStream = resourceLoader.getResource(path).getInputStream()) {
-            keyStore.load(inputStream, passwordChars);
-        }
-
-        return keyStore;
     }
 
     public static CertificateInfo findClientCertificate(
@@ -107,37 +88,13 @@ public final class OpenAdrCertificateUtils {
 
         if (keyAliases.size() > 1) {
             throw new GeneralSecurityException(
-                    "Multiple PrivateKeyEntry aliases found in keystore; configure openadr.security.keystore-alias: "
+                    "Multiple PrivateKeyEntry aliases found in keystore; configure "
+                            + "spring.ssl.bundle.jks.openadr.key.alias: "
                             + keyAliases
             );
         }
 
         return keyAliases.getFirst();
-    }
-
-    public static KeyStore selectClientIdentity(
-            KeyStore sourceKeyStore,
-            String preferredAlias,
-            String password
-    ) throws GeneralSecurityException, IOException {
-        String alias = resolvePrivateKeyAlias(sourceKeyStore, preferredAlias);
-        char[] passwordChars = password != null ? password.toCharArray() : new char[0];
-
-        if (!(sourceKeyStore.getKey(alias, passwordChars) instanceof PrivateKey privateKey)) {
-            throw new GeneralSecurityException("Alias is not a private key entry: " + alias);
-        }
-
-        Certificate[] certificateChain = sourceKeyStore.getCertificateChain(alias);
-        if (certificateChain == null || certificateChain.length == 0) {
-            throw new GeneralSecurityException(
-                    "No certificate chain found for client identity alias: " + alias
-            );
-        }
-
-        KeyStore selectedIdentity = KeyStore.getInstance("PKCS12");
-        selectedIdentity.load(null, passwordChars);
-        selectedIdentity.setKeyEntry(alias, privateKey, passwordChars, certificateChain);
-        return selectedIdentity;
     }
 
     public static List<CertificateInfo> listX509Certificates(

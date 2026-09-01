@@ -8,7 +8,11 @@ import java.math.BigInteger;
 import java.security.GeneralSecurityException;
 import java.security.PublicKey;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
+import java.security.spec.ECField;
+import java.security.spec.ECParameterSpec;
+import java.security.spec.EllipticCurve;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -26,88 +30,124 @@ class OpenAdrCertificatePolicyValidatorTest {
             new OpenAdrCertificatePolicyValidator();
 
     @Test
-    void validateRsaIdentity_acceptsX509v3Sha2Rsa2048Chain() throws Exception {
+    void validateEccIdentity_acceptsX509v3Sha2Ecc256Chain() throws Exception {
+        X509Certificate leaf = ecCertificate(DEVICE, INTERMEDIATE, 256, "SHA256withECDSA", 3);
+        X509Certificate issuer = ecCertificate(INTERMEDIATE, ROOT, 384, "SHA384withECDSA", 3);
+
+        assertDoesNotThrow(() -> validator.validateEccIdentity(identity(leaf, issuer)));
+    }
+
+    @Test
+    void validateEccIdentity_acceptsRsaIntermediateForHybridChain() throws Exception {
+        X509Certificate leaf = ecCertificate(DEVICE, INTERMEDIATE, 256, "SHA256withRSA", 3);
+        X509Certificate issuer = rsaCertificate(INTERMEDIATE, ROOT, 2048, "SHA256withRSA", 3);
+
+        assertDoesNotThrow(() -> validator.validateEccIdentity(identity(leaf, issuer)));
+    }
+
+    @Test
+    void validateEccIdentity_rejectsMissingIntermediateCertificate() throws Exception {
+        X509Certificate leaf = ecCertificate(DEVICE, INTERMEDIATE, 256, "SHA256withECDSA", 3);
+
+        assertThrows(
+                GeneralSecurityException.class,
+                () -> validator.validateEccIdentity(identity(leaf))
+        );
+    }
+
+    @Test
+    void validateEccIdentity_rejectsRsaDeviceCertificate() throws Exception {
         X509Certificate leaf = rsaCertificate(DEVICE, INTERMEDIATE, 2048, "SHA256withRSA", 3);
-        X509Certificate issuer = rsaCertificate(INTERMEDIATE, ROOT, 4096, "SHA384withRSA", 3);
-
-        assertDoesNotThrow(() -> validator.validateRsaIdentity(identity(leaf, issuer)));
-    }
-
-    @Test
-    void validateRsaIdentity_rejectsMissingIntermediateCertificate() throws Exception {
-        X509Certificate leaf = rsaCertificate(DEVICE, INTERMEDIATE, 2048, "SHA256withRSA", 3);
+        X509Certificate issuer = rsaCertificate(INTERMEDIATE, ROOT, 2048, "SHA256withRSA", 3);
 
         assertThrows(
                 GeneralSecurityException.class,
-                () -> validator.validateRsaIdentity(identity(leaf))
+                () -> validator.validateEccIdentity(identity(leaf, issuer))
         );
     }
 
     @Test
-    void validateRsaIdentity_rejectsRsaKeySmallerThan2048Bits() throws Exception {
-        X509Certificate leaf = rsaCertificate(DEVICE, INTERMEDIATE, 1024, "SHA256withRSA", 3);
-        X509Certificate issuer = rsaCertificate(INTERMEDIATE, ROOT, 4096, "SHA384withRSA", 3);
+    void validateEccIdentity_rejectsEcKeySmallerThan256Bits() throws Exception {
+        X509Certificate leaf = ecCertificate(DEVICE, INTERMEDIATE, 224, "SHA256withECDSA", 3);
+        X509Certificate issuer = ecCertificate(INTERMEDIATE, ROOT, 256, "SHA256withECDSA", 3);
 
         assertThrows(
                 GeneralSecurityException.class,
-                () -> validator.validateRsaIdentity(identity(leaf, issuer))
+                () -> validator.validateEccIdentity(identity(leaf, issuer))
         );
     }
 
     @Test
-    void validateRsaIdentity_rejectsNonRsaCertificate() throws Exception {
-        PublicKey ecKey = mock(PublicKey.class);
-        when(ecKey.getAlgorithm()).thenReturn("EC");
-        X509Certificate leaf = certificate(DEVICE, INTERMEDIATE, ecKey, "SHA256withECDSA", 3);
-        X509Certificate issuer = rsaCertificate(INTERMEDIATE, ROOT, 4096, "SHA384withRSA", 3);
+    void validateEccIdentity_rejectsRsaIntermediateSmallerThan2048Bits() throws Exception {
+        X509Certificate leaf = ecCertificate(DEVICE, INTERMEDIATE, 256, "SHA256withRSA", 3);
+        X509Certificate issuer = rsaCertificate(INTERMEDIATE, ROOT, 1024, "SHA256withRSA", 3);
 
         assertThrows(
                 GeneralSecurityException.class,
-                () -> validator.validateRsaIdentity(identity(leaf, issuer))
+                () -> validator.validateEccIdentity(identity(leaf, issuer))
         );
     }
 
     @Test
-    void validateRsaIdentity_rejectsSha1CertificateSignature() throws Exception {
-        X509Certificate leaf = rsaCertificate(DEVICE, INTERMEDIATE, 2048, "SHA1withRSA", 3);
-        X509Certificate issuer = rsaCertificate(INTERMEDIATE, ROOT, 4096, "SHA384withRSA", 3);
+    void validateEccIdentity_rejectsSha1CertificateSignature() throws Exception {
+        X509Certificate leaf = ecCertificate(DEVICE, INTERMEDIATE, 256, "SHA1withECDSA", 3);
+        X509Certificate issuer = ecCertificate(INTERMEDIATE, ROOT, 256, "SHA256withECDSA", 3);
 
         assertThrows(
                 GeneralSecurityException.class,
-                () -> validator.validateRsaIdentity(identity(leaf, issuer))
+                () -> validator.validateEccIdentity(identity(leaf, issuer))
         );
     }
 
     @Test
-    void validateRsaIdentity_rejectsCertificateBeforeX509v3() throws Exception {
-        X509Certificate leaf = rsaCertificate(DEVICE, INTERMEDIATE, 2048, "SHA256withRSA", 2);
-        X509Certificate issuer = rsaCertificate(INTERMEDIATE, ROOT, 4096, "SHA384withRSA", 3);
+    void validateEccIdentity_rejectsCertificateBeforeX509v3() throws Exception {
+        X509Certificate leaf = ecCertificate(DEVICE, INTERMEDIATE, 256, "SHA256withECDSA", 2);
+        X509Certificate issuer = ecCertificate(INTERMEDIATE, ROOT, 256, "SHA256withECDSA", 3);
 
         assertThrows(
                 GeneralSecurityException.class,
-                () -> validator.validateRsaIdentity(identity(leaf, issuer))
+                () -> validator.validateEccIdentity(identity(leaf, issuer))
         );
     }
 
     @Test
-    void validateRsaIdentity_rejectsIssuerMismatch() throws Exception {
-        X509Certificate leaf = rsaCertificate(DEVICE, INTERMEDIATE, 2048, "SHA256withRSA", 3);
-        X509Certificate wrongIssuer = rsaCertificate(
+    void validateEccIdentity_rejectsIssuerMismatch() throws Exception {
+        X509Certificate leaf = ecCertificate(DEVICE, INTERMEDIATE, 256, "SHA256withECDSA", 3);
+        X509Certificate wrongIssuer = ecCertificate(
                 new X500Principal("CN=other-intermediate"),
                 ROOT,
-                4096,
-                "SHA384withRSA",
+                256,
+                "SHA256withECDSA",
                 3
         );
 
         assertThrows(
                 GeneralSecurityException.class,
-                () -> validator.validateRsaIdentity(identity(leaf, wrongIssuer))
+                () -> validator.validateEccIdentity(identity(leaf, wrongIssuer))
         );
     }
 
     private IdentityCertificateChain identity(X509Certificate... certificates) {
         return new IdentityCertificateChain("openadr-ven", List.of(certificates));
+    }
+
+    private X509Certificate ecCertificate(
+            X500Principal subject,
+            X500Principal issuer,
+            int keySize,
+            String signatureAlgorithm,
+            int version
+    ) {
+        ECPublicKey key = mock(ECPublicKey.class);
+        ECParameterSpec parameters = mock(ECParameterSpec.class);
+        EllipticCurve curve = mock(EllipticCurve.class);
+        ECField field = mock(ECField.class);
+        when(key.getAlgorithm()).thenReturn("EC");
+        when(key.getParams()).thenReturn(parameters);
+        when(parameters.getCurve()).thenReturn(curve);
+        when(curve.getField()).thenReturn(field);
+        when(field.getFieldSize()).thenReturn(keySize);
+        return certificate(subject, issuer, key, signatureAlgorithm, version);
     }
 
     private X509Certificate rsaCertificate(

@@ -103,23 +103,6 @@ public class OpenAdrProperties {
     @Getter
     @Setter
     public static class Security {
-        @NotBlank
-        private String keystorePath;
-
-        @NotBlank
-        private String keystorePassword;
-
-        @NotBlank
-        private String truststorePath;
-
-        @NotBlank
-        private String truststorePassword;
-
-        /**
-         * Optional. If not set, the first PrivateKeyEntry alias will be used.
-         */
-        private String keystoreAlias;
-
         @Min(1)
         private int certExpiryWarnDays = 30;
 

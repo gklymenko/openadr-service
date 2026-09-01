@@ -84,13 +84,6 @@
             <artifactId>jaxb-runtime</artifactId>
         </dependency>
 
-        <!-- XML Security for RSA signature OpenADR payloads -->
-        <dependency>
-            <groupId>org.apache.santuario</groupId>
-            <artifactId>xmlsec</artifactId>
-            <version>3.0.3</version>
-        </dependency>
-
         <!-- Lombok API -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -235,5 +228,28 @@
 
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>local</id>
+            <properties>
+                <spring-boot.run.profiles>local</spring-boot.run.profiles>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>certification</id>
+            <properties>
+                <spring-boot.run.profiles>certification</spring-boot.run.profiles>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>prod</id>
+            <properties>
+                <spring-boot.run.profiles>prod</spring-boot.run.profiles>
+            </properties>
+        </profile>
+    </profiles>
 
 </project>

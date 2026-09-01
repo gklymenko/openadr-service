@@ -20,8 +20,8 @@ Expected files:
 
 ```text
 src/main/resources/eonti_test_certs/
-├── ven-identity-certification.p12
-└── truststore-certification.p12
+├── ven-identity-ecc.p12
+└── truststore-ecc.p12
 ```
 
 Set the local passwords without committing them:
@@ -99,14 +99,18 @@ Docker images are stored in the GitLab Container Registry under the immutable co
 
 Local Eonti test certificate files are excluded from the deployable JAR by Maven. No certificate file is copied into the Docker image.
 
-The VEN is certified with RSA security. At startup the certificate health check requires:
+The VEN declares only ECC security, which is permitted for a VEN by OpenADR rule 68 and the PICS (`RSA or ECC`)
 
-- `ven-identity-certification.p12`: one RSA private-key entry, the matching Eonti device certificate, and its intermediate certificate chain;
-- `truststore-certification.p12`: at least one trusted Eonti root certificate used to validate the Test Harness VTN certificate;
+Spring Boot's named `openadr` SSL bundle loads the PKCS#12 identity, truststore, key password, and key alias.
+
+At startup the OpenADR-specific certificate health check requires:
+
+- `ven-identity-ecc.p12`: one ECC private-key entry, the matching Eonti device certificate, and its intermediate certificate chain;
+- `truststore-ecc.p12`: at least one trusted Eonti root certificate used to validate the Test Harness VTN certificate;
 - the identity and truststore passwords;
 - `OPENADR_VEN_PRIMARY_IDENTITY_ALIAS` when the private-key alias is not `openadr-ven`.
 
-The identity certificate chain must use X.509v3, RSA keys of at least 2048 bits, and SHA-2 certificate signatures. Every identity-chain and truststore certificate must be currently valid. The TLS client uses the same alias that the health check validates and logs.
+The device certificate must use a 256-bit-or-larger EC key. The identity chain must use X.509v3 and SHA-2 signatures; a hybrid chain may contain RSA CA certificates with keys of at least 2048 bits. Every identity-chain and truststore certificate must be currently valid. TLS is restricted to `TLSv1.2` and `TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256`.
 
 For each future logical VEN, use a separate identity PKCS#12 and certificate fingerprint. The truststore may be shared when the VENs trust the same VTN PKI.
 

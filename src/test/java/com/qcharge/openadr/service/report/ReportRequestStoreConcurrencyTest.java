@@ -41,10 +41,6 @@ import static org.assertj.core.api.Assertions.assertThat;
         "openadr.ven.name=VEN-TEST",
         "openadr.vtn.url=http://localhost",
         "openadr.vtn.id=VTN-TEST",
-        "openadr.keystore.password=test",
-        "openadr.truststore.password=test",
-        "openadr.security.keystore-password=test",
-        "openadr.security.truststore-password=test",
         "aws.s3.static.url=http://localhost"
 })
 @ContextConfiguration(classes = ReportRequestStoreConcurrencyTest.Config.class)

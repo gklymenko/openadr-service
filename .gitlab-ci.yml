@@ -85,6 +85,23 @@ build image:
       openssl pkcs12 -in "$DEPLOY_FILES/ven-identity.p12" -noout -passin env:OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD
       openssl pkcs12 -in "$DEPLOY_FILES/truststore.p12" -noout -passin env:OPENADR_TRUSTSTORE_PASSWORD
 
+      IDENTITY_CERTIFICATE_COUNT="$(
+        openssl pkcs12 \
+          -in "$DEPLOY_FILES/ven-identity.p12" \
+          -nokeys \
+          -passin env:OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD \
+          | grep -c 'BEGIN CERTIFICATE'
+      )"
+      test "$IDENTITY_CERTIFICATE_COUNT" -ge 2
+
+      openssl pkcs12 \
+        -in "$DEPLOY_FILES/ven-identity.p12" \
+        -clcerts \
+        -nokeys \
+        -passin env:OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD \
+        | openssl x509 -noout -text \
+        | grep -q 'Public Key Algorithm: id-ecPublicKey'
+
       {
         printf 'SPRING_PROFILES_ACTIVE=%s\n' "$DEPLOY_PROFILE"
         printf 'DB_ADDRESS=%s\n' "$DB_ADDRESS"

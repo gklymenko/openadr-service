@@ -5,7 +5,9 @@ import org.springframework.stereotype.Component;
 
 import javax.security.auth.x500.X500Principal;
 import java.security.GeneralSecurityException;
+import java.security.PublicKey;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.List;
 import java.util.Locale;
@@ -14,9 +16,10 @@ import java.util.Locale;
 public class OpenAdrCertificatePolicyValidator {
 
     private static final int X509_VERSION_3 = 3;
+    private static final int MIN_ECC_KEY_SIZE_BITS = 256;
     private static final int MIN_RSA_KEY_SIZE_BITS = 2048;
 
-    public void validateRsaIdentity(IdentityCertificateChain identity)
+    public void validateEccIdentity(IdentityCertificateChain identity)
             throws GeneralSecurityException {
         List<X509Certificate> chain = identity.certificates();
 
@@ -26,14 +29,22 @@ public class OpenAdrCertificatePolicyValidator {
             );
         }
 
+        X509Certificate deviceCertificate = identity.clientCertificate();
+        if (!(deviceCertificate.getPublicKey() instanceof ECPublicKey)) {
+            throw new GeneralSecurityException(
+                    "OpenADR VEN is configured for ECC but the device certificate key is not EC; subject="
+                            + deviceCertificate.getSubjectX500Principal()
+            );
+        }
+
         for (X509Certificate certificate : chain) {
-            validateRsaCertificate(certificate);
+            validateCertificateProfile(certificate);
         }
 
         verifyCertificateChain(chain);
     }
 
-    private void validateRsaCertificate(X509Certificate certificate)
+    private void validateCertificateProfile(X509Certificate certificate)
             throws GeneralSecurityException {
         if (certificate.getVersion() != X509_VERSION_3) {
             throw new GeneralSecurityException(
@@ -42,21 +53,46 @@ public class OpenAdrCertificatePolicyValidator {
             );
         }
 
-        if (!(certificate.getPublicKey() instanceof RSAPublicKey rsaPublicKey)) {
-            throw new GeneralSecurityException(
-                    "OpenADR VEN is configured for RSA but certificate key is not RSA; subject="
-                            + certificate.getSubjectX500Principal()
-            );
+        validatePublicKey(certificate);
+        validateSha2Signature(certificate);
+    }
+
+    private void validatePublicKey(X509Certificate certificate)
+            throws GeneralSecurityException {
+        PublicKey publicKey = certificate.getPublicKey();
+
+        if (publicKey instanceof ECPublicKey ecPublicKey) {
+            int keySizeBits = ecPublicKey.getParams().getCurve().getField().getFieldSize();
+            if (keySizeBits < MIN_ECC_KEY_SIZE_BITS) {
+                throw new GeneralSecurityException(
+                        "OpenADR ECC certificate key must be at least 256 bits; actual="
+                                + keySizeBits + ", subject=" + certificate.getSubjectX500Principal()
+                );
+            }
+            return;
         }
 
-        int keySizeBits = rsaPublicKey.getModulus().bitLength();
-        if (keySizeBits < MIN_RSA_KEY_SIZE_BITS) {
-            throw new GeneralSecurityException(
-                    "OpenADR RSA certificate key must be at least 2048 bits; actual="
-                            + keySizeBits + ", subject=" + certificate.getSubjectX500Principal()
-            );
+        // OpenADR permits an ECC device certificate to have an RSA CA in a hybrid chain.
+        if (publicKey instanceof RSAPublicKey rsaPublicKey) {
+            int keySizeBits = rsaPublicKey.getModulus().bitLength();
+            if (keySizeBits < MIN_RSA_KEY_SIZE_BITS) {
+                throw new GeneralSecurityException(
+                        "OpenADR RSA CA certificate key must be at least 2048 bits; actual="
+                                + keySizeBits + ", subject=" + certificate.getSubjectX500Principal()
+                );
+            }
+            return;
         }
 
+        throw new GeneralSecurityException(
+                "OpenADR certificate chain contains an unsupported public key algorithm: "
+                        + publicKey.getAlgorithm() + ", subject="
+                        + certificate.getSubjectX500Principal()
+        );
+    }
+
+    private void validateSha2Signature(X509Certificate certificate)
+            throws GeneralSecurityException {
         String signatureAlgorithm = certificate.getSigAlgName()
                 .toUpperCase(Locale.ROOT)
                 .replace("-", "");

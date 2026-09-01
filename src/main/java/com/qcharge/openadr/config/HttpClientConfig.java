@@ -1,21 +1,19 @@
 package com.qcharge.openadr.config;
 
-import com.qcharge.openadr.utility.OpenAdrCertificateUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
-import javax.net.ssl.TrustManagerFactory;
 import java.net.http.HttpClient;
-import java.security.KeyStore;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Set;
 
 @Slf4j
@@ -23,105 +21,92 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class HttpClientConfig {
 
-    private final OpenAdrProperties properties;
-    private final ResourceLoader resourceLoader;
+    static final String OPENADR_SSL_BUNDLE = "openadr";
+    static final String OPENADR_TLS_PROTOCOL = "TLSv1.2";
+    static final String OPENADR_ECC_TLS_CIPHER_SUITE =
+            "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256";
 
-    private static final String OPENADR_RSA_TLS_CIPHER_SUITE =
-            "TLS_RSA_WITH_AES_128_CBC_SHA256";
+    private final OpenAdrProperties properties;
+    private final SslBundles sslBundles;
 
     @Bean
-    public RestClient restClient() throws Exception {
-        SSLContext sslContext = buildSslContext();
-
-        // Rule 67: VEN MUST offer TLS_RSA_WITH_AES_128_CBC_SHA256 over TLS 1.2
-        SSLParameters sslParams = new SSLParameters();
-        sslParams.setCipherSuites(supportedOpenAdrRsaCipherSuite(sslContext));
-        sslParams.setProtocols(new String[]{"TLSv1.2"});
+    public RestClient restClient(RestClient.Builder builder) {
+        SslBundle sslBundle = sslBundles.getBundle(OPENADR_SSL_BUNDLE);
+        SSLContext sslContext = sslBundle.createSslContext();
+        SSLParameters sslParameters = openAdrSslParameters(sslBundle, sslContext);
 
         if (properties.getSecurity().isDisableHostnameVerification()) {
-            // Disable CN/SAN hostname check — needed for TH cert (CN=vtn vs 127.0.0.1)
-            sslParams.setEndpointIdentificationAlgorithm("");
+            // Required only for Test Harness certificates whose CN/SAN does not match 127.0.0.1.
+            sslParameters.setEndpointIdentificationAlgorithm("");
             log.warn("TLS hostname verification DISABLED — use only for Test Harness testing");
         } else {
-            sslParams.setEndpointIdentificationAlgorithm("HTTPS");
+            sslParameters.setEndpointIdentificationAlgorithm("HTTPS");
         }
 
         HttpClient httpClient = HttpClient.newBuilder()
                 .sslContext(sslContext)
-                .sslParameters(sslParams)
-                .connectTimeout(Duration.ofSeconds(properties.getTransport().getConnectTimeoutSeconds()))
+                .sslParameters(sslParameters)
+                .connectTimeout(Duration.ofSeconds(
+                        properties.getTransport().getConnectTimeoutSeconds()))
                 .build();
 
-        log.info("TLS configured: protocol=TLSv1.2, cipher=TLS_RSA_WITH_AES_128_CBC_SHA256 (OpenADR rule 67)");
-
-        JdkClientHttpRequestFactory factory =
-                new JdkClientHttpRequestFactory(httpClient);
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(Duration.ofSeconds(
                 properties.getTransport().getReadTimeoutSeconds()));
 
-        log.info("RestClient configured with mTLS, keystore: {}",
-                properties.getSecurity().getKeystorePath());
+        log.info(
+                "OpenADR mTLS configured from Spring SSL bundle '{}': protocol={}, cipher={} (rules 67 and 68)",
+                OPENADR_SSL_BUNDLE,
+                OPENADR_TLS_PROTOCOL,
+                OPENADR_ECC_TLS_CIPHER_SUITE
+        );
         log.info("HTTP transport: chunked transfer disabled (spec 9.1.9), Content-Type=application/xml");
 
-        return RestClient.builder()
+        return builder
                 .requestFactory(factory)
                 .build();
     }
 
-    private SSLContext buildSslContext() throws Exception {
-        KeyStore keyStore = loadKeyStore(
-                properties.getSecurity().getKeystorePath(),
-                properties.getSecurity().getKeystorePassword()
-        );
-        String selectedAlias = OpenAdrCertificateUtils.resolvePrivateKeyAlias(
-                keyStore,
-                properties.getSecurity().getKeystoreAlias()
-        );
-        KeyStore selectedIdentity = OpenAdrCertificateUtils.selectClientIdentity(
-                keyStore,
-                selectedAlias,
-                properties.getSecurity().getKeystorePassword()
-        );
+    SSLParameters openAdrSslParameters(SslBundle sslBundle, SSLContext sslContext) {
+        String[] configuredProtocols = sslBundle.getOptions().getEnabledProtocols();
+        String[] configuredCiphers = sslBundle.getOptions().getCiphers();
 
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
-                KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(selectedIdentity,
-                properties.getSecurity().getKeystorePassword().toCharArray());
-        log.info("OpenADR TLS client identity selected. alias={}", selectedAlias);
-
-        KeyStore trustStore = loadKeyStore(
-                properties.getSecurity().getTruststorePath(),
-                properties.getSecurity().getTruststorePassword()
+        requireOnly("protocol", configuredProtocols, OPENADR_TLS_PROTOCOL);
+        requireOnly("cipher suite", configuredCiphers, OPENADR_ECC_TLS_CIPHER_SUITE);
+        requireSupported(
+                "protocol",
+                OPENADR_TLS_PROTOCOL,
+                Set.of(sslContext.getSupportedSSLParameters().getProtocols())
+        );
+        requireSupported(
+                "cipher suite",
+                OPENADR_ECC_TLS_CIPHER_SUITE,
+                Set.of(sslContext.getSupportedSSLParameters().getCipherSuites())
         );
 
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-                TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-
-        SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
-        sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-
-        log.info("SSLContext initialized with TLS 1.2");
-        return sslContext;
+        SSLParameters parameters = new SSLParameters();
+        parameters.setProtocols(configuredProtocols);
+        parameters.setCipherSuites(configuredCiphers);
+        return parameters;
     }
 
-    private KeyStore loadKeyStore(String path, String password) throws Exception {
-        KeyStore keyStore = OpenAdrCertificateUtils.loadPkcs12(resourceLoader, path, password);
-        log.debug("Loaded keystore from: {}", path);
-        return keyStore;
-    }
-
-    private String[] supportedOpenAdrRsaCipherSuite(SSLContext sslContext) {
-        Set<String> supported = Set.of(sslContext.getSupportedSSLParameters().getCipherSuites());
-
-        if (!supported.contains(OPENADR_RSA_TLS_CIPHER_SUITE)) {
+    private void requireOnly(String option, String[] configuredValues, String expectedValue) {
+        if (configuredValues == null
+                || configuredValues.length != 1
+                || !expectedValue.equals(configuredValues[0])) {
             throw new IllegalStateException(
-                    "OpenADR RSA TLS 1.2 cipher suite is not supported by current JDK/security policy: "
-                            + OPENADR_RSA_TLS_CIPHER_SUITE
+                    "OpenADR ECC-only TLS requires exactly one %s: %s; configured=%s"
+                            .formatted(option, expectedValue, Arrays.toString(configuredValues))
             );
         }
+    }
 
-        log.info("OpenADR RSA TLS cipher suite enabled: {}", OPENADR_RSA_TLS_CIPHER_SUITE);
-        return new String[]{OPENADR_RSA_TLS_CIPHER_SUITE};
+    private void requireSupported(String option, String requiredValue, Set<String> supportedValues) {
+        if (!supportedValues.contains(requiredValue)) {
+            throw new IllegalStateException(
+                    "OpenADR %s is not supported by the current JDK/security policy: %s"
+                            .formatted(option, requiredValue)
+            );
+        }
     }
 }

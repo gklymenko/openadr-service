@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.io.ResourceLoader;
+import org.springframework.boot.ssl.SslBundles;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -21,7 +21,7 @@ class CertificateExpiryCheckerTest {
     private static final Instant NOW = Instant.parse("2026-08-27T12:00:00Z");
 
     @Mock
-    private ResourceLoader resourceLoader;
+    private SslBundles sslBundles;
 
     @Mock
     private OpenAdrCertificatePolicyValidator certificatePolicyValidator;
@@ -36,7 +36,7 @@ class CertificateExpiryCheckerTest {
         properties.getSecurity().setCertExpiryCriticalDays(7);
         checker = new OpenAdrCertificateHealthCheck(
                 properties,
-                resourceLoader,
+                sslBundles,
                 certificatePolicyValidator,
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
@@ -146,7 +146,7 @@ class CertificateExpiryCheckerTest {
                 "test-alias",
                 "CN=test-ven",
                 "CN=test-ca",
-                "SHA256withRSA",
+                "SHA256withECDSA",
                 validFrom,
                 expiresAt,
                 daysUntilExpiry,

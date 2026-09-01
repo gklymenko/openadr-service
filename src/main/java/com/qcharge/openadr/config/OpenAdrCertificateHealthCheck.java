@@ -6,8 +6,9 @@ import com.qcharge.openadr.utility.OpenAdrCertificateUtils.IdentityCertificateCh
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.event.EventListener;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
 import java.security.KeyStore;
@@ -21,29 +22,29 @@ import java.util.List;
 public class OpenAdrCertificateHealthCheck {
 
     private final OpenAdrProperties properties;
-    private final ResourceLoader resourceLoader;
+    private final SslBundles sslBundles;
     private final OpenAdrCertificatePolicyValidator certificatePolicyValidator;
     private final Clock clock;
 
     @EventListener(ApplicationReadyEvent.class)
     public void checkOpenAdrCertificates() {
-        checkClientCertificate();
-        checkTrustStoreCertificates();
+        SslBundle sslBundle = sslBundles.getBundle(HttpClientConfig.OPENADR_SSL_BUNDLE);
+        checkClientCertificate(sslBundle);
+        checkTrustStoreCertificates(sslBundle);
     }
 
-    private void checkClientCertificate() {
+    private void checkClientCertificate(SslBundle sslBundle) {
         try {
-            KeyStore keyStore = OpenAdrCertificateUtils.loadPkcs12(
-                    resourceLoader,
-                    properties.getSecurity().getKeystorePath(),
-                    properties.getSecurity().getKeystorePassword()
+            KeyStore keyStore = requireStore(
+                    "keystore",
+                    sslBundle.getStores().getKeyStore()
             );
-
+            String configuredAlias = sslBundle.getKey().getAlias();
             IdentityCertificateChain identity = OpenAdrCertificateUtils.findClientIdentity(
                     keyStore,
-                    properties.getSecurity().getKeystoreAlias()
+                    configuredAlias
             );
-            certificatePolicyValidator.validateRsaIdentity(identity);
+            certificatePolicyValidator.validateEccIdentity(identity);
 
             CertificateInfo clientCertificate = OpenAdrCertificateUtils.certificateInfo(
                     identity.alias(),
@@ -52,7 +53,7 @@ public class OpenAdrCertificateHealthCheck {
             );
 
             log.info(
-                    "OpenADR VEN client certificate loaded. alias={}, subject={}, issuer={}, sigAlg={}, expiresAt={}, daysUntilExpiry={}, fingerprint={}",
+                    "OpenADR ECC VEN certificate loaded from Spring SSL bundle. alias={}, subject={}, issuer={}, sigAlg={}, expiresAt={}, daysUntilExpiry={}, fingerprint={}",
                     clientCertificate.alias(),
                     clientCertificate.subject(),
                     clientCertificate.issuer(),
@@ -73,18 +74,16 @@ public class OpenAdrCertificateHealthCheck {
                 validateValidity("OpenADR VEN certificate chain", issuerCertificate);
             }
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to inspect OpenADR VEN client certificate", e);
+            throw new IllegalStateException("Failed to inspect OpenADR ECC VEN identity", e);
         }
     }
 
-    private void checkTrustStoreCertificates() {
+    private void checkTrustStoreCertificates(SslBundle sslBundle) {
         try {
-            KeyStore trustStore = OpenAdrCertificateUtils.loadPkcs12(
-                    resourceLoader,
-                    properties.getSecurity().getTruststorePath(),
-                    properties.getSecurity().getTruststorePassword()
+            KeyStore trustStore = requireStore(
+                    "truststore",
+                    sslBundle.getStores().getTrustStore()
             );
-
             List<CertificateInfo> certificates = OpenAdrCertificateUtils.listX509Certificates(
                     trustStore,
                     clock
@@ -96,7 +95,8 @@ public class OpenAdrCertificateHealthCheck {
                 );
             }
 
-            log.info("OpenADR truststore loaded. certificates={}", certificates.size());
+            log.info("OpenADR truststore loaded from Spring SSL bundle. certificates={}",
+                    certificates.size());
 
             for (CertificateInfo certificate : certificates) {
                 log.debug(
@@ -113,6 +113,16 @@ public class OpenAdrCertificateHealthCheck {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to inspect OpenADR truststore certificates", e);
         }
+    }
+
+    private KeyStore requireStore(String label, KeyStore keyStore) {
+        if (keyStore == null) {
+            throw new IllegalStateException(
+                    "Spring SSL bundle '%s' does not contain an OpenADR %s"
+                            .formatted(HttpClientConfig.OPENADR_SSL_BUNDLE, label)
+            );
+        }
+        return keyStore;
     }
 
     void validateValidity(String label, CertificateInfo certificate) {
