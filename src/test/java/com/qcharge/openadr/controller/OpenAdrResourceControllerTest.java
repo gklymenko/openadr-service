@@ -39,6 +39,7 @@ class OpenAdrResourceControllerTest {
                 22_000L
         );
         OpenAdrResourceResponse serviceResponse = new OpenAdrResourceResponse(
+                "primary",
                 10,
                 "CP-1",
                 "uuid-1",
@@ -78,8 +79,12 @@ class OpenAdrResourceControllerTest {
         OpenAdrResourceController controller = controller();
         OpenAdrResourceStatusRequest request = new OpenAdrResourceStatusRequest(List.of(10, 20));
         OpenAdrResourceStatusResponse serviceResponse = new OpenAdrResourceStatusResponse(List.of(
-                new OpenAdrResourceStatusResponse.ResourceStatus(10, true, "resource-10"),
-                new OpenAdrResourceStatusResponse.ResourceStatus(20, false, null)
+                new OpenAdrResourceStatusResponse.ResourceStatus(
+                        "primary", 10, true, "resource-10"
+                ),
+                new OpenAdrResourceStatusResponse.ResourceStatus(
+                        "primary", 20, false, null
+                )
         ));
         when(resourceService.statuses(request.chargePointPks())).thenReturn(serviceResponse);
 

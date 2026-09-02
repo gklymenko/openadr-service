@@ -112,6 +112,7 @@ build image:
         printf 'AWS_S3_STATIC_URL=%s\n' "${AWS_S3_STATIC_URL:-}"
         printf 'OPENADR_VTN_URL=%s\n' "$OPENADR_VTN_URL"
         printf 'OPENADR_VTN_ID=%s\n' "${OPENADR_VTN_ID:-}"
+        printf 'OPENADR_VEN_KEY=%s\n' "${OPENADR_VEN_KEY:-primary}"
         printf 'OPENADR_VEN_ID=%s\n' "$OPENADR_VEN_ID"
         printf 'OPENADR_VEN_NAME=%s\n' "${OPENADR_VEN_NAME:-QCharge EV Management VEN}"
         printf 'OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD=%s\n' "$OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD"

@@ -11,11 +11,19 @@ public interface OpenAdrResourceRepository extends JpaRepository<OpenAdrResource
 
     Optional<OpenAdrResource> findByChargePointPk(Integer chargePointPk);
 
-    List<OpenAdrResource> findAllByChargePointPkIn(Collection<Integer> chargePointPks);
+    Optional<OpenAdrResource> findByVenKeyAndChargePointPk(String venKey, Integer chargePointPk);
 
-    List<OpenAdrResource> findAllByEnabledTrue();
+    List<OpenAdrResource> findAllByVenKeyAndChargePointPkIn(
+            String venKey,
+            Collection<Integer> chargePointPks
+    );
 
-    List<OpenAdrResource> findAllByResourceIdInAndEnabledTrue(Collection<String> resourceIds);
+    List<OpenAdrResource> findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc(String venKey);
+
+    List<OpenAdrResource> findAllByVenKeyAndResourceIdInAndEnabledTrue(
+            String venKey,
+            Collection<String> resourceIds
+    );
 
     boolean existsByChargePointIdentityAndChargePointPkNot(
             String chargePointIdentity,

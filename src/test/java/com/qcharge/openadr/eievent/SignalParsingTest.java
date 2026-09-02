@@ -31,7 +31,6 @@ class SignalParsingTest extends AbstractOadrTest {
     void setUp() {
         OpenAdrProperties props = new OpenAdrProperties();
         props.getVen().setId("test-ven");
-        props.getReport().setResourceId("resource1");
         service = new EventPolicyService(props);
         mapper = new OpenAdrEventCommandMapper();
         eventValidator = new EventEntryValidator();

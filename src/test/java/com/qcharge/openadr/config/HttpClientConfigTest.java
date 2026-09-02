@@ -1,5 +1,8 @@
 package com.qcharge.openadr.config;
 
+import org.apache.hc.client5.http.ssl.DefaultHostnameVerifier;
+import org.apache.hc.client5.http.ssl.HostnameVerificationPolicy;
+import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.ssl.SslBundle;
@@ -10,6 +13,8 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -17,14 +22,16 @@ import static org.mockito.Mockito.when;
 class HttpClientConfigTest {
 
     private HttpClientConfig configuration;
+    private OpenAdrProperties properties;
     private SslBundle sslBundle;
     private SslOptions sslOptions;
     private SSLContext sslContext;
 
     @BeforeEach
     void setUp() throws Exception {
+        properties = new OpenAdrProperties();
         configuration = new HttpClientConfig(
-                new OpenAdrProperties(),
+                properties,
                 mock(SslBundles.class)
         );
         sslBundle = mock(SslBundle.class);
@@ -33,6 +40,46 @@ class HttpClientConfigTest {
 
         sslContext = SSLContext.getInstance(HttpClientConfig.OPENADR_TLS_PROTOCOL);
         sslContext.init(null, null, null);
+    }
+
+    @Test
+    void openAdrHostnameVerifier_disabled_usesTestHarnessVerifier() {
+        properties.getSecurity().setDisableHostnameVerification(true);
+
+        assertSame(
+                NoopHostnameVerifier.INSTANCE,
+                configuration.openAdrHostnameVerifier()
+        );
+    }
+
+    @Test
+    void openAdrHostnameVerifier_enabled_usesStrictVerifier() {
+        properties.getSecurity().setDisableHostnameVerification(false);
+
+        assertInstanceOf(
+                DefaultHostnameVerifier.class,
+                configuration.openAdrHostnameVerifier()
+        );
+    }
+
+    @Test
+    void openAdrHostnameVerificationPolicy_disabled_delegatesOnlyToNoopVerifier() {
+        properties.getSecurity().setDisableHostnameVerification(true);
+
+        assertSame(
+                HostnameVerificationPolicy.CLIENT,
+                configuration.openAdrHostnameVerificationPolicy()
+        );
+    }
+
+    @Test
+    void openAdrHostnameVerificationPolicy_enabled_keepsJsseAndClientChecks() {
+        properties.getSecurity().setDisableHostnameVerification(false);
+
+        assertSame(
+                HostnameVerificationPolicy.BOTH,
+                configuration.openAdrHostnameVerificationPolicy()
+        );
     }
 
     @Test

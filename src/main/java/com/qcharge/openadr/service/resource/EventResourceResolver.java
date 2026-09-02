@@ -57,18 +57,24 @@ public class EventResourceResolver {
     private final OpenAdrProperties properties;
 
     public ResolvedEventTarget resolveEventTarget(EventTargetCommand target, String venId) {
+        String venKey = properties.getVen().getKey();
         if (target == null || !target.present()) {
             if (!properties.getEvent().isAllowUntargetedEvents()) {
                 throw new TargetMismatchException("eiTarget is missing or empty");
             }
-            return new ResolvedEventTarget(toResolved(repository.findAllByEnabledTrue()));
+            return new ResolvedEventTarget(toResolved(
+                    repository.findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc(venKey)
+            ));
         }
 
         boolean venMatches = containsIgnoreCase(target.venIds(), venId);
         List<String> requestedResourceIds = nonBlank(target.resourceIds());
         List<OpenAdrResource> matchedByResourceId = requestedResourceIds.isEmpty()
                 ? List.of()
-                : repository.findAllByResourceIdInAndEnabledTrue(requestedResourceIds);
+                : repository.findAllByVenKeyAndResourceIdInAndEnabledTrue(
+                        venKey,
+                        requestedResourceIds
+                );
 
         if (!venMatches && matchedByResourceId.isEmpty()) {
             throw new TargetMismatchException(
@@ -79,7 +85,7 @@ public class EventResourceResolver {
 
         Map<String, OpenAdrResource> resources = new LinkedHashMap<>();
         if (venMatches) {
-            repository.findAllByEnabledTrue()
+            repository.findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc(venKey)
                     .forEach(resource -> resources.put(resource.getResourceId(), resource));
         }
         matchedByResourceId.forEach(resource -> resources.put(resource.getResourceId(), resource));

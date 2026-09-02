@@ -54,7 +54,6 @@ class DrEventCancellationTest extends AbstractOadrTest {
     @BeforeEach
     void setUp() {
         OpenAdrProperties properties = new OpenAdrProperties();
-        properties.getReport().setResourceId("RES_123");
         org.mockito.Mockito.lenient().when(eventResourceResolver.resolveEventTarget(any(), any()))
                 .thenReturn(new ResolvedEventTarget(List.of()));
         adapter = protocolAdapter(

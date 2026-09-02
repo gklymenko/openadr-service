@@ -2,17 +2,30 @@ package com.qcharge.openadr.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
+import org.apache.hc.client5.http.ssl.DefaultHostnameVerifier;
+import org.apache.hc.client5.http.ssl.HostnameVerificationPolicy;
+import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
+import org.apache.hc.client5.http.ssl.TlsSocketStrategy;
+import org.apache.hc.core5.reactor.ssl.SSLBufferMode;
+import org.apache.hc.core5.util.Timeout;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
-import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.Set;
 
@@ -29,30 +42,39 @@ public class HttpClientConfig {
     private final OpenAdrProperties properties;
     private final SslBundles sslBundles;
 
-    @Bean
-    public RestClient restClient(RestClient.Builder builder) {
+    @Bean(destroyMethod = "close")
+    public CloseableHttpClient openAdrHttpClient() {
         SslBundle sslBundle = sslBundles.getBundle(OPENADR_SSL_BUNDLE);
         SSLContext sslContext = sslBundle.createSslContext();
         SSLParameters sslParameters = openAdrSslParameters(sslBundle, sslContext);
+        HostnameVerifier hostnameVerifier = openAdrHostnameVerifier();
 
-        if (properties.getSecurity().isDisableHostnameVerification()) {
-            // Required only for Test Harness certificates whose CN/SAN does not match 127.0.0.1.
-            sslParameters.setEndpointIdentificationAlgorithm("");
-            log.warn("TLS hostname verification DISABLED — use only for Test Harness testing");
-        } else {
-            sslParameters.setEndpointIdentificationAlgorithm("HTTPS");
-        }
+        TlsSocketStrategy tlsSocketStrategy = new DefaultClientTlsStrategy(
+                sslContext,
+                sslParameters.getProtocols(),
+                sslParameters.getCipherSuites(),
+                SSLBufferMode.STATIC,
+                openAdrHostnameVerificationPolicy(),
+                hostnameVerifier
+        );
 
-        HttpClient httpClient = HttpClient.newBuilder()
-                .sslContext(sslContext)
-                .sslParameters(sslParameters)
-                .connectTimeout(Duration.ofSeconds(
+        Timeout readTimeout = Timeout.ofSeconds(
+                properties.getTransport().getReadTimeoutSeconds());
+        ConnectionConfig connectionConfig = ConnectionConfig.custom()
+                .setConnectTimeout(Timeout.ofSeconds(
                         properties.getTransport().getConnectTimeoutSeconds()))
+                .setSocketTimeout(readTimeout)
                 .build();
 
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-        factory.setReadTimeout(Duration.ofSeconds(
-                properties.getTransport().getReadTimeoutSeconds()));
+        PoolingHttpClientConnectionManager connectionManager =
+                PoolingHttpClientConnectionManagerBuilder.create()
+                        .setTlsSocketStrategy(tlsSocketStrategy)
+                        .setDefaultConnectionConfig(connectionConfig)
+                        .build();
+
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setResponseTimeout(readTimeout)
+                .build();
 
         log.info(
                 "OpenADR mTLS configured from Spring SSL bundle '{}': protocol={}, cipher={} (rules 67 and 68)",
@@ -62,9 +84,43 @@ public class HttpClientConfig {
         );
         log.info("HTTP transport: chunked transfer disabled (spec 9.1.9), Content-Type=application/xml");
 
+        return HttpClients.custom()
+                .setConnectionManager(connectionManager)
+                .setDefaultRequestConfig(requestConfig)
+                .disableAutomaticRetries()
+                .build();
+    }
+
+    @Bean
+    public RestClient restClient(
+            RestClient.Builder builder,
+            @Qualifier("openAdrHttpClient") CloseableHttpClient openAdrHttpClient
+    ) {
+        HttpComponentsClientHttpRequestFactory factory =
+                new HttpComponentsClientHttpRequestFactory(openAdrHttpClient);
+
         return builder
                 .requestFactory(factory)
                 .build();
+    }
+
+    HostnameVerifier openAdrHostnameVerifier() {
+        if (properties.getSecurity().isDisableHostnameVerification()) {
+            // Required by the Test Harness because its server certificate uses CN/SAN=vtn.
+            // Trust chain, validity, client authentication and cipher checks remain enabled.
+            log.warn("TLS hostname verification DISABLED — use only for Test Harness testing");
+            return NoopHostnameVerifier.INSTANCE;
+        }
+
+        return new DefaultHostnameVerifier();
+    }
+
+    HostnameVerificationPolicy openAdrHostnameVerificationPolicy() {
+        // CLIENT prevents JSSE from performing its own endpoint-identification check.
+        // Apache HttpClient then applies the selected verifier after the TLS handshake.
+        return properties.getSecurity().isDisableHostnameVerification()
+                ? HostnameVerificationPolicy.CLIENT
+                : HostnameVerificationPolicy.BOTH;
     }
 
     SSLParameters openAdrSslParameters(SslBundle sslBundle, SSLContext sslContext) {

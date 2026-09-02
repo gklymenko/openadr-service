@@ -3,6 +3,8 @@ package com.qcharge.openadr.config;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -37,6 +39,15 @@ public class OpenAdrProperties {
     @Getter
     @Setter
     public static class Ven {
+        /**
+         * Stable internal identity used to scope resources and credentials.
+         * Unlike venID, this value is never assigned or changed by the VTN.
+         */
+        @NotBlank
+        @Size(max = 64)
+        @Pattern(regexp = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
+        private String key = "primary";
+
         /**
          * For initial registration this may be preconfigured.
          * If VTN assigns venID dynamically, make this nullable and persist returned venID.
@@ -134,9 +145,6 @@ public class OpenAdrProperties {
     @Getter
     @Setter
     public static class Report {
-        @NotBlank
-        private String resourceId;
-
         @Min(1)
         private int telemetryIntervalSeconds = 10;
 

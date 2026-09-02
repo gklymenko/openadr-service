@@ -24,6 +24,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -47,7 +48,10 @@ class EventResourceResolverTest extends AbstractOadrTest {
             throws Oadr20bUnmarshalException {
         OadrEvent event = loadEvent();
         OpenAdrResource resource = resource(10, "RES_123", true);
-        when(repository.findAllByResourceIdInAndEnabledTrue(anyCollection()))
+        when(repository.findAllByVenKeyAndResourceIdInAndEnabledTrue(
+                eq("primary"),
+                anyCollection()
+        ))
                 .thenReturn(List.of(resource));
 
         eventValidator.validate(event);
@@ -163,6 +167,7 @@ class EventResourceResolverTest extends AbstractOadrTest {
 
     private OpenAdrResource resource(Integer chargePointPk, String resourceId, boolean enabled) {
         OpenAdrResource resource = new OpenAdrResource();
+        resource.setVenKey("primary");
         resource.setChargePointPk(chargePointPk);
         resource.setChargePointIdentity("CP-" + chargePointPk);
         resource.setChargePointUuid("uuid-" + chargePointPk);

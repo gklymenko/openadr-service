@@ -35,6 +35,12 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Per-client TLS hostname verification control for the OpenADR Test Harness. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+
         <!-- Health checks / metrics -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

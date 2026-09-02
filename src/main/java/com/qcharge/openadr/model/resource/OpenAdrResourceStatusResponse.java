@@ -6,6 +6,7 @@ public record OpenAdrResourceStatusResponse(
         List<ResourceStatus> resources
 ) {
     public record ResourceStatus(
+            String venKey,
             Integer chargePointPk,
             boolean enabled,
             String resourceId

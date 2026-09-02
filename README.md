@@ -12,7 +12,9 @@ The same JAR and Docker image are used for every deployed environment. Spring pr
 | EC2 used for OpenADR certification | `certification` | Eonti test PKCS#12 files from GitLab Variables | Disabled for the Test Harness certificate |
 | Real production VTN | `prod` | Production PKCS#12 files from GitLab Variables | Enabled |
 
-The hostname-verification exception must never be copied to the production profile.
+The hostname-verification exception applies only to the OpenADR HTTP client. Certificate-chain,
+validity, mTLS client-authentication, TLS-version, and cipher checks remain enabled. The exception
+must never be copied to the production profile.
 
 ## Local Test Harness
 
@@ -71,9 +73,23 @@ AWS_S3_STATIC_URL           # optional
 
 OPENADR_VTN_URL
 OPENADR_VTN_ID              # optional until known
+OPENADR_VEN_KEY             # stable logical VEN key; defaults to primary
 OPENADR_VEN_ID
 OPENADR_VEN_NAME            # optional
 ```
+
+`OPENADR_VEN_KEY` scopes the enabled rows in `openadr_resource`. Event targeting and
+report METADATA use the same `resource_id` values from that table. It must remain stable
+when a VTN assigns or changes the protocol-level `venID`.
+
+## OpenADR resource registry
+
+Provision at least one enabled charge point through
+`PUT /internal/openadr/v1/resources/charge-points/{chargePointPk}` before registering
+reporting capabilities. A resource is assigned to the configured `OPENADR_VEN_KEY` and
+receives the stable ID `qcharge-evse-{chargePointUuid}`. Report registration fails fast
+when the active logical VEN has no enabled resources, preventing an empty or misleading
+METADATA catalog from being sent to the VTN.
 
 Generate the `DEPLOY_SSH_KNOWN_HOSTS` value from a trusted workstation and verify the fingerprint before saving it in GitLab:
 

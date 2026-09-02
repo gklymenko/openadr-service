@@ -54,7 +54,6 @@ class DrEventVersioningTest extends AbstractOadrTest {
     @BeforeEach
     void setUp() {
         OpenAdrProperties properties = new OpenAdrProperties();
-        properties.getReport().setResourceId("RES_123");
         ResolvedResource resource = new ResolvedResource(
                 10, "CP-1", "uuid-1", "RES_123", 22_000L
         );

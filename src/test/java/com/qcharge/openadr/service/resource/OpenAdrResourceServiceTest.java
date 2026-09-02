@@ -1,5 +1,6 @@
 package com.qcharge.openadr.service.resource;
 
+import com.qcharge.openadr.config.OpenAdrProperties;
 import com.qcharge.openadr.exceptions.ResourceConflictException;
 import com.qcharge.openadr.model.entity.OpenAdrResource;
 import com.qcharge.openadr.model.resource.OpenAdrResourceResponse;
@@ -33,7 +34,7 @@ class OpenAdrResourceServiceTest {
 
     @Test
     void createsEvseResourceIdAndEnablesResource() {
-        OpenAdrResourceService service = new OpenAdrResourceService(repository);
+        OpenAdrResourceService service = service();
         UpsertOpenAdrResourceRequest request = request("CP-1", "uuid-1", 22_000L);
 
         when(repository.findByChargePointPk(10)).thenReturn(Optional.empty());
@@ -47,6 +48,8 @@ class OpenAdrResourceServiceTest {
         OpenAdrResource saved = captor.getValue();
 
         assertEquals("qcharge-evse-uuid-1", saved.getResourceId());
+        assertEquals("primary", saved.getVenKey());
+        assertEquals("primary", response.venKey());
         assertTrue(saved.isEnabled());
         assertEquals("EVSE", response.deviceClass());
         assertEquals(22_000L, response.maxPowerWatts());
@@ -55,7 +58,7 @@ class OpenAdrResourceServiceTest {
     @Test
     void reenablesExistingResourceAndPreservesResourceId() {
         OpenAdrResource existing = resource(10, "CP-OLD", "uuid-1", "provisioned-id", false);
-        OpenAdrResourceService service = new OpenAdrResourceService(repository);
+        OpenAdrResourceService service = service();
         when(repository.findByChargePointPk(10)).thenReturn(Optional.of(existing));
         when(repository.saveAndFlush(existing)).thenReturn(existing);
 
@@ -72,7 +75,7 @@ class OpenAdrResourceServiceTest {
     @Test
     void rejectsUuidChangeForExistingResource() {
         OpenAdrResource existing = resource(10, "CP-1", "uuid-1", "resource-1", true);
-        OpenAdrResourceService service = new OpenAdrResourceService(repository);
+        OpenAdrResourceService service = service();
         when(repository.findByChargePointPk(10)).thenReturn(Optional.of(existing));
 
         assertThrows(
@@ -83,9 +86,32 @@ class OpenAdrResourceServiceTest {
     }
 
     @Test
+    void rejectsReassigningChargePointFromAnotherLogicalVen() {
+        OpenAdrResource existing = resource(
+                10,
+                "CP-1",
+                "uuid-1",
+                "resource-1",
+                true
+        );
+        existing.setVenKey("secondary");
+        OpenAdrResourceService service = service();
+        when(repository.findByChargePointPk(10)).thenReturn(Optional.of(existing));
+
+        ResourceConflictException exception = assertThrows(
+                ResourceConflictException.class,
+                () -> service.upsert(10, request("CP-1", "uuid-1", null))
+        );
+
+        assertTrue(exception.getMessage().contains("secondary"));
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
     void disableIsIdempotentWhenResourceDoesNotExist() {
-        OpenAdrResourceService service = new OpenAdrResourceService(repository);
-        when(repository.findByChargePointPk(10)).thenReturn(Optional.empty());
+        OpenAdrResourceService service = service();
+        when(repository.findByVenKeyAndChargePointPk("primary", 10))
+                .thenReturn(Optional.empty());
 
         service.disable(10);
 
@@ -96,8 +122,11 @@ class OpenAdrResourceServiceTest {
     void statusesIncludeDisabledAndUnregisteredChargePointsInRequestOrder() {
         OpenAdrResource disabled = resource(20, "CP-20", "uuid-20", "resource-20", false);
         OpenAdrResource enabled = resource(10, "CP-10", "uuid-10", "resource-10", true);
-        OpenAdrResourceService service = new OpenAdrResourceService(repository);
-        when(repository.findAllByChargePointPkIn(List.of(20, 30, 10, 10)))
+        OpenAdrResourceService service = service();
+        when(repository.findAllByVenKeyAndChargePointPkIn(
+                "primary",
+                List.of(20, 30, 10, 10)
+        ))
                 .thenReturn(List.of(enabled, disabled));
 
         OpenAdrResourceStatusResponse response = service.statuses(List.of(20, 30, 10, 10));
@@ -119,6 +148,12 @@ class OpenAdrResourceServiceTest {
         return new UpsertOpenAdrResourceRequest(identity, uuid, maxPowerWatts);
     }
 
+    private OpenAdrResourceService service() {
+        OpenAdrProperties properties = new OpenAdrProperties();
+        properties.getVen().setKey("primary");
+        return new OpenAdrResourceService(repository, properties);
+    }
+
     private OpenAdrResource resource(
             Integer chargePointPk,
             String identity,
@@ -127,6 +162,7 @@ class OpenAdrResourceServiceTest {
             boolean enabled
     ) {
         OpenAdrResource resource = new OpenAdrResource();
+        resource.setVenKey("primary");
         resource.setChargePointPk(chargePointPk);
         resource.setChargePointIdentity(identity);
         resource.setChargePointUuid(uuid);

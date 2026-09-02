@@ -34,7 +34,6 @@ class EventProtocolAdapterPersistenceTest extends AbstractOadrTest {
     @Test
     void handle_persistsCompleteSignalAndIntervalPlan() throws Oadr20bUnmarshalException {
         OpenAdrProperties properties = new OpenAdrProperties();
-        properties.getReport().setResourceId("RES_123");
 
         DrEventRepository repository = mock(DrEventRepository.class);
         when(repository.findByEventId("Event_939393")).thenReturn(Optional.empty());

@@ -36,8 +36,8 @@ import java.time.Instant;
                         columnNames = "charge_point_uuid"
                 ),
                 @UniqueConstraint(
-                        name = "uk_openadr_resource_resource_id",
-                        columnNames = "resource_id"
+                        name = "uk_openadr_resource_ven_key_resource_id",
+                        columnNames = {"ven_key", "resource_id"}
                 )
         }
 )
@@ -46,6 +46,9 @@ public class OpenAdrResource {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "ven_key", nullable = false, length = 64)
+    private String venKey;
 
     @Column(name = "charge_point_pk", nullable = false)
     private Integer chargePointPk;

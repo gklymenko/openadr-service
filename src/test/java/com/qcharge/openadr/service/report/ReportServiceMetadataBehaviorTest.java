@@ -1,8 +1,10 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.model.entity.OpenAdrResource;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
+import com.qcharge.openadr.repository.OpenAdrResourceRepository;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -17,31 +19,41 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ReportServiceMetadataBehaviorTest {
 
     private ReportCapabilityRegistry capabilityRegistry;
     private ReportRequestStore requestStore;
     private VtnTransportService transportService;
+    private OpenAdrResourceRepository resourceRepository;
     private ReportService reportService;
 
     @BeforeEach
     void setUp() {
         OpenAdrProperties properties = new OpenAdrProperties();
-        properties.getReport().setResourceId("RESOURCE-1");
+        properties.getVen().setKey("primary");
         capabilityRegistry = mock(ReportCapabilityRegistry.class);
         requestStore = mock(ReportRequestStore.class);
         transportService = mock(VtnTransportService.class);
+        resourceRepository = mock(OpenAdrResourceRepository.class);
+        when(resourceRepository.findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc("primary"))
+                .thenReturn(List.of(
+                        resource("RESOURCE-1"),
+                        resource("RESOURCE-2")
+                ));
         reportService = new ReportService(
                 properties,
                 capabilityRegistry,
                 requestStore,
                 transportService,
+                resourceRepository,
                 Clock.fixed(Instant.parse("2026-08-26T10:00:00Z"), ZoneOffset.UTC)
         );
     }
@@ -70,7 +82,7 @@ class ReportServiceMetadataBehaviorTest {
     }
 
     @Test
-    void metadataDescriptionsIdentifyConfiguredResource() {
+    void metadataDescriptionsIdentifyEnabledResourcesForActiveVenKey() {
         var metadata = reportService.buildMetadataRegisterReport(
                 "METADATA-REQUEST",
                 session()
@@ -83,8 +95,29 @@ class ReportServiceMetadataBehaviorTest {
                 .toList();
 
         assertThat(resourceIds)
-                .hasSize(3)
-                .containsOnly("RESOURCE-1");
+                .hasSize(6)
+                .containsOnly("RESOURCE-1", "RESOURCE-2");
+    }
+
+    @Test
+    void metadataRegistrationRequiresAtLeastOneEnabledResource() {
+        when(resourceRepository.findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc("primary"))
+                .thenReturn(List.of());
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> reportService.buildMetadataRegisterReport("METADATA-REQUEST", session())
+        );
+
+        assertThat(exception.getMessage()).contains("venKey=primary");
+    }
+
+    private OpenAdrResource resource(String resourceId) {
+        OpenAdrResource resource = new OpenAdrResource();
+        resource.setVenKey("primary");
+        resource.setResourceId(resourceId);
+        resource.setEnabled(true);
+        return resource;
     }
 
     private OpenAdrSessionSnapshot session() {

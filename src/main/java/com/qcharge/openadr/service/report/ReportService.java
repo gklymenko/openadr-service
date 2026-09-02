@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.config.OpenAdrProperties;
+import com.qcharge.openadr.model.entity.OpenAdrResource;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.Oadr20bEiReportBuilders;
 import com.qcharge.openadr.model.oadr20b.builders.eireport.PowerRealUnitType;
@@ -13,6 +14,7 @@ import com.qcharge.openadr.model.oadr20b.oadr.OadrRegisteredReportType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportDescriptionType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.model.oadr20b.siscale.SiScaleCodeType;
+import com.qcharge.openadr.repository.OpenAdrResourceRepository;
 import com.qcharge.openadr.service.session.OpenAdrSessionSnapshot;
 import com.qcharge.openadr.service.transport.OpenAdrOperations;
 import com.qcharge.openadr.service.transport.VtnTransportService;
@@ -44,6 +46,7 @@ public class ReportService {
     private final ReportCapabilityRegistry capabilityRegistry;
     private final ReportRequestStore requestStore;
     private final VtnTransportService transportService;
+    private final OpenAdrResourceRepository resourceRepository;
     private final Clock clock;
 
     public OadrRegisteredReportType registerReportingCapabilities(
@@ -51,13 +54,19 @@ public class ReportService {
     ) {
         String venId = session.venId();
         String requestId = RequestUtils.newRequestId();
+        List<String> resourceIds = requiredEnabledResourceIds();
 
-        log.info("Registering reporting capabilities. venId={}", venId);
+        log.info(
+                "Registering reporting capabilities. venId={}, venKey={}, resources={}",
+                venId,
+                properties.getVen().getKey(),
+                resourceIds
+        );
 
         OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportBuilder(requestId, venId)
-                .addOadrReport(buildTelemetryUsageMetadataReport())
-                .addOadrReport(buildTelemetryStatusMetadataReport())
+                .addOadrReport(buildTelemetryUsageMetadataReport(resourceIds))
+                .addOadrReport(buildTelemetryStatusMetadataReport(resourceIds))
                 .build();
 
         // TH conformance rule: top-level reportRequestID MUST be empty
@@ -83,11 +92,12 @@ public class ReportService {
     ) {
         String venId = session.venId();
         String requestId = RequestUtils.newRequestId();
+        List<String> resourceIds = requiredEnabledResourceIds();
 
         OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportBuilder(requestId, venId)
-                .addOadrReport(buildTelemetryUsageMetadataReport())
-                .addOadrReport(buildTelemetryStatusMetadataReport())
+                .addOadrReport(buildTelemetryUsageMetadataReport(resourceIds))
+                .addOadrReport(buildTelemetryStatusMetadataReport(resourceIds))
                 .build();
 
         // Clear factory default before conditional setting
@@ -98,7 +108,7 @@ public class ReportService {
         return registerReport;
     }
 
-    private OadrReportType buildTelemetryUsageMetadataReport() {
+    private OadrReportType buildTelemetryUsageMetadataReport(List<String> resourceIds) {
         OadrReportDescriptionType powerDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
                         RID_POWER,
@@ -113,7 +123,7 @@ public class ReportService {
                         true
                 )
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
-                .withDataSource(reportDataSource())
+                .withDataSource(reportDataSource(resourceIds))
                 .build();
 
         OadrReportDescriptionType energyDescriptor = Oadr20bEiReportBuilders
@@ -124,7 +134,7 @@ public class ReportService {
                 )
                 .withEnergyRealBase(SiScaleCodeType.KILO)
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
-                .withDataSource(reportDataSource())
+                .withDataSource(reportDataSource(resourceIds))
                 .build();
 
         return Oadr20bEiReportBuilders
@@ -139,7 +149,7 @@ public class ReportService {
                 .build();
     }
 
-    private OadrReportType buildTelemetryStatusMetadataReport() {
+    private OadrReportType buildTelemetryStatusMetadataReport(List<String> resourceIds) {
         OadrReportDescriptionType statusDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
                         RID_RESOURCE_STATUS,
@@ -147,7 +157,7 @@ public class ReportService {
                         ReadingTypeEnumeratedType.X_NOT_APPLICABLE
                 )
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
-                .withDataSource(reportDataSource())
+                .withDataSource(reportDataSource(resourceIds))
                 .build();
 
         return Oadr20bEiReportBuilders
@@ -197,9 +207,26 @@ public class ReportService {
         return Duration.ofSeconds(properties.getReport().getTelemetryRetentionSeconds());
     }
 
-    private EiTargetType reportDataSource() {
+    private List<String> requiredEnabledResourceIds() {
+        String venKey = properties.getVen().getKey();
+        List<String> resourceIds = resourceRepository
+                .findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc(venKey)
+                .stream()
+                .map(OpenAdrResource::getResourceId)
+                .toList();
+
+        if (resourceIds.isEmpty()) {
+            throw new IllegalStateException(
+                    "Cannot register OpenADR reports without enabled resources for venKey="
+                            + venKey
+            );
+        }
+        return resourceIds;
+    }
+
+    private EiTargetType reportDataSource(List<String> resourceIds) {
         return Oadr20bEiBuilders.newOadr20bEiTargetTypeBuilder()
-                .addResourceId(properties.getReport().getResourceId())
+                .addResourceId(resourceIds)
                 .build();
     }
 
