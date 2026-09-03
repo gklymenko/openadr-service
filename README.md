@@ -87,7 +87,7 @@ when a VTN assigns or changes the protocol-level `venID`.
 Provision at least one enabled charge point through
 `PUT /internal/openadr/v1/resources/charge-points/{chargePointPk}` before registering
 reporting capabilities. A resource is assigned to the configured `OPENADR_VEN_KEY` and
-receives the stable ID `qcharge-evse-{chargePointUuid}`. Report registration fails fast
+receives the stable ID `qcharge-evse-{chargePointPk}`. Report registration fails fast
 when the active logical VEN has no enabled resources, preventing an empty or misleading
 METADATA catalog from being sent to the VTN.
 

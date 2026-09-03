@@ -203,17 +203,13 @@ public class EventResourceResolver {
     public record ResolvedResource(
             Integer chargePointPk,
             String chargePointIdentity,
-            String chargePointUuid,
-            String resourceId,
-            Long maxPowerWatts
+            String resourceId
     ) {
         private static ResolvedResource from(OpenAdrResource resource) {
             return new ResolvedResource(
                     resource.getChargePointPk(),
                     resource.getChargePointIdentity(),
-                    resource.getChargePointUuid(),
-                    resource.getResourceId(),
-                    resource.getMaxPowerWatts()
+                    resource.getResourceId()
             );
         }
     }

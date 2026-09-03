@@ -32,10 +32,6 @@ import java.time.Instant;
                         columnNames = "charge_point_identity"
                 ),
                 @UniqueConstraint(
-                        name = "uk_openadr_resource_charge_point_uuid",
-                        columnNames = "charge_point_uuid"
-                ),
-                @UniqueConstraint(
                         name = "uk_openadr_resource_ven_key_resource_id",
                         columnNames = {"ven_key", "resource_id"}
                 )
@@ -56,17 +52,11 @@ public class OpenAdrResource {
     @Column(name = "charge_point_identity", nullable = false, length = 255)
     private String chargePointIdentity;
 
-    @Column(name = "charge_point_uuid", nullable = false, length = 50)
-    private String chargePointUuid;
-
     @Column(name = "resource_id", nullable = false, length = 64)
     private String resourceId;
 
     @Column(name = "enabled", nullable = false)
     private boolean enabled = true;
-
-    @Column(name = "max_power_watts")
-    private Long maxPowerWatts;
 
     @Version
     @Column(name = "row_version", nullable = false)

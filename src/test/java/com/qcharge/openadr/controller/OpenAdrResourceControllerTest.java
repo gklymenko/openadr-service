@@ -33,20 +33,14 @@ class OpenAdrResourceControllerTest {
     @Test
     void validatesInternalKeyBeforeUpsert() {
         OpenAdrResourceController controller = controller();
-        UpsertOpenAdrResourceRequest request = new UpsertOpenAdrResourceRequest(
-                "CP-1",
-                "uuid-1",
-                22_000L
-        );
+        UpsertOpenAdrResourceRequest request = new UpsertOpenAdrResourceRequest("CP-1");
         OpenAdrResourceResponse serviceResponse = new OpenAdrResourceResponse(
                 "primary",
                 10,
                 "CP-1",
-                "uuid-1",
-                "qcharge-evse-uuid-1",
+                "qcharge-evse-10",
                 "EVSE",
-                true,
-                22_000L
+                true
         );
         when(resourceService.upsert(10, request)).thenReturn(serviceResponse);
 

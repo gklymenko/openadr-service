@@ -30,8 +30,4 @@ public interface OpenAdrResourceRepository extends JpaRepository<OpenAdrResource
             Integer chargePointPk
     );
 
-    boolean existsByChargePointUuidAndChargePointPkNot(
-            String chargePointUuid,
-            Integer chargePointPk
-    );
 }

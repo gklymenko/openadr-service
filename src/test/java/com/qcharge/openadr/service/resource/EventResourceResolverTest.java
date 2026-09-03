@@ -170,14 +170,12 @@ class EventResourceResolverTest extends AbstractOadrTest {
         resource.setVenKey("primary");
         resource.setChargePointPk(chargePointPk);
         resource.setChargePointIdentity("CP-" + chargePointPk);
-        resource.setChargePointUuid("uuid-" + chargePointPk);
         resource.setResourceId(resourceId);
         resource.setEnabled(enabled);
-        resource.setMaxPowerWatts(22_000L);
         return resource;
     }
 
     private ResolvedResource resolvedResource(String resourceId) {
-        return new ResolvedResource(10, "CP-10", "uuid-10", resourceId, 22_000L);
+        return new ResolvedResource(10, "CP-10", resourceId);
     }
 }

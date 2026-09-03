@@ -31,16 +31,14 @@ public class OpenAdrResourceService {
             Integer chargePointPk,
             UpsertOpenAdrResourceRequest request
     ) {
-        validateUniqueIdentity(chargePointPk, request);
+        validateUniqueIdentity(chargePointPk, request.chargePointIdentity());
 
         OpenAdrResource resource = repository.findByChargePointPk(chargePointPk)
                 .map(this::requireActiveVen)
-                .map(existing -> requireSameUuid(existing, request.chargePointUuid()))
-                .orElseGet(() -> newResource(chargePointPk, request.chargePointUuid()));
+                .orElseGet(() -> newResource(chargePointPk));
 
         resource.setChargePointIdentity(request.chargePointIdentity());
-        resource.setChargePointUuid(request.chargePointUuid());
-        resource.setMaxPowerWatts(request.maxPowerWatts());
+        resource.setResourceId(resourceId(chargePointPk));
         resource.setEnabled(true);
 
         try {
@@ -88,12 +86,15 @@ public class OpenAdrResourceService {
         return new OpenAdrResourceStatusResponse(statuses);
     }
 
-    private OpenAdrResource newResource(Integer chargePointPk, String chargePointUuid) {
+    private OpenAdrResource newResource(Integer chargePointPk) {
         OpenAdrResource resource = new OpenAdrResource();
         resource.setVenKey(activeVenKey());
         resource.setChargePointPk(chargePointPk);
-        resource.setResourceId(RESOURCE_ID_PREFIX + chargePointUuid);
         return resource;
+    }
+
+    private String resourceId(Integer chargePointPk) {
+        return RESOURCE_ID_PREFIX + chargePointPk;
     }
 
     private OpenAdrResource requireActiveVen(OpenAdrResource resource) {
@@ -109,34 +110,13 @@ public class OpenAdrResourceService {
         return properties.getVen().getKey();
     }
 
-    private OpenAdrResource requireSameUuid(OpenAdrResource resource, String requestedUuid) {
-        if (!resource.getChargePointUuid().equals(requestedUuid)) {
-            throw new ResourceConflictException(
-                    "Charge point UUID cannot be changed for an existing OpenADR resource."
-            );
-        }
-        return resource;
-    }
-
-    private void validateUniqueIdentity(
-            Integer chargePointPk,
-            UpsertOpenAdrResourceRequest request
-    ) {
+    private void validateUniqueIdentity(Integer chargePointPk, String chargePointIdentity) {
         if (repository.existsByChargePointIdentityAndChargePointPkNot(
-                request.chargePointIdentity(),
+                chargePointIdentity,
                 chargePointPk
         )) {
             throw new ResourceConflictException(
                     "Charge point identity is already assigned to another OpenADR resource."
-            );
-        }
-
-        if (repository.existsByChargePointUuidAndChargePointPkNot(
-                request.chargePointUuid(),
-                chargePointPk
-        )) {
-            throw new ResourceConflictException(
-                    "Charge point UUID is already assigned to another OpenADR resource."
             );
         }
     }

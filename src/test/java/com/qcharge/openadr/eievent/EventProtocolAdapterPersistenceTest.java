@@ -39,7 +39,7 @@ class EventProtocolAdapterPersistenceTest extends AbstractOadrTest {
         when(repository.findByEventId("Event_939393")).thenReturn(Optional.empty());
         EventResourceResolver resolver = mock(EventResourceResolver.class);
         ResolvedResource resolved = new ResolvedResource(
-                10, "CP-1", "uuid-1", "RES_123", 22_000L
+                10, "CP-1", "RES_123"
         );
         ResolvedEventTarget eventTarget = new ResolvedEventTarget(java.util.List.of(resolved));
         when(resolver.resolveEventTarget(org.mockito.ArgumentMatchers.any(),

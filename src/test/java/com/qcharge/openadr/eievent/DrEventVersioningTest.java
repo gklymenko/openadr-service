@@ -55,7 +55,7 @@ class DrEventVersioningTest extends AbstractOadrTest {
     void setUp() {
         OpenAdrProperties properties = new OpenAdrProperties();
         ResolvedResource resource = new ResolvedResource(
-                10, "CP-1", "uuid-1", "RES_123", 22_000L
+                10, "CP-1", "RES_123"
         );
         ResolvedEventTarget target = new ResolvedEventTarget(java.util.List.of(resource));
         org.mockito.Mockito.lenient()

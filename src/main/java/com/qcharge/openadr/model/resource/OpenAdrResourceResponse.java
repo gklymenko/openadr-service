@@ -6,11 +6,9 @@ public record OpenAdrResourceResponse(
         String venKey,
         Integer chargePointPk,
         String chargePointIdentity,
-        String chargePointUuid,
         String resourceId,
         String deviceClass,
-        boolean enabled,
-        Long maxPowerWatts
+        boolean enabled
 ) {
     public static final String EVSE_DEVICE_CLASS = "EVSE";
 
@@ -19,11 +17,9 @@ public record OpenAdrResourceResponse(
                 resource.getVenKey(),
                 resource.getChargePointPk(),
                 resource.getChargePointIdentity(),
-                resource.getChargePointUuid(),
                 resource.getResourceId(),
                 EVSE_DEVICE_CLASS,
-                resource.isEnabled(),
-                resource.getMaxPowerWatts()
+                resource.isEnabled()
         );
     }
 }
