@@ -221,7 +221,9 @@ class ReportDeliveryBehaviorTest {
     private ReportRequest periodicRequest(String requestId) {
         ReportRequest request = new ReportRequest();
         request.setReportRequestId(requestId);
-        request.setReportSpecifierId(ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS);
+        request.setReportSpecifierId(ReportService.statusReportSpecifierId(1));
+        request.setReportName("TELEMETRY_STATUS");
+        request.setResourceId("RESOURCE-1");
         request.setRequestedRids(ReportService.RID_RESOURCE_STATUS);
         request.setGranularitySeconds(60);
         request.setReportBackDurationSeconds(60);

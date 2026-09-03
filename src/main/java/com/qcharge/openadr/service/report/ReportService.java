@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -35,8 +36,8 @@ import java.util.Set;
 public class ReportService {
 
     public static final String REPORT_SPECIFIER_ID_METADATA = "METADATA";
-    public static final String REPORT_SPECIFIER_ID_TELEMETRY_USAGE = "qcharge_telemetry_usage";
-    public static final String REPORT_SPECIFIER_ID_TELEMETRY_STATUS = "qcharge_telemetry_status";
+    private static final String REPORT_SPECIFIER_ID_USAGE_PREFIX = "qcharge-usage-";
+    private static final String REPORT_SPECIFIER_ID_STATUS_PREFIX = "qcharge-status-";
 
     public static final String RID_POWER = "qcharge_power";
     public static final String RID_ENERGY = "qcharge_energy";
@@ -54,20 +55,16 @@ public class ReportService {
     ) {
         String venId = session.venId();
         String requestId = RequestUtils.newRequestId();
-        List<String> resourceIds = requiredEnabledResourceIds();
+        List<OpenAdrResource> resources = enabledResources();
 
         log.info(
                 "Registering reporting capabilities. venId={}, venKey={}, resources={}",
                 venId,
                 properties.getVen().getKey(),
-                resourceIds
+                resources.stream().map(OpenAdrResource::getResourceId).toList()
         );
 
-        OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
-                .newOadr20bRegisterReportBuilder(requestId, venId)
-                .addOadrReport(buildTelemetryUsageMetadataReport(resourceIds))
-                .addOadrReport(buildTelemetryStatusMetadataReport(resourceIds))
-                .build();
+        OadrRegisterReportType registerReport = buildRegisterReport(requestId, venId, resources);
 
         // TH conformance rule: top-level reportRequestID MUST be empty
         // for metadata-only oadrRegisterReport (only present per-report, not at root)
@@ -79,7 +76,7 @@ public class ReportService {
                 session
         );
         requestStore.cancelNonMetadataRequests();
-        capabilityRegistry.replaceAll(capabilityDefinitions());
+        capabilityRegistry.replaceAll(capabilityDefinitions(resources));
 
         log.info("Reporting capabilities registered successfully");
 
@@ -92,13 +89,11 @@ public class ReportService {
     ) {
         String venId = session.venId();
         String requestId = RequestUtils.newRequestId();
-        List<String> resourceIds = requiredEnabledResourceIds();
-
-        OadrRegisterReportType registerReport = Oadr20bEiReportBuilders
-                .newOadr20bRegisterReportBuilder(requestId, venId)
-                .addOadrReport(buildTelemetryUsageMetadataReport(resourceIds))
-                .addOadrReport(buildTelemetryStatusMetadataReport(resourceIds))
-                .build();
+        OadrRegisterReportType registerReport = buildRegisterReport(
+                requestId,
+                venId,
+                enabledResources()
+        );
 
         // Clear factory default before conditional setting
         registerReport.setReportRequestID(reportRequestId != null && !reportRequestId.isBlank()
@@ -108,7 +103,20 @@ public class ReportService {
         return registerReport;
     }
 
-    private OadrReportType buildTelemetryUsageMetadataReport(List<String> resourceIds) {
+    private OadrRegisterReportType buildRegisterReport(
+            String requestId,
+            String venId,
+            List<OpenAdrResource> resources
+    ) {
+        var builder = Oadr20bEiReportBuilders
+                .newOadr20bRegisterReportBuilder(requestId, venId);
+        resources.forEach(resource -> builder
+                .addOadrReport(buildTelemetryUsageMetadataReport(resource))
+                .addOadrReport(buildTelemetryStatusMetadataReport(resource)));
+        return builder.build();
+    }
+
+    private OadrReportType buildTelemetryUsageMetadataReport(OpenAdrResource resource) {
         OadrReportDescriptionType powerDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
                         RID_POWER,
@@ -123,7 +131,7 @@ public class ReportService {
                         true
                 )
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
-                .withDataSource(reportDataSource(resourceIds))
+                .withDataSource(reportDataSource(resource.getResourceId()))
                 .build();
 
         OadrReportDescriptionType energyDescriptor = Oadr20bEiReportBuilders
@@ -134,12 +142,12 @@ public class ReportService {
                 )
                 .withEnergyRealBase(SiScaleCodeType.KILO)
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
-                .withDataSource(reportDataSource(resourceIds))
+                .withDataSource(reportDataSource(resource.getResourceId()))
                 .build();
 
         return Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportOadrReportBuilder(
-                        REPORT_SPECIFIER_ID_TELEMETRY_USAGE,
+                        usageReportSpecifierId(resource.getChargePointPk()),
                         ReportNameEnumeratedType.METADATA_TELEMETRY_USAGE,
                         clock.instant().toEpochMilli()
                 )
@@ -149,7 +157,7 @@ public class ReportService {
                 .build();
     }
 
-    private OadrReportType buildTelemetryStatusMetadataReport(List<String> resourceIds) {
+    private OadrReportType buildTelemetryStatusMetadataReport(OpenAdrResource resource) {
         OadrReportDescriptionType statusDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
                         RID_RESOURCE_STATUS,
@@ -157,12 +165,12 @@ public class ReportService {
                         ReadingTypeEnumeratedType.X_NOT_APPLICABLE
                 )
                 .withOadrSamplingRate(minSamplingPeriod().toString(), maxSamplingPeriod().toString(), false)
-                .withDataSource(reportDataSource(resourceIds))
+                .withDataSource(reportDataSource(resource.getResourceId()))
                 .build();
 
         return Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportOadrReportBuilder(
-                        REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                        statusReportSpecifierId(resource.getChargePointPk()),
                         ReportNameEnumeratedType.METADATA_TELEMETRY_STATUS,
                         clock.instant().toEpochMilli()
                 )
@@ -171,25 +179,31 @@ public class ReportService {
                 .build();
     }
 
-    private List<ReportCapabilityRegistry.Definition> capabilityDefinitions() {
-        return List.of(
-                new ReportCapabilityRegistry.Definition(
-                        REPORT_SPECIFIER_ID_TELEMETRY_USAGE,
-                        ReportNameEnumeratedType.TELEMETRY_USAGE.value(),
-                        Set.of(RID_POWER, RID_ENERGY),
-                        minSamplingPeriod(),
-                        maxSamplingPeriod(),
-                        availableDuration()
-                ),
-                new ReportCapabilityRegistry.Definition(
-                        REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
-                        ReportNameEnumeratedType.TELEMETRY_STATUS.value(),
-                        Set.of(RID_RESOURCE_STATUS),
-                        minSamplingPeriod(),
-                        maxSamplingPeriod(),
-                        availableDuration()
-                )
-        );
+    private List<ReportCapabilityRegistry.Definition> capabilityDefinitions(
+            List<OpenAdrResource> resources
+    ) {
+        List<ReportCapabilityRegistry.Definition> definitions = new ArrayList<>(resources.size() * 2);
+        for (OpenAdrResource resource : resources) {
+            definitions.add(new ReportCapabilityRegistry.Definition(
+                    usageReportSpecifierId(resource.getChargePointPk()),
+                    ReportNameEnumeratedType.TELEMETRY_USAGE.value(),
+                    resource.getResourceId(),
+                    Set.of(RID_POWER, RID_ENERGY),
+                    minSamplingPeriod(),
+                    maxSamplingPeriod(),
+                    availableDuration()
+            ));
+            definitions.add(new ReportCapabilityRegistry.Definition(
+                    statusReportSpecifierId(resource.getChargePointPk()),
+                    ReportNameEnumeratedType.TELEMETRY_STATUS.value(),
+                    resource.getResourceId(),
+                    Set.of(RID_RESOURCE_STATUS),
+                    minSamplingPeriod(),
+                    maxSamplingPeriod(),
+                    availableDuration()
+            ));
+        }
+        return List.copyOf(definitions);
     }
 
     private Duration minSamplingPeriod() {
@@ -207,27 +221,24 @@ public class ReportService {
         return Duration.ofSeconds(properties.getReport().getTelemetryRetentionSeconds());
     }
 
-    private List<String> requiredEnabledResourceIds() {
-        String venKey = properties.getVen().getKey();
-        List<String> resourceIds = resourceRepository
-                .findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc(venKey)
-                .stream()
-                .map(OpenAdrResource::getResourceId)
-                .toList();
-
-        if (resourceIds.isEmpty()) {
-            throw new IllegalStateException(
-                    "Cannot register OpenADR reports without enabled resources for venKey="
-                            + venKey
-            );
-        }
-        return resourceIds;
+    private List<OpenAdrResource> enabledResources() {
+        return resourceRepository.findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc(
+                properties.getVen().getKey()
+        );
     }
 
-    private EiTargetType reportDataSource(List<String> resourceIds) {
+    private EiTargetType reportDataSource(String resourceId) {
         return Oadr20bEiBuilders.newOadr20bEiTargetTypeBuilder()
-                .addResourceId(resourceIds)
+                .addResourceId(resourceId)
                 .build();
+    }
+
+    static String usageReportSpecifierId(Integer chargePointPk) {
+        return REPORT_SPECIFIER_ID_USAGE_PREFIX + chargePointPk;
+    }
+
+    static String statusReportSpecifierId(Integer chargePointPk) {
+        return REPORT_SPECIFIER_ID_STATUS_PREFIX + chargePointPk;
     }
 
 }

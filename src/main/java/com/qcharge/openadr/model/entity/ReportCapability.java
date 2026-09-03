@@ -31,6 +31,9 @@ public class ReportCapability {
     @Column(name = "report_name", nullable = false)
     private String reportName;
 
+    @Column(name = "resource_id", nullable = false, length = 64)
+    private String resourceId;
+
     @Column(name = "supported_rids", nullable = false)
     private String supportedRids;
 

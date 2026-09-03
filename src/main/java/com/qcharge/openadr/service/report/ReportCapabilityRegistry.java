@@ -33,6 +33,7 @@ public class ReportCapabilityRegistry {
         ReportCapability capability = new ReportCapability();
         capability.setReportSpecifierId(definition.reportSpecifierId());
         capability.setReportName(definition.reportName());
+        capability.setResourceId(definition.resourceId());
         capability.setSupportedRids(ReportRidCodec.encode(definition.supportedRids()));
         capability.setMinSamplingPeriodSeconds(definition.minSamplingPeriod().toSeconds());
         capability.setMaxSamplingPeriodSeconds(definition.maxSamplingPeriod().toSeconds());
@@ -43,6 +44,7 @@ public class ReportCapabilityRegistry {
     public record Definition(
             String reportSpecifierId,
             String reportName,
+            String resourceId,
             Set<String> supportedRids,
             Duration minSamplingPeriod,
             Duration maxSamplingPeriod,
@@ -51,6 +53,7 @@ public class ReportCapabilityRegistry {
         public Definition {
             reportSpecifierId = requireText(reportSpecifierId, "reportSpecifierId");
             reportName = requireText(reportName, "reportName");
+            resourceId = requireText(resourceId, "resourceId");
             Objects.requireNonNull(supportedRids, "supportedRids");
             Objects.requireNonNull(minSamplingPeriod, "minSamplingPeriod");
             Objects.requireNonNull(maxSamplingPeriod, "maxSamplingPeriod");

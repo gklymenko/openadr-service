@@ -17,9 +17,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -45,8 +47,8 @@ class ReportServiceMetadataBehaviorTest {
         resourceRepository = mock(OpenAdrResourceRepository.class);
         when(resourceRepository.findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc("primary"))
                 .thenReturn(List.of(
-                        resource("RESOURCE-1"),
-                        resource("RESOURCE-2")
+                        resource(101, "RESOURCE-1"),
+                        resource(202, "RESOURCE-2")
                 ));
         reportService = new ReportService(
                 properties,
@@ -97,24 +99,48 @@ class ReportServiceMetadataBehaviorTest {
         assertThat(resourceIds)
                 .hasSize(6)
                 .containsOnly("RESOURCE-1", "RESOURCE-2");
+
+        assertThat(metadata.getOadrReport())
+                .extracting(report -> report.getReportSpecifierID(), report -> report.getReportName())
+                .containsExactly(
+                        tuple("qcharge-usage-101", "METADATA_TELEMETRY_USAGE"),
+                        tuple("qcharge-status-101", "METADATA_TELEMETRY_STATUS"),
+                        tuple("qcharge-usage-202", "METADATA_TELEMETRY_USAGE"),
+                        tuple("qcharge-status-202", "METADATA_TELEMETRY_STATUS")
+                );
+
+        Map<String, String> resourceBySpecifier = metadata.getOadrReport().stream()
+                .collect(Collectors.toMap(
+                        report -> report.getReportSpecifierID(),
+                        report -> report.getOadrReportDescription().getFirst()
+                                .getReportDataSource().getResourceID().getFirst(),
+                        (left, right) -> left
+                ));
+        assertThat(resourceBySpecifier).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "qcharge-usage-101", "RESOURCE-1",
+                "qcharge-status-101", "RESOURCE-1",
+                "qcharge-usage-202", "RESOURCE-2",
+                "qcharge-status-202", "RESOURCE-2"
+        ));
     }
 
     @Test
-    void metadataRegistrationRequiresAtLeastOneEnabledResource() {
+    void metadataRegistrationWithoutEnabledResourcesAdvertisesNoCapabilities() {
         when(resourceRepository.findAllByVenKeyAndEnabledTrueOrderByResourceIdAsc("primary"))
                 .thenReturn(List.of());
 
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> reportService.buildMetadataRegisterReport("METADATA-REQUEST", session())
+        var metadata = reportService.buildMetadataRegisterReport(
+                "METADATA-REQUEST",
+                session()
         );
 
-        assertThat(exception.getMessage()).contains("venKey=primary");
+        assertThat(metadata.getOadrReport()).isEmpty();
     }
 
-    private OpenAdrResource resource(String resourceId) {
+    private OpenAdrResource resource(Integer chargePointPk, String resourceId) {
         OpenAdrResource resource = new OpenAdrResource();
         resource.setVenKey("primary");
+        resource.setChargePointPk(chargePointPk);
         resource.setResourceId(resourceId);
         resource.setEnabled(true);
         return resource;

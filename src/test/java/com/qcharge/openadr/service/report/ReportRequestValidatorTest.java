@@ -55,6 +55,7 @@ class ReportRequestValidatorTest {
 
         assertEquals(1, result.size());
         assertEquals(REPORT_SPECIFIER_ID, result.getFirst().reportSpecifierId());
+        assertEquals("RESOURCE-1", result.getFirst().resourceId());
         assertTrue(result.getFirst().requestedRids().contains(RID));
     }
 
@@ -217,6 +218,7 @@ class ReportRequestValidatorTest {
         ReportCapability capability = new ReportCapability();
         capability.setReportSpecifierId(REPORT_SPECIFIER_ID);
         capability.setReportName("TELEMETRY_USAGE");
+        capability.setResourceId("RESOURCE-1");
         capability.setSupportedRids(RID);
         capability.setMinSamplingPeriodSeconds(10);
         capability.setMaxSamplingPeriodSeconds(60);

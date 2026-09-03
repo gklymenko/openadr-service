@@ -167,8 +167,9 @@ class ReportRequestHandlerBehaviorTest {
     ) {
         return new ValidatedReportRequest(
                 reportRequestId,
-                ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                ReportService.statusReportSpecifierId(1),
                 "TELEMETRY_STATUS",
+                "RESOURCE-1",
                 Set.of(ReportService.RID_RESOURCE_STATUS),
                 Duration.ofMinutes(1),
                 reportBackDuration,

@@ -8,6 +8,7 @@ public record ValidatedReportRequest(
         String reportRequestId,
         String reportSpecifierId,
         String reportName,
+        String resourceId,
         Set<String> requestedRids,
         Duration granularity,
         Duration reportBackDuration,

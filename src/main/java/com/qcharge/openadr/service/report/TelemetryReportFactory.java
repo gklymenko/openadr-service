@@ -1,6 +1,7 @@
 package com.qcharge.openadr.service.report;
 
 import com.qcharge.openadr.model.entity.ReportRequest;
+import com.qcharge.openadr.model.oadr20b.ei.ReportNameEnumeratedType;
 import com.qcharge.openadr.model.oadr20b.oadr.OadrReportType;
 import com.qcharge.openadr.service.report.model.ReportSchedule;
 import com.qcharge.openadr.utility.TimeRange;
@@ -38,8 +39,8 @@ public class TelemetryReportFactory {
     }
 
     private boolean isStatus(ReportRequest request) {
-        return ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS.equals(
-                request.getReportSpecifierId()
+        return ReportNameEnumeratedType.TELEMETRY_STATUS.value().equals(
+                request.getReportName()
         );
     }
 }

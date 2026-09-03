@@ -39,7 +39,7 @@ class TelemetryReportXmlBehaviorTest {
         OadrReportType report = statusFactory.oneShot(
                 request(
                         "STATUS-REQUEST",
-                        ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                        ReportService.statusReportSpecifierId(1),
                         ReportService.RID_RESOURCE_STATUS
                 ),
                 List.of(interval(NOW, Duration.ofMinutes(1)))
@@ -64,7 +64,7 @@ class TelemetryReportXmlBehaviorTest {
     void periodicStatusUsesZeroBasedIntervalUids() {
         ReportRequest request = request(
                 "STATUS-REQUEST",
-                ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                ReportService.statusReportSpecifierId(1),
                 ReportService.RID_RESOURCE_STATUS
         );
         var schedule = new ReportSchedule(
@@ -93,7 +93,7 @@ class TelemetryReportXmlBehaviorTest {
     void r1_3020_periodicStatusUsesOverallTimingForSinglePointDelivery() {
         ReportRequest request = request(
                 "STATUS-REQUEST",
-                ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                ReportService.statusReportSpecifierId(1),
                 ReportService.RID_RESOURCE_STATUS
         );
         var schedule = new ReportSchedule(
@@ -122,7 +122,7 @@ class TelemetryReportXmlBehaviorTest {
     void r1_3025_delayedOnChangeStatusContainsIntervalTimeAndFullLoadControlState() {
         ReportRequest request = request(
                 "DELAYED-STATUS-REQUEST",
-                ReportService.REPORT_SPECIFIER_ID_TELEMETRY_STATUS,
+                ReportService.statusReportSpecifierId(1),
                 ReportService.RID_RESOURCE_STATUS
         );
         var schedule = new ReportSchedule(
@@ -155,7 +155,7 @@ class TelemetryReportXmlBehaviorTest {
     void r1_3150_oneShotUsagePlacesPowerAndEnergyInOneInterval() {
         ReportRequest request = request(
                 "USAGE-REQUEST",
-                ReportService.REPORT_SPECIFIER_ID_TELEMETRY_USAGE,
+                ReportService.usageReportSpecifierId(1),
                 ReportService.RID_POWER,
                 ReportService.RID_ENERGY
         );
@@ -185,7 +185,7 @@ class TelemetryReportXmlBehaviorTest {
         OadrReportType report = usageFactory.build(
                 request(
                         "POWER-REQUEST",
-                        ReportService.REPORT_SPECIFIER_ID_TELEMETRY_USAGE,
+                        ReportService.usageReportSpecifierId(1),
                         ReportService.RID_POWER
                 ),
                 List.of(

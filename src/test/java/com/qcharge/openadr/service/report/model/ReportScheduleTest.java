@@ -87,6 +87,7 @@ class ReportScheduleTest {
                         "REPORT-1",
                         "SPEC-1",
                         "TELEMETRY_USAGE",
+                        "RESOURCE-1",
                         Set.of("RID-1"),
                         Duration.ofMinutes(1),
                         Duration.ofMinutes(2),

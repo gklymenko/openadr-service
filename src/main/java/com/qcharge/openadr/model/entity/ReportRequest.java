@@ -36,6 +36,9 @@ public class ReportRequest {
     @Column(name = "report_name", nullable = false)
     private String reportName;
 
+    @Column(name = "resource_id", length = 64)
+    private String resourceId;
+
     @Column(name = "requested_rids", nullable = false)
     private String requestedRids;
 

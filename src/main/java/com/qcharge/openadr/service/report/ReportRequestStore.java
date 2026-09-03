@@ -49,6 +49,7 @@ public class ReportRequestStore {
         entity.setReportRequestId(request.reportRequestId());
         entity.setReportSpecifierId(request.reportSpecifierId());
         entity.setReportName(request.reportName());
+        entity.setResourceId(request.resourceId());
         entity.setRequestedRids(ReportRidCodec.encode(request.requestedRids()));
         entity.setGranularitySeconds(request.granularity().toSeconds());
         entity.setReportBackDurationSeconds(request.reportBackDuration().toSeconds());
