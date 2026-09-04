@@ -47,6 +47,12 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Central-service telemetry integration -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
         <!-- Feign clients for calls to other QCharge services -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -244,9 +250,9 @@
         </profile>
 
         <profile>
-            <id>certification</id>
+            <id>dev</id>
             <properties>
-                <spring-boot.run.profiles>certification</spring-boot.run.profiles>
+                <spring-boot.run.profiles>dev</spring-boot.run.profiles>
             </properties>
         </profile>
 

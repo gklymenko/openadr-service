@@ -9,7 +9,7 @@ The same JAR and Docker image are used for every deployed environment. Spring pr
 | Environment | Spring profile | Certificates | Hostname verification |
 |---|---|---|---|
 | Developer machine with local Test Harness | `local` | Files under `src/main/resources/eonti_test_certs` | Disabled for the Test Harness certificate |
-| EC2 used for OpenADR certification | `certification` | Eonti test PKCS#12 files from GitLab Variables | Disabled for the Test Harness certificate |
+| Development EC2 used for OpenADR certification | `dev` | Eonti test PKCS#12 files from GitLab Variables | Disabled for the Test Harness certificate |
 | Real production VTN | `prod` | Production PKCS#12 files from GitLab Variables | Enabled |
 
 The hostname-verification exception applies only to the OpenADR HTTP client. Certificate-chain,
@@ -41,19 +41,20 @@ mvn spring-boot:run -Dspring-boot.run.profiles=local
 
 The local VEN connects to `https://127.0.0.1:8080`. The Test Harness configuration file still uses an `http://` base URL because the tool changes the scheme automatically when security is enabled.
 
-## Certification and production deployment
+## Development/certification and production deployment
 
 GitLab stores each PKCS#12 as single-line Base64. Create these variables twice, using the same names and different environment scopes:
 
 | Variable | Type | Scopes |
 |---|---|---|
-| `OPENADR_VEN_PRIMARY_IDENTITY_P12_B64` | File, masked, hidden, protected | `certification`, `prod` |
-| `OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD` | Variable, masked, hidden, protected | `certification`, `prod` |
-| `OPENADR_VEN_PRIMARY_IDENTITY_ALIAS` | Variable; optional, defaults to `openadr-ven` | `certification`, `prod` |
-| `OPENADR_TRUSTSTORE_P12_B64` | File, masked, hidden, protected | `certification`, `prod` |
-| `OPENADR_TRUSTSTORE_PASSWORD` | Variable, masked, hidden, protected | `certification`, `prod` |
+| `OPENADR_VEN_PRIMARY_IDENTITY_P12_B64` | File, masked, hidden, protected | `dev`, `prod` |
+| `OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD` | Variable, masked, hidden, protected | `dev`, `prod` |
+| `OPENADR_VEN_PRIMARY_IDENTITY_ALIAS` | Variable; optional, defaults to `openadr-ven` | `dev`, `prod` |
+| `OPENADR_TRUSTSTORE_P12_B64` | File, masked, hidden, protected | `dev`, `prod` |
+| `OPENADR_TRUSTSTORE_PASSWORD` | Variable, masked, hidden, protected | `dev`, `prod` |
 
-The `certification` scope contains Eonti demo/test credentials. The `prod` scope must contain a production VEN identity and production truststore.
+The `dev` scope contains Eonti demo/test credentials used for certification.
+The `prod` scope must contain a production VEN identity and production truststore.
 
 Additional environment-scoped GitLab Variables required by deployment jobs:
 
@@ -76,6 +77,10 @@ OPENADR_VTN_ID              # optional until known
 OPENADR_VEN_KEY             # stable logical VEN key; defaults to primary
 OPENADR_VEN_ID
 OPENADR_VEN_NAME            # optional
+
+KAFKA_BROKERS               # required in dev and prod
+CENTRAL_KAFKA_TOPIC         # central-service output topic; required in dev and prod
+OPENADR_KAFKA_GROUP_ID      # optional; defaults to qcharge_openadr_<profile>
 ```
 
 `OPENADR_VEN_KEY` scopes the enabled rows in `openadr_resource`. Event targeting and
@@ -88,8 +93,32 @@ Provision at least one enabled charge point through
 `PUT /internal/openadr/v1/resources/charge-points/{chargePointPk}` before registering
 reporting capabilities. A resource is assigned to the configured `OPENADR_VEN_KEY` and
 receives the stable ID `qcharge-evse-{chargePointPk}`. Report registration fails fast
-when the active logical VEN has no enabled resources, preventing an empty or misleading
-METADATA catalog from being sent to the VTN.
+when a resource definition is invalid. If the active logical VEN has no enabled
+resources, its METADATA catalog contains no telemetry capabilities.
+
+## Per-resource telemetry pipeline
+
+Every runtime profile consumes central-service messages from Kafka without
+requiring a message key. METER_VALUE, CONNECTOR_STATUS, HEARTBEAT, PONG,
+and DISCONNECTED messages are normalized and resolved by
+chargePointId -> openadr_resource. Only enabled resources belonging to the
+configured OPENADR_VEN_KEY are accepted.
+OPENADR_KAFKA_GROUP_ID must remain distinct from data-service's consumer group,
+otherwise Kafka would load-balance records between the two services.
+
+Ordering does not depend on the Kafka partition. Ingestion locks the resource
+row and compares source timestamps independently for power, energy, and
+availability, so a late or duplicated message cannot overwrite newer state.
+Power is stored in kW and Energy.Active.Import.Register in kWh. Connector 0 is
+treated as the charger total; otherwise physical connector values are summed.
+
+Normalized connector state, latest resource availability, and timestamped
+resource snapshots are persisted by Flyway migration V7. OpenADR report
+delivery queries those snapshots by ReportRequest.resourceId. Cleanup retains
+the configured time window and at least the newest 100 samples per resource.
+Kafka offsets are acknowledged only after the database transaction completes;
+malformed contract messages are logged and skipped, while infrastructure or
+database failures are retried.
 
 Generate the `DEPLOY_SSH_KNOWN_HOSTS` value from a trusted workstation and verify the fingerprint before saving it in GitLab:
 
@@ -106,7 +135,7 @@ The pipeline decodes certificate variables, copies them to the EC2 host, and mou
 
 Deployments are manual jobs on the default branch:
 
-- `deploy certification`
+- `deploy dev`
 - `deploy production`
 
 Docker images are stored in the GitLab Container Registry under the immutable commit SHA tag.

@@ -20,7 +20,7 @@ public class TelemetryReportFactory {
     private final TelemetryUsageReportFactory usageReportFactory;
 
     public OadrReportType oneShot(ReportRequest request) {
-        var intervals = intervalDataProvider.oneShot();
+        var intervals = intervalDataProvider.oneShot(request);
         return isStatus(request)
                 ? statusReportFactory.oneShot(request, intervals)
                 : usageReportFactory.build(request, intervals, intervals.getFirst().sample().capturedAt());

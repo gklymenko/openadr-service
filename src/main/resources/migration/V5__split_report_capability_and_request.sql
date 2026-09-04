@@ -26,12 +26,14 @@ CREATE TABLE report_request (
     next_report_at               DATETIME(3) NULL,
     last_reported_at             DATETIME(3) NULL,
     status                       VARCHAR(32) NOT NULL,
+    delivery_state VARCHAR(32) NOT NULL DEFAULT 'IDLE',
+    delivery_token VARCHAR(36) NULL,
+    delivery_claimed_at DATETIME(3) NULL,
     created_at                   DATETIME(3) NOT NULL,
     updated_at                   DATETIME(3) NOT NULL,
     CONSTRAINT uk_report_request_id UNIQUE (report_request_id),
     INDEX idx_report_request_status (status),
     INDEX idx_report_request_due (status, next_report_at),
-    INDEX idx_report_request_specifier (report_specifier_id)
+    INDEX idx_report_request_specifier (report_specifier_id),
+    INDEX idx_report_request_delivery (status, delivery_state, next_report_at)
 );
-
-DROP TABLE IF EXISTS ven_report;

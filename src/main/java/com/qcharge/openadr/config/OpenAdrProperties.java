@@ -151,6 +151,18 @@ public class OpenAdrProperties {
         @Min(60)
         private int telemetryRetentionSeconds = 60 * 60;
 
+        /** Maximum age of a power measurement included in an aggregated resource snapshot. */
+        @Min(1)
+        private int telemetryStaleAfterSeconds = 180;
+
+        /** How often latest normalized state is materialized into report history. */
+        @Min(1000)
+        private long telemetrySamplerDelayMillis = 60_000;
+
+        /** How often persisted telemetry outside the retention policy is removed. */
+        @Min(1000)
+        private long telemetryCleanupDelayMillis = 60_000;
+
         @Min(100)
         private long schedulerDelayMillis = 1000;
 

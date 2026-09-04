@@ -71,6 +71,8 @@ build image:
       : "${OPENADR_VEN_ID:?OPENADR_VEN_ID is required}"
       : "${OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD:?OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD is required}"
       : "${OPENADR_TRUSTSTORE_PASSWORD:?OPENADR_TRUSTSTORE_PASSWORD is required}"
+      : "${KAFKA_BROKERS:?KAFKA_BROKERS is required}"
+      : "${CENTRAL_KAFKA_TOPIC:?CENTRAL_KAFKA_TOPIC is required}"
 
       test -f "$OPENADR_VEN_PRIMARY_IDENTITY_P12_B64"
       test -f "$OPENADR_TRUSTSTORE_P12_B64"
@@ -118,6 +120,9 @@ build image:
         printf 'OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD=%s\n' "$OPENADR_VEN_PRIMARY_IDENTITY_PASSWORD"
         printf 'OPENADR_VEN_PRIMARY_IDENTITY_ALIAS=%s\n' "${OPENADR_VEN_PRIMARY_IDENTITY_ALIAS:-openadr-ven}"
         printf 'OPENADR_TRUSTSTORE_PASSWORD=%s\n' "$OPENADR_TRUSTSTORE_PASSWORD"
+        printf 'KAFKA_BROKERS=%s\n' "$KAFKA_BROKERS"
+        printf 'CENTRAL_KAFKA_TOPIC=%s\n' "$CENTRAL_KAFKA_TOPIC"
+        printf 'OPENADR_KAFKA_GROUP_ID=%s\n' "${OPENADR_KAFKA_GROUP_ID:-qcharge_openadr_$DEPLOY_PROFILE}"
       } > "$DEPLOY_FILES/runtime.env"
       chmod 0600 "$DEPLOY_FILES/runtime.env"
 
@@ -157,12 +162,12 @@ build image:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       when: manual
 
-deploy certification:
+deploy dev:
   extends: .deploy
   environment:
-    name: certification
+    name: dev
   variables:
-    DEPLOY_PROFILE: certification
+    DEPLOY_PROFILE: dev
 
 deploy production:
   extends: .deploy
