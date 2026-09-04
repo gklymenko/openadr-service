@@ -36,8 +36,7 @@ public class ReportRequestHandler {
     private final Clock clock;
 
     public void handleRegisteredReport(
-            OadrRegisteredReportType registeredReport,
-            OpenAdrSessionSnapshot session
+            OadrRegisteredReportType registeredReport, OpenAdrSessionSnapshot session
     ) {
         if (registeredReport.getOadrReportRequest().isEmpty()) {
             log.info("oadrRegisteredReport accepted without immediate report requests");
@@ -57,8 +56,7 @@ public class ReportRequestHandler {
     }
 
     public void handle(
-            OadrCreateReportType createReport,
-            OpenAdrSessionSnapshot session
+            OadrCreateReportType createReport, OpenAdrSessionSnapshot session
     ) {
         log.info(
                 "Received oadrCreateReport. requestId={}, requests={}",
@@ -137,9 +135,7 @@ public class ReportRequestHandler {
     }
 
     private void processReportRequests(
-            String requestId,
-            List<OadrReportRequestType> requests,
-            OpenAdrSessionSnapshot session
+            String requestId, List<OadrReportRequestType> requests, OpenAdrSessionSnapshot session
     ) {
         List<ValidatedReportRequest> validatedRequests = requestValidator.validateAll(requests, requestId);
         Map<String, ReportRequest> persistedById = new HashMap<>();

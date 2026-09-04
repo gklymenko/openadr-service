@@ -37,8 +37,7 @@ public class ReportDeliveryCoordinator {
     private final Clock clock;
 
     public void deliverOneShot(
-            ReportRequest request,
-            OpenAdrSessionSnapshot session
+            ReportRequest request, OpenAdrSessionSnapshot session
     ) {
         var claimed = requestStore.claimActive(
                 request.getReportRequestId(),
@@ -161,8 +160,7 @@ public class ReportDeliveryCoordinator {
     }
 
     private void handlePiggybackCancellation(
-            OadrCancelReportType cancellation,
-            OpenAdrSessionSnapshot session
+            OadrCancelReportType cancellation, OpenAdrSessionSnapshot session
     ) {
         ReportRequestStore.CancellationBatch batch = beginCancellation(cancellation);
         if (!batch.accepted()) {
@@ -198,8 +196,7 @@ public class ReportDeliveryCoordinator {
     }
 
     private void deliverFinal(
-            ReportRequest request,
-            OpenAdrSessionSnapshot session
+            ReportRequest request, OpenAdrSessionSnapshot session
     ) {
         var claimed = requestStore.claimFinal(
                 request.getReportRequestId(),
@@ -259,8 +256,7 @@ public class ReportDeliveryCoordinator {
     }
 
     private void sendMetadata(
-            ReportRequest request,
-            OpenAdrSessionSnapshot session
+            ReportRequest request, OpenAdrSessionSnapshot session
     ) {
         OadrRegisterReportType payload = reportService.buildMetadataRegisterReport(
                 request.getReportRequestId(),
@@ -271,9 +267,7 @@ public class ReportDeliveryCoordinator {
     }
 
     private OadrCancelReportType sendTelemetry(
-            ReportRequest request,
-            OadrReportType report,
-            OpenAdrSessionSnapshot session
+            ReportRequest request, OadrReportType report, OpenAdrSessionSnapshot session
     ) {
         OadrUpdateReportType payload = Oadr20bEiReportBuilders
                 .newOadr20bUpdateReportBuilder(RequestUtils.newRequestId(), session.venId())

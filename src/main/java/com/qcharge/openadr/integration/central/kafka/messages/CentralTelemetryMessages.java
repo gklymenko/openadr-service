@@ -1,6 +1,7 @@
 package com.qcharge.openadr.integration.central.kafka.messages;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import lombok.experimental.FieldNameConstants;
 
 import java.util.List;
 
@@ -52,6 +53,8 @@ public final class CentralTelemetryMessages {
     ) {
     }
 
+
+    @FieldNameConstants
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Heartbeat(
             String messageType,
@@ -60,6 +63,7 @@ public final class CentralTelemetryMessages {
     ) {
     }
 
+    @FieldNameConstants
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ResourceStatus(
             String messageType,

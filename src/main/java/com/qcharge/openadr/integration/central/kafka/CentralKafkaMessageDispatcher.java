@@ -19,7 +19,7 @@ import java.time.Instant;
 public class CentralKafkaMessageDispatcher {
 
     private final ObjectMapper objectMapper;
-    private final CentralTelemetryIngestionService ingestionService;
+    private final CentralMessageHandler centralMessageHandler;
     private final CentralTelemetryMessageMapper telemetryMapper;
 
     public void dispatch(String payload, Instant kafkaTimestamp) {
@@ -44,27 +44,25 @@ public class CentralKafkaMessageDispatcher {
     }
 
     private IngestionOutcome meterValues(String payload) {
-        return ingestionService.ingestMeterValues(read(payload, MeterValues.class));
+        return centralMessageHandler.handleMeterValues(read(payload, MeterValues.class));
     }
 
     private IngestionOutcome connectorStatus(String payload, Instant kafkaTimestamp) {
         ConnectorStatus message = read(payload, ConnectorStatus.class);
-        return ingestionService.ingestAvailability(
+        return centralMessageHandler.handleAvailability(
                 message.chargePointId(),
                 true,
-                timestampOrFallback(message.timestamp(), "timestamp", kafkaTimestamp)
+                timestampOrFallback(message.timestamp(), ResourceStatus.Fields.timestamp, kafkaTimestamp)
         );
     }
 
     private IngestionOutcome heartbeat(String payload, Instant kafkaTimestamp) {
         Heartbeat message = read(payload, Heartbeat.class);
-        return ingestionService.ingestAvailability(
+        return centralMessageHandler.handleAvailability(
                 message.chargePointId(),
                 true,
                 timestampOrFallback(
-                        message.lastHeartbeatTimestamp(),
-                        "lastHeartbeatTimestamp",
-                        kafkaTimestamp
+                        message.lastHeartbeatTimestamp(), Heartbeat.Fields.lastHeartbeatTimestamp, kafkaTimestamp
                 )
         );
     }
@@ -75,16 +73,14 @@ public class CentralKafkaMessageDispatcher {
             Instant kafkaTimestamp
     ) {
         ResourceStatus message = read(payload, ResourceStatus.class);
-        return ingestionService.ingestAvailability(
+        return centralMessageHandler.handleAvailability(
                 message.chargePointId(),
                 online,
-                timestampOrFallback(message.timestamp(), "timestamp", kafkaTimestamp)
+                timestampOrFallback(message.timestamp(), ResourceStatus.Fields.timestamp, kafkaTimestamp)
         );
     }
 
-    private Instant timestampOrFallback(
-            String timestamp, String field, Instant kafkaTimestamp
-    ) {
+    private Instant timestampOrFallback(String timestamp, String field, Instant kafkaTimestamp) {
         return timestamp == null || timestamp.isBlank()
                 ? kafkaTimestamp
                 : telemetryMapper.parseTimestamp(timestamp, field);

@@ -26,12 +26,9 @@ public class ResourceTelemetrySnapshotService {
 
     @Transactional
     public TelemetrySample capture(
-            OpenAdrResource resource,
-            Instant capturedAt,
-            boolean onlineAtCapturedAt
+            OpenAdrResource resource, Instant capturedAt, boolean onlineAtCapturedAt
     ) {
-        List<ConnectorTelemetryState> connectorStates =
-                connectorStateRepository.findAllByResource_Id(resource.getId());
+        List<ConnectorTelemetryState> connectorStates = connectorStateRepository.findAllByResource_Id(resource.getId());
 
         Instant freshnessFloor = capturedAt.minusSeconds(
                 properties.getReport().getTelemetryStaleAfterSeconds()

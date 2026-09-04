@@ -39,14 +39,14 @@ class CentralTelemetryIngestionServiceTest {
     @Mock
     private ResourceTelemetrySnapshotService snapshotService;
 
-    private CentralTelemetryIngestionService service;
+    private CentralMessageHandler service;
     private OpenAdrResource resource;
 
     @BeforeEach
     void setUp() {
         OpenAdrProperties properties = new OpenAdrProperties();
         properties.getVen().setKey("primary");
-        service = new CentralTelemetryIngestionService(
+        service = new CentralMessageHandler(
                 resourceRepository,
                 connectorStateRepository,
                 statusRepository,
@@ -99,7 +99,7 @@ class CentralTelemetryIngestionServiceTest {
                 .thenReturn(Optional.of(state));
         when(statusRepository.findByResource_Id(10L)).thenReturn(Optional.of(status));
 
-        assertEquals(IngestionOutcome.STALE_OR_DUPLICATE, service.ingestMeterValues(message));
+        assertEquals(IngestionOutcome.STALE_OR_DUPLICATE, service.handleMeterValues(message));
         assertEquals(new BigDecimal("105.0"), state.getPowerKw());
         assertEquals(new BigDecimal("7.4"), state.getEnergyRegisterKwh());
         verify(connectorStateRepository, never()).save(state);
@@ -120,7 +120,7 @@ class CentralTelemetryIngestionServiceTest {
 
         assertEquals(
                 IngestionOutcome.APPLIED,
-                service.ingestAvailability("DC890000", false, timestamp)
+                service.handleAvailability("DC890000", false, timestamp)
         );
         verify(statusRepository).save(status);
         verify(snapshotService).capture(resource, timestamp, false);

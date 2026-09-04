@@ -130,9 +130,9 @@ public class ReportRequestStore {
     @Transactional
     public void cancelNonMetadataRequests() {
         repository.lockAllByStatusIn(cancellableStatuses()).stream()
-                .filter(request -> !ReportService.REPORT_SPECIFIER_ID_METADATA.equalsIgnoreCase(
-                        request.getReportSpecifierId()
-                ))
+                .filter(request ->
+                        !ReportService.REPORT_SPECIFIER_ID_METADATA.equalsIgnoreCase(request.getReportSpecifierId())
+                )
                 .forEach(request -> {
                     request.setStatus(CANCELLED);
                     request.setNextReportAt(null);

@@ -1,5 +1,6 @@
 package com.qcharge.openadr.integration.central.kafka;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -13,7 +14,6 @@ import java.time.Instant;
 @Component
 @RequiredArgsConstructor
 public class CentralKafkaMessageListener {
-
     private final CentralKafkaMessageDispatcher dispatcher;
 
     @KafkaListener(topics = "${kafka.topic.central}", containerFactory = "centralKafkaListenerContainerFactory")
@@ -32,4 +32,8 @@ public class CentralKafkaMessageListener {
             throw e;
         }
     }
+
+
+
+
 }

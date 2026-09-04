@@ -50,17 +50,14 @@ public class ReportService {
     private final OpenAdrResourceRepository resourceRepository;
     private final Clock clock;
 
-    public OadrRegisteredReportType registerReportingCapabilities(
-            OpenAdrSessionSnapshot session
-    ) {
+    public OadrRegisteredReportType registerReportingCapabilities(OpenAdrSessionSnapshot session) {
         String venId = session.venId();
         String requestId = RequestUtils.newRequestId();
         List<OpenAdrResource> resources = enabledResources();
 
         log.info(
                 "Registering reporting capabilities. venId={}, venKey={}, resources={}",
-                venId,
-                properties.getVen().getKey(),
+                venId, properties.getVen().getKey(),
                 resources.stream().map(OpenAdrResource::getResourceId).toList()
         );
 
@@ -84,8 +81,7 @@ public class ReportService {
     }
 
     public OadrRegisterReportType buildMetadataRegisterReport(
-            String reportRequestId,
-            OpenAdrSessionSnapshot session
+            String reportRequestId, OpenAdrSessionSnapshot session
     ) {
         String venId = session.venId();
         String requestId = RequestUtils.newRequestId();
@@ -104,24 +100,26 @@ public class ReportService {
     }
 
     private OadrRegisterReportType buildRegisterReport(
-            String requestId,
-            String venId,
-            List<OpenAdrResource> resources
+            String requestId, String venId, List<OpenAdrResource> resources
     ) {
         var builder = Oadr20bEiReportBuilders
                 .newOadr20bRegisterReportBuilder(requestId, venId);
-        resources.forEach(resource -> builder
-                .addOadrReport(buildTelemetryUsageMetadataReport(resource))
-                .addOadrReport(buildTelemetryStatusMetadataReport(resource)));
+
+        for (OpenAdrResource resource : resources) {
+            OadrReportType usageMetadataReport = buildTelemetryUsageMetadataReport(resource);
+            OadrReportType statusMetadataReport = buildTelemetryStatusMetadataReport(resource);
+
+            builder.addOadrReport(usageMetadataReport);
+            builder.addOadrReport(statusMetadataReport);
+        }
+
         return builder.build();
     }
 
     private OadrReportType buildTelemetryUsageMetadataReport(OpenAdrResource resource) {
         OadrReportDescriptionType powerDescriptor = Oadr20bEiReportBuilders
                 .newOadr20bOadrReportDescriptionBuilder(
-                        RID_POWER,
-                        ReportEnumeratedType.USAGE,
-                        ReadingTypeEnumeratedType.DIRECT_READ
+                        RID_POWER, ReportEnumeratedType.USAGE, ReadingTypeEnumeratedType.DIRECT_READ
                 )
                 .withPowerRealBase(
                         PowerRealUnitType.WATT,

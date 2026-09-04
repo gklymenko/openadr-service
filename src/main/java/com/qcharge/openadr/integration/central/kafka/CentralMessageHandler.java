@@ -20,7 +20,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class CentralTelemetryIngestionService {
+public class CentralMessageHandler {
 
     private final OpenAdrResourceRepository resourceRepository;
     private final ConnectorTelemetryStateRepository connectorStateRepository;
@@ -30,14 +30,13 @@ public class CentralTelemetryIngestionService {
     private final OpenAdrProperties properties;
 
     @Transactional
-    public IngestionOutcome ingestMeterValues(MeterValues message) {
+    public IngestionOutcome handleMeterValues(MeterValues message) {
         List<NormalizedMeterReading> readings = messageMapper.normalize(message).stream()
                 .sorted(Comparator.comparing(NormalizedMeterReading::capturedAt))
                 .toList();
+
         if (readings.isEmpty()) {
-            throw new InvalidCentralMessageException(
-                    "METER_VALUE contains no supported power or energy measurand"
-            );
+            throw new InvalidCentralMessageException("METER_VALUE contains no supported power or energy measurand");
         }
 
         Optional<OpenAdrResource> resource = lockResource(message.chargePointId());
@@ -48,13 +47,11 @@ public class CentralTelemetryIngestionService {
         OpenAdrResource lockedResource = resource.get();
         ConnectorTelemetryState state = connectorStateRepository
                 .findByResource_IdAndConnectorNumber(
-                        lockedResource.getId(),
-                        message.connectorId()
+                        lockedResource.getId(), message.connectorId()
                 )
-                .orElseGet(() -> newConnectorState(
-                        lockedResource,
-                        message.connectorId()
-                ));
+                .orElseGet(() ->
+                        newConnectorState(lockedResource, message.connectorId())
+                );
 
         boolean applied = false;
         for (NormalizedMeterReading reading : readings) {
@@ -72,11 +69,7 @@ public class CentralTelemetryIngestionService {
     }
 
     @Transactional
-    public IngestionOutcome ingestAvailability(
-            String chargePointId,
-            boolean online,
-            Instant capturedAt
-    ) {
+    public IngestionOutcome handleAvailability(String chargePointId, boolean online, Instant capturedAt) {
         if (chargePointId == null || chargePointId.isBlank()) {
             throw new InvalidCentralMessageException("Status message has no chargePointId");
         }
@@ -105,10 +98,7 @@ public class CentralTelemetryIngestionService {
         );
     }
 
-    private ConnectorTelemetryState newConnectorState(
-            OpenAdrResource resource,
-            int connectorNumber
-    ) {
+    private ConnectorTelemetryState newConnectorState(OpenAdrResource resource, int connectorNumber) {
         ConnectorTelemetryState state = new ConnectorTelemetryState();
         state.setResource(resource);
         state.setConnectorNumber(connectorNumber);
@@ -116,9 +106,7 @@ public class CentralTelemetryIngestionService {
     }
 
     private boolean applyReading(
-            ConnectorTelemetryState state,
-            Integer transactionId,
-            NormalizedMeterReading reading
+            ConnectorTelemetryState state, Integer transactionId, NormalizedMeterReading reading
     ) {
         boolean applied = false;
         if (reading.powerKw() != null
@@ -140,9 +128,7 @@ public class CentralTelemetryIngestionService {
     }
 
     private boolean updateLatestStatus(
-            OpenAdrResource resource,
-            boolean online,
-            Instant capturedAt
+            OpenAdrResource resource, boolean online, Instant capturedAt
     ) {
         ResourceTelemetryStatus status = statusRepository.findByResource_Id(resource.getId())
                 .orElseGet(() -> newStatus(resource));

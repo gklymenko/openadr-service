@@ -16,6 +16,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
+import static com.qcharge.openadr.ApiMessage.KAFKA_MSG_FIELD_MISSING;
+import static com.qcharge.openadr.ApiMessage.KAFKA_MSG_INVALID_TIMESTAMP_FIELD;
+
 @Component
 public class CentralTelemetryMessageMapper {
 
@@ -42,7 +45,7 @@ public class CentralTelemetryMessageMapper {
 
     public Instant parseTimestamp(String value, String field) {
         if (isBlank(value)) {
-            throw new InvalidCentralMessageException(field + " is missing");
+            throw new InvalidCentralMessageException(KAFKA_MSG_FIELD_MISSING.format(field));
         }
         try {
             return Instant.parse(value);
@@ -50,10 +53,7 @@ public class CentralTelemetryMessageMapper {
             try {
                 return OffsetDateTime.parse(value).toInstant();
             } catch (DateTimeParseException exception) {
-                throw new InvalidCentralMessageException(
-                        field + " is not an ISO-8601 timestamp: " + value,
-                        exception
-                );
+                throw new InvalidCentralMessageException(KAFKA_MSG_INVALID_TIMESTAMP_FIELD.format(field, value), exception);
             }
         }
     }
@@ -64,16 +64,10 @@ public class CentralTelemetryMessageMapper {
                 ? List.of()
                 : meterValue.sampledValue();
 
-        BigDecimal powerKw = selectOrSum(
-                values,
-                POWER_ACTIVE_IMPORT,
-                this::powerToKw
-        );
-        BigDecimal energyKwh = selectOrSum(
-                values,
-                ENERGY_ACTIVE_IMPORT_REGISTER,
-                this::energyToKwh
-        );
+        BigDecimal powerKw = selectOrSum(values, POWER_ACTIVE_IMPORT, this::powerToKw);
+
+        BigDecimal energyKwh = selectOrSum(values, ENERGY_ACTIVE_IMPORT_REGISTER, this::energyToKwh);
+
         return new NormalizedMeterReading(capturedAt, powerKw, energyKwh);
     }
 

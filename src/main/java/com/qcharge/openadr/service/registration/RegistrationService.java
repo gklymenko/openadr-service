@@ -78,8 +78,17 @@ public class RegistrationService {
         log.info(COMPLETED_OADR_QUERY_REGISTRATION);
     }
 
+    /**
+     * Creates a completely new registration request without registrationID.
+     */
     public OpenAdrSessionSnapshot performRegistration() {
-        VenRegistration newRegistration = registerNew();
+        OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
+
+        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(
+                session, session.venId(), null
+        );
+
+        VenRegistration newRegistration = saveRegistration(response, Optional.empty());
         return completeRegistration(newRegistration);
     }
 
@@ -97,43 +106,25 @@ public class RegistrationService {
         return registeredSession;
     }
 
+    /**
+     * Rule 406 / N1_0060: a new registration initiated while already registered must omit both venID and registrationID.
+     */
     public OpenAdrSessionSnapshot performForcedNewRegistration() {
         log.warn(FORCE_NEW_REGISTRATION);
 
         Optional<VenRegistration> previousActive = findActiveRegistration();
 
-        VenRegistration newRegistration = registerForcedNew();
-
-        previousActive.ifPresent(this::markCancelled);
-
-        return completeRegistration(newRegistration);
-    }
-
-    /**
-     * Creates a completely new registration request without registrationID.
-     */
-    private VenRegistration registerNew() {
-        OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
-
-        OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(
-                session, session.venId(), null
-        );
-
-        return saveRegistration(response, Optional.empty());
-    }
-
-    /**
-     * Rule 406 / N1_0060: a new registration initiated while already
-     * registered must omit both venID and registrationID.
-     */
-    private VenRegistration registerForcedNew() {
         OpenAdrSessionSnapshot session = sessionProvider.bootstrap();
 
         OadrCreatedPartyRegistrationType response = sendCreatePartyRegistration(
                 session, null, null
         );
 
-        return saveRegistration(response, Optional.empty());
+        VenRegistration newRegistration =  saveRegistration(response, Optional.empty());
+
+        previousActive.ifPresent(this::markCancelled);
+
+        return completeRegistration(newRegistration);
     }
 
     /**
